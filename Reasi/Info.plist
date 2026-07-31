@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Reasi</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Reasi Auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(REASI_APP_URL_SCHEME)</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(REASI_GOOGLE_URL_SCHEME)</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Reasi uses the camera to identify grocery products and extract handwritten shopping lists before you review them.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Reasi lets you choose product and shopping-list photos so you can review imported grocery details before adding them.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>GIDClientID</key>
+	<string>$(REASI_GOOGLE_CLIENT_ID)</string>
+	<key>REASI_POSTHOG_HOST</key>
+	<string>$(REASI_POSTHOG_HOST)</string>
+	<key>REASI_POSTHOG_KEY</key>
+	<string>$(REASI_POSTHOG_KEY)</string>
+	<key>REASI_REVENUECAT_PUBLIC_KEY</key>
+	<string>$(REASI_REVENUECAT_PUBLIC_KEY)</string>
+	<key>REASI_GOOGLE_CLIENT_ID</key>
+	<string>$(REASI_GOOGLE_CLIENT_ID)</string>
+	<key>REASI_GOOGLE_URL_SCHEME</key>
+	<string>$(REASI_GOOGLE_URL_SCHEME)</string>
+	<key>REASI_AUTH_REDIRECT_URL</key>
+	<string>$(REASI_AUTH_REDIRECT_URL)</string>
+	<key>REASI_ENABLE_APPLE_AUTH</key>
+	<string>$(REASI_ENABLE_APPLE_AUTH)</string>
+	<key>REASI_ENABLE_DEBUG_GUEST_AUTH</key>
+	<string>$(REASI_ENABLE_DEBUG_GUEST_AUTH)</string>
+	<key>REASI_ENABLE_DEBUG_FIXTURES</key>
+	<string>$(REASI_ENABLE_DEBUG_FIXTURES)</string>
+	<key>REASI_PRIVACY_POLICY_URL</key>
+	<string>$(REASI_PRIVACY_POLICY_URL)</string>
+	<key>REASI_SUPABASE_ANON_KEY</key>
+	<string>$(REASI_SUPABASE_ANON_KEY)</string>
+	<key>REASI_SUPABASE_URL</key>
+	<string>$(REASI_SUPABASE_URL)</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Inter_400Regular.ttf</string>
+		<string>Inter_500Medium.ttf</string>
+		<string>Inter_600SemiBold.ttf</string>
+		<string>Inter_700Bold.ttf</string>
+	</array>
+</dict>
+</plist>

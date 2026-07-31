@@ -1,0 +1,291 @@
+import Foundation
+
+struct RecipeIngredient: Identifiable, Codable, Hashable {
+    var id: String { "\(name)-\(quantity)-\(category)" }
+    let name: String
+    let quantity: String
+    let category: String
+}
+
+struct RecipeInfo: Codable, Hashable {
+    let ingredients: [RecipeIngredient]
+    let instructionsBrief: String
+    let prepTimeMin: Int?
+    let cookTimeMin: Int?
+    let method: [String]?
+    let serves: Int?
+
+    var steps: [String] {
+        if let method, !method.isEmpty {
+            return method
+        }
+
+        return instructionsBrief
+            .split(separator: ".")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { $0.hasSuffix(".") ? $0 : "\($0)." }
+    }
+
+    var totalTimeMin: Int? {
+        switch (prepTimeMin, cookTimeMin) {
+        case let (.some(prep), .some(cook)):
+            prep + cook
+        case let (.some(prep), .none):
+            prep
+        case let (.none, .some(cook)):
+            cook
+        case (.none, .none):
+            nil
+        }
+    }
+
+    func normalized(fallbackCookTimeMin: Int) -> RecipeInfo {
+        RecipeInfo(
+            ingredients: ingredients,
+            instructionsBrief: instructionsBrief,
+            prepTimeMin: prepTimeMin,
+            cookTimeMin: cookTimeMin ?? fallbackCookTimeMin,
+            method: method,
+            serves: serves
+        )
+    }
+}
+
+struct MealSummary: Identifiable, Codable, Hashable {
+    let id: String
+    let day: String
+    let dish: String
+    let description: String
+    let cuisine: String
+    let cookTimeMin: Int
+    let costAud: Double
+    let estimatedProteinG: Int
+    let estimatedCalories: Int
+    let estimatedCarbsG: Int
+    let tone: String
+    var recipe: RecipeInfo? = nil
+
+    func withRecipe(_ recipe: RecipeInfo?) -> MealSummary {
+        MealSummary(
+            id: id,
+            day: day,
+            dish: dish,
+            description: description,
+            cuisine: cuisine,
+            cookTimeMin: cookTimeMin,
+            costAud: costAud,
+            estimatedProteinG: estimatedProteinG,
+            estimatedCalories: estimatedCalories,
+            estimatedCarbsG: estimatedCarbsG,
+            tone: tone,
+            recipe: recipe
+        )
+    }
+}
+
+struct ProductSnapshot: Codable, Hashable {
+    let sku: String?
+    let productName: String?
+    let brand: String?
+    let size: String?
+    let priceAud: Double?
+    let imageUrl: URL?
+    let capturedAt: String?
+}
+
+enum ProductConfidence: String, Codable, Hashable, CaseIterable {
+    case high
+    case medium
+    case low
+
+    var label: String {
+        switch self {
+        case .high:
+            "High confidence"
+        case .medium:
+            "Medium confidence"
+        case .low:
+            "Low confidence"
+        }
+    }
+}
+
+struct ProductCandidate: Identifiable, Codable, Hashable {
+    var id: String { observationId ?? "\(name)-\(sourceName)-\(size ?? "")" }
+    let observationId: String?
+    let name: String
+    let brand: String?
+    let size: String?
+    let priceAud: Double?
+    let unitPriceAud: Double?
+    let unitQuantity: Double?
+    let unitMeasure: String?
+    let comparablePrice: String?
+    let imageUrl: URL?
+    let productUrl: URL?
+    let sourceName: String
+    let sourceUrl: URL?
+    let capturedAt: String?
+    let freshnessLabel: String
+    let confidence: ProductConfidence
+    let confidenceReason: String
+    let uncertaintyText: String
+
+    var displayName: String {
+        if let brand, !brand.isEmpty, !name.localizedCaseInsensitiveContains(brand) {
+            return "\(brand) \(name)"
+        }
+        return name
+    }
+}
+
+struct ProductImportResult: Codable, Hashable {
+    let batchId: String?
+    let candidates: [ProductCandidate]
+}
+
+enum ListExtractionGroup: String, Codable, Hashable {
+    case matched
+    case needsReview = "needs_review"
+    case uncertain
+}
+
+struct ListExtractionCandidate: Identifiable, Codable, Hashable {
+    var id: String { productCandidate?.id ?? "\(extractedName)-\(quantity ?? "")-\(group.rawValue)" }
+    let extractedName: String
+    let quantity: String?
+    let group: ListExtractionGroup
+    let confidence: ProductConfidence
+    let confidenceReason: String
+    let productCandidate: ProductCandidate?
+}
+
+struct ListExtractionResult: Codable, Hashable {
+    let batchId: String?
+    let matched: [ListExtractionCandidate]
+    let needsReview: [ListExtractionCandidate]
+    let uncertain: [ListExtractionCandidate]
+    let items: [ListExtractionCandidate]
+}
+
+struct ProductComparisonRow: Identifiable, Codable, Hashable {
+    var id: String { observationId }
+    let observationId: String
+    let name: String
+    let brand: String?
+    let size: String?
+    let priceAud: Double?
+    let unitPriceAud: Double?
+    let unitMeasure: String?
+    let unitValueText: String
+    let sourceName: String
+    let sourceUrl: URL?
+    let freshnessLabel: String
+    let confidence: ProductConfidence
+    let caveat: String
+}
+
+struct ProductComparisonResult: Codable, Hashable {
+    let rows: [ProductComparisonRow]
+    let bestUnitValueObservationId: String?
+    let caveats: [String]
+}
+
+enum AssistantMessageRole: String, Codable, Hashable {
+    case user
+    case assistant
+}
+
+struct AssistantMessage: Identifiable, Codable, Hashable {
+    let id: String
+    let role: AssistantMessageRole
+    let content: String
+    let cards: [AssistantCard]
+    let caveats: [String]
+    let createdAt: String?
+}
+
+struct AssistantCard: Identifiable, Codable, Hashable {
+    var id: String { "\(type)-\(title)-\(sourceName ?? "")" }
+    let type: String
+    let title: String
+    let body: String?
+    let confidence: ProductConfidence?
+    let sourceName: String?
+    let freshnessLabel: String?
+}
+
+struct AssistantResponse: Codable, Hashable {
+    let threadId: String
+    let message: AssistantMessage
+}
+
+enum ShoppingSectionType: String, Codable, Hashable {
+    case numbered
+    case perimeter
+    case unknown
+}
+
+struct ShoppingListItem: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let quantity: String
+    var checked: Bool
+    let aisleLabel: String?
+    let sectionType: ShoppingSectionType
+    let product: ProductSnapshot?
+    var importedCandidate: ProductCandidate? = nil
+    var locationUncertaintyText: String? = nil
+    var clientId: String? = nil
+}
+
+struct ShoppingListSection: Identifiable, Codable, Hashable {
+    var id: String { "\(sortKey)-\(label)" }
+    let label: String
+    let sortKey: Int
+    let type: ShoppingSectionType
+    var items: [ShoppingListItem]
+}
+
+struct ShoppingList: Identifiable, Codable, Hashable {
+    let id: String
+    let storeId: StoreID
+    let storeName: String
+    var sections: [ShoppingListSection]
+}
+
+enum WeekPlanSource: String, Codable, Hashable {
+    case fixture
+    case supabase
+}
+
+struct WeekPlan: Identifiable, Codable, Hashable {
+    let id: String
+    let source: WeekPlanSource
+    let storeId: StoreID
+    let storeName: String
+    let weekLabel: String
+    let planningNotes: String
+    let meals: [MealSummary]
+    var shoppingList: ShoppingList
+
+    func withMeals(_ meals: [MealSummary]) -> WeekPlan {
+        WeekPlan(
+            id: id,
+            source: source,
+            storeId: storeId,
+            storeName: storeName,
+            weekLabel: weekLabel,
+            planningNotes: planningNotes,
+            meals: meals,
+            shoppingList: shoppingList
+        )
+    }
+}
+
+struct GenerateWeekPlanInput: Codable, Hashable {
+    let storeId: StoreID
+    let weekStart: String?
+    let idempotencyKey: String?
+}

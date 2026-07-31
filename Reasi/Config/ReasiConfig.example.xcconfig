@@ -1,0 +1,16 @@
+// Copy this file to ReasiConfig.xcconfig for local public configuration.
+// Keep secrets out of the app bundle.
+
+REASI_SUPABASE_URL =
+REASI_SUPABASE_ANON_KEY =
+REASI_POSTHOG_KEY =
+REASI_POSTHOG_HOST = https:/$()/us.i.posthog.com
+REASI_REVENUECAT_PUBLIC_KEY =
+REASI_GOOGLE_CLIENT_ID =
+REASI_GOOGLE_URL_SCHEME =
+REASI_AUTH_REDIRECT_URL = ai.reasi.ios:/$()/auth/callback
+REASI_APP_URL_SCHEME = ai.reasi.ios
+REASI_ENABLE_APPLE_AUTH = NO
+REASI_PRIVACY_POLICY_URL = https:/$()/reasi.ai/privacy
+REASI_ENABLE_DEBUG_GUEST_AUTH = YES
+REASI_ENABLE_DEBUG_FIXTURES = NO

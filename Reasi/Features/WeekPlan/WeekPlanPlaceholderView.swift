@@ -1,0 +1,435 @@
+import SwiftUI
+
+struct WeekPlanPlaceholderView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(CoreLoopStore.self) private var coreLoop
+    @Environment(SupabaseService.self) private var supabase
+    @Environment(AnalyticsService.self) private var analytics
+    @Environment(NetworkMonitor.self) private var network
+    @State private var selectedMeal: MealSummary?
+    @State private var didTrackView = false
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+                header
+
+                if coreLoop.generationState.isGenerating {
+                    generationLoading
+                } else if !coreLoop.hasPlan {
+                    if let error = coreLoop.generationState.errorMessage {
+                        errorCard(error)
+                    }
+                    if let notice = coreLoop.generationState.noticeMessage {
+                        noticeCard(notice)
+                    }
+                    emptyState
+                } else {
+                    if let error = coreLoop.generationState.errorMessage {
+                        errorCard(error)
+                    }
+                    if let notice = coreLoop.generationState.noticeMessage {
+                        noticeCard(notice)
+                    }
+                    planNotes
+                    mealList
+                    openShoppingListButton
+                }
+            }
+            .padding(.top, ReasiSpacing.s8)
+            .padding(.bottom, 120)
+        }
+        .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
+        .background(Color.reasi.background)
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(item: $selectedMeal) { meal in
+            MealDetailSheet(meal: meal)
+        }
+        .task {
+            guard !didTrackView else { return }
+            didTrackView = true
+            coreLoop.markWeekPlanViewed(analytics: analytics)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+            Text("Your week")
+                .font(ReasiTypography.largeTitle)
+                .foregroundStyle(Color.reasi.text)
+            Text(coreLoop.hasPlan ? "\(coreLoop.plan.weekLabel) · \(coreLoop.plan.meals.count) dinners" : "No generated week yet")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.muted)
+        }
+    }
+
+    private var generationLoading: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            GenerationProgressCard(
+                stage: coreLoop.generationStage,
+                elapsedSeconds: coreLoop.generationElapsedSeconds,
+                cancel: { coreLoop.cancelGeneration(analytics: analytics) }
+            )
+
+            VStack(spacing: ReasiSpacing.s3) {
+                ForEach(0..<7, id: \.self) { index in
+                    SkeletonBlock(height: index == 0 ? 102 : 88, radius: ReasiRadius.lg)
+                }
+            }
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+    }
+
+    private func noticeCard(_ message: String) -> some View {
+        Label(message, systemImage: "pause.circle.fill")
+            .font(ReasiTypography.callout)
+            .foregroundStyle(Color.reasi.textMuted)
+            .padding(ReasiSpacing.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+
+    private func errorCard(_ error: String) -> some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.reasi.warning)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Generation paused")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Text(error)
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button {
+                Task {
+                    await coreLoop.generateWeekPlan(
+                        store: appState.selectedStore,
+                        supabase: supabase,
+                        analytics: analytics,
+                        appState: appState,
+                        network: network
+                    )
+                }
+            } label: {
+                Label("Try again", systemImage: "arrow.clockwise")
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+            }
+            .buttonStyle(ReasiPressStyle())
+        }
+        .padding(ReasiSpacing.s5)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .stroke(Color.reasi.border, lineWidth: 1)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            Image(systemName: "fork.knife.circle")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(Color.reasi.textMuted)
+            Text("No week planned")
+                .font(ReasiTypography.title2)
+                .foregroundStyle(Color.reasi.text)
+            Text("Generate a week when you're ready. Nothing has been lost.")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+
+            Button {
+                Task {
+                    await coreLoop.generateWeekPlan(
+                        store: appState.selectedStore,
+                        supabase: supabase,
+                        analytics: analytics,
+                        appState: appState,
+                        network: network
+                    )
+                }
+            } label: {
+                Label("Plan my week", systemImage: "sparkles")
+            }
+            .buttonStyle(ReasiPrimaryButtonStyle())
+        }
+        .padding(ReasiSpacing.s5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+    }
+
+    private var planNotes: some View {
+        Text(coreLoop.plan.planningNotes)
+            .font(ReasiTypography.body)
+            .foregroundStyle(Color.reasi.textMuted)
+            .padding(ReasiSpacing.s5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+    }
+
+    private var mealList: some View {
+        VStack(spacing: ReasiSpacing.s3) {
+            ForEach(Array(coreLoop.plan.meals.enumerated()), id: \.element.id) { index, meal in
+                Button {
+                    ReasiHaptics.light()
+                    selectedMeal = meal
+                } label: {
+                    MealRow(meal: meal)
+                }
+                .buttonStyle(ReasiPressStyle())
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(ReasiMotion.tactileSpring.delay(Double(index) * 0.025), value: coreLoop.plan.id)
+            }
+        }
+    }
+
+    private var openShoppingListButton: some View {
+        Button {
+            coreLoop.openShoppingList(appState: appState, analytics: analytics)
+        } label: {
+            HStack {
+                Image(systemName: "checklist")
+                Text("Open shopping list")
+            }
+        }
+        .buttonStyle(ReasiPrimaryButtonStyle())
+    }
+}
+
+private struct MealRow: View {
+    let meal: MealSummary
+
+    var body: some View {
+        HStack(spacing: ReasiSpacing.s4) {
+            RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                .fill(Color(hexString: meal.tone) ?? Color.reasi.surfaceHigh)
+                .frame(width: 58, height: 58)
+                .overlay {
+                    Text(meal.day)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.text)
+                }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(meal.dish)
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                    .lineLimit(1)
+                Text(meal.description)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(2)
+                HStack(spacing: ReasiSpacing.s2) {
+                    Text(meal.cuisine)
+                    Text("\(meal.cookTimeMin) min")
+                    Text("$\(Int(meal.costAud))")
+                }
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.textMuted)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.reasi.dim)
+        }
+        .padding(ReasiSpacing.s4)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(Color.reasi.border, lineWidth: 1)
+        }
+    }
+}
+
+private struct MealDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let meal: MealSummary
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+                    hero
+                    timeGrid
+                    ingredients
+                    method
+                }
+                .padding(.horizontal, ReasiSpacing.s5)
+                .padding(.top, ReasiSpacing.s5)
+                .padding(.bottom, ReasiSpacing.s8)
+            }
+            .background(Color.reasi.background)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.reasi.text)
+                            .frame(width: 34, height: 34)
+                            .background(Color.reasi.surfaceHigh, in: Circle())
+                    }
+                    .buttonStyle(ReasiPressStyle())
+                }
+            }
+            .toolbarBackground(Color.reasi.background, for: .navigationBar)
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .preferredColorScheme(.dark)
+    }
+
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hexString: meal.tone) ?? Color.reasi.surfaceHigh,
+                            Color.reasi.surface
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(height: 144)
+                .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(meal.day)
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.textMuted)
+                        Text(meal.dish)
+                            .font(ReasiTypography.title)
+                            .foregroundStyle(Color.reasi.text)
+                            .minimumScaleFactor(0.82)
+                            .lineLimit(2)
+                    }
+                    .padding(ReasiSpacing.s5)
+                }
+
+            Text(meal.description)
+                .font(ReasiTypography.body)
+                .foregroundStyle(Color.reasi.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var timeGrid: some View {
+        HStack(spacing: ReasiSpacing.s3) {
+            DetailMetric(title: "Prep", value: "\(meal.recipe?.prepTimeMin ?? 10) min")
+            DetailMetric(title: "Cook", value: "\(meal.recipe?.cookTimeMin ?? meal.cookTimeMin) min")
+            DetailMetric(title: "Serves", value: "\(meal.recipe?.serves ?? 2)")
+        }
+    }
+
+    private var ingredients: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            Text("Ingredients")
+                .font(ReasiTypography.title2)
+                .foregroundStyle(Color.reasi.text)
+
+            VStack(spacing: ReasiSpacing.s2) {
+                ForEach(meal.recipe?.ingredients ?? []) { ingredient in
+                    HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                        Circle()
+                            .fill(Color.reasi.textMuted)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ingredient.name)
+                                .font(ReasiTypography.bodyMedium)
+                                .foregroundStyle(Color.reasi.text)
+                            Text("\(ingredient.quantity) · \(ingredient.category)")
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(Color.reasi.muted)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        }
+    }
+
+    private var method: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            Text("Method")
+                .font(ReasiTypography.title2)
+                .foregroundStyle(Color.reasi.text)
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                let steps = meal.recipe?.steps ?? [meal.description]
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                        Text("\(index + 1)")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.background)
+                            .frame(width: 24, height: 24)
+                            .background(Color.reasi.text, in: Circle())
+                        Text(step)
+                            .font(ReasiTypography.body)
+                            .foregroundStyle(Color.reasi.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        }
+    }
+}
+
+private struct DetailMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+            Text(value)
+                .font(ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ReasiSpacing.s4)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+}
+
+private extension Color {
+    init?(hexString: String) {
+        let cleaned = hexString.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard let value = UInt(cleaned, radix: 16) else { return nil }
+        self.init(hex: value)
+    }
+}
+
+#Preview {
+    WeekPlanPlaceholderView()
+        .environment(AppState())
+        .environment(CoreLoopStore())
+        .environment(SupabaseService())
+        .environment(AnalyticsService())
+        .environment(NetworkMonitor())
+        .preferredColorScheme(.dark)
+}

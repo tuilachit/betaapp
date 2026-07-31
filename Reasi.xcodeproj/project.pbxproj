@@ -1,0 +1,678 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B00000000000000000000001 /* ReasiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* ReasiApp.swift */; };
+		B00000000000000000000002 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* AppShellView.swift */; };
+		B00000000000000000000003 /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* AppTab.swift */; };
+		B00000000000000000000004 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* AppRoute.swift */; };
+		B00000000000000000000005 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* AppState.swift */; };
+		B00000000000000000000006 /* ReasiColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* ReasiColors.swift */; };
+		B00000000000000000000007 /* ReasiSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* ReasiSpacing.swift */; };
+		B00000000000000000000008 /* ReasiRadius.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* ReasiRadius.swift */; };
+		B00000000000000000000009 /* ReasiMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* ReasiMotion.swift */; };
+		B00000000000000000000010 /* ReasiTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* ReasiTypography.swift */; };
+		B00000000000000000000011 /* ReasiTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* ReasiTheme.swift */; };
+		B00000000000000000000012 /* ReasiHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* ReasiHaptics.swift */; };
+		B00000000000000000000013 /* ReasiPressStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* ReasiPressStyle.swift */; };
+		B00000000000000000000014 /* SkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* SkeletonView.swift */; };
+		B00000000000000000000015 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* FloatingTabBar.swift */; };
+		B00000000000000000000016 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* Store.swift */; };
+		B00000000000000000000017 /* MealPlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* MealPlanModels.swift */; };
+		B00000000000000000000018 /* FixtureStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* FixtureStores.swift */; };
+		B00000000000000000000019 /* ReasiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000019 /* ReasiConfig.swift */; };
+		B00000000000000000000020 /* ServiceStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000020 /* ServiceStatus.swift */; };
+		B00000000000000000000021 /* KeychainSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* KeychainSessionStore.swift */; };
+		B00000000000000000000022 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* SupabaseService.swift */; };
+		B00000000000000000000023 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* AnalyticsService.swift */; };
+		B00000000000000000000024 /* RevenueCatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000024 /* RevenueCatService.swift */; };
+		B00000000000000000000025 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* HomeView.swift */; };
+		B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* WeekPlanPlaceholderView.swift */; };
+		B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* ShoppingListPlaceholderView.swift */; };
+		B00000000000000000000028 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000028 /* ProfileView.swift */; };
+		B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000029 /* OnboardingPlaceholderView.swift */; };
+		B00000000000000000000030 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* Assets.xcassets */; };
+		B00000000000000000000031 /* Inter_400Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000031 /* Inter_400Regular.ttf */; };
+		B00000000000000000000032 /* Inter_500Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000032 /* Inter_500Medium.ttf */; };
+		B00000000000000000000033 /* Inter_600SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000033 /* Inter_600SemiBold.ttf */; };
+		B00000000000000000000034 /* Inter_700Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000034 /* Inter_700Bold.ttf */; };
+		B00000000000000000000035 /* CoreLoopStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000038 /* CoreLoopStore.swift */; };
+		B00000000000000000000040 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000101 /* Supabase */; };
+		B00000000000000000000041 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000102 /* PostHog */; };
+		B00000000000000000000042 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000103 /* RevenueCat */; };
+		B00000000000000000000043 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000104 /* GoogleSignIn */; };
+		B00000000000000000000044 /* OnboardingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* OnboardingPreferences.swift */; };
+		B00000000000000000000045 /* OnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* OnboardingStore.swift */; };
+		B00000000000000000000046 /* BrandLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* BrandLaunchView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000001 /* ReasiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000002 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 /* AppTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTab.swift; sourceTree = "<group>"; };
+		A00000000000000000000004 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A00000000000000000000006 /* ReasiColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiColors.swift; sourceTree = "<group>"; };
+		A00000000000000000000007 /* ReasiSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiSpacing.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 /* ReasiRadius.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiRadius.swift; sourceTree = "<group>"; };
+		A00000000000000000000009 /* ReasiMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiMotion.swift; sourceTree = "<group>"; };
+		A00000000000000000000010 /* ReasiTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiTypography.swift; sourceTree = "<group>"; };
+		A00000000000000000000011 /* ReasiTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiTheme.swift; sourceTree = "<group>"; };
+		A00000000000000000000012 /* ReasiHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiHaptics.swift; sourceTree = "<group>"; };
+		A00000000000000000000013 /* ReasiPressStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiPressStyle.swift; sourceTree = "<group>"; };
+		A00000000000000000000014 /* SkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonView.swift; sourceTree = "<group>"; };
+		A00000000000000000000015 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
+		A00000000000000000000016 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		A00000000000000000000017 /* MealPlanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealPlanModels.swift; sourceTree = "<group>"; };
+		A00000000000000000000018 /* FixtureStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureStores.swift; sourceTree = "<group>"; };
+		A00000000000000000000019 /* ReasiConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiConfig.swift; sourceTree = "<group>"; };
+		A00000000000000000000020 /* ServiceStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceStatus.swift; sourceTree = "<group>"; };
+		A00000000000000000000021 /* KeychainSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSessionStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000022 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
+		A00000000000000000000023 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
+		A00000000000000000000024 /* RevenueCatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevenueCatService.swift; sourceTree = "<group>"; };
+		A00000000000000000000025 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		A00000000000000000000026 /* WeekPlanPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekPlanPlaceholderView.swift; sourceTree = "<group>"; };
+		A00000000000000000000027 /* ShoppingListPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListPlaceholderView.swift; sourceTree = "<group>"; };
+		A00000000000000000000028 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A00000000000000000000029 /* OnboardingPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPlaceholderView.swift; sourceTree = "<group>"; };
+		A00000000000000000000030 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A00000000000000000000031 /* Inter_400Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_400Regular.ttf; sourceTree = "<group>"; };
+		A00000000000000000000032 /* Inter_500Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_500Medium.ttf; sourceTree = "<group>"; };
+		A00000000000000000000033 /* Inter_600SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_600SemiBold.ttf; sourceTree = "<group>"; };
+		A00000000000000000000034 /* Inter_700Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_700Bold.ttf; sourceTree = "<group>"; };
+		A00000000000000000000035 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000036 /* ReasiConfig.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ReasiConfig.example.xcconfig; sourceTree = "<group>"; };
+		A00000000000000000000037 /* Reasi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Reasi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000038 /* CoreLoopStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreLoopStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000039 /* ReasiConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ReasiConfig.xcconfig; sourceTree = "<group>"; };
+		A00000000000000000000040 /* Reasi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Reasi.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000041 /* OnboardingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPreferences.swift; sourceTree = "<group>"; };
+		A00000000000000000000042 /* OnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000043 /* BrandLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandLaunchView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C00000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000000000000000000040 /* Supabase in Frameworks */,
+				B00000000000000000000041 /* PostHog in Frameworks */,
+				B00000000000000000000042 /* RevenueCat in Frameworks */,
+				B00000000000000000000043 /* GoogleSignIn in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				C00000000000000000000010 /* Reasi */,
+				C00000000000000000000090 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C00000000000000000000010 /* Reasi */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000035 /* Info.plist */,
+				A00000000000000000000040 /* Reasi.entitlements */,
+				C00000000000000000000011 /* Config */,
+				C00000000000000000000020 /* App */,
+				C00000000000000000000030 /* DesignSystem */,
+				C00000000000000000000040 /* Core */,
+				C00000000000000000000060 /* Features */,
+				C00000000000000000000080 /* Resources */,
+			);
+			path = Reasi;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000011 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000036 /* ReasiConfig.example.xcconfig */,
+				A00000000000000000000039 /* ReasiConfig.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000020 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000001 /* ReasiApp.swift */,
+				A00000000000000000000043 /* BrandLaunchView.swift */,
+				A00000000000000000000002 /* AppShellView.swift */,
+				A00000000000000000000003 /* AppTab.swift */,
+				A00000000000000000000004 /* AppRoute.swift */,
+				A00000000000000000000005 /* AppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000030 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000006 /* ReasiColors.swift */,
+				A00000000000000000000007 /* ReasiSpacing.swift */,
+				A00000000000000000000008 /* ReasiRadius.swift */,
+				A00000000000000000000009 /* ReasiMotion.swift */,
+				A00000000000000000000010 /* ReasiTypography.swift */,
+				A00000000000000000000011 /* ReasiTheme.swift */,
+				A00000000000000000000012 /* ReasiHaptics.swift */,
+				A00000000000000000000013 /* ReasiPressStyle.swift */,
+				A00000000000000000000014 /* SkeletonView.swift */,
+				A00000000000000000000015 /* FloatingTabBar.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000040 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				C00000000000000000000041 /* Models */,
+				C00000000000000000000042 /* Services */,
+				C00000000000000000000043 /* Fixtures */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000041 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000016 /* Store.swift */,
+				A00000000000000000000017 /* MealPlanModels.swift */,
+				A00000000000000000000041 /* OnboardingPreferences.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000042 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000019 /* ReasiConfig.swift */,
+				A00000000000000000000020 /* ServiceStatus.swift */,
+				A00000000000000000000021 /* KeychainSessionStore.swift */,
+				A00000000000000000000038 /* CoreLoopStore.swift */,
+				A00000000000000000000022 /* SupabaseService.swift */,
+				A00000000000000000000023 /* AnalyticsService.swift */,
+				A00000000000000000000024 /* RevenueCatService.swift */,
+				A00000000000000000000042 /* OnboardingStore.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000043 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000018 /* FixtureStores.swift */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000060 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				C00000000000000000000061 /* Home */,
+				C00000000000000000000062 /* WeekPlan */,
+				C00000000000000000000063 /* ShoppingList */,
+				C00000000000000000000064 /* Profile */,
+				C00000000000000000000065 /* Onboarding */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000061 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000025 /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000062 /* WeekPlan */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000026 /* WeekPlanPlaceholderView.swift */,
+			);
+			path = WeekPlan;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000063 /* ShoppingList */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000027 /* ShoppingListPlaceholderView.swift */,
+			);
+			path = ShoppingList;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000064 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000028 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000065 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000029 /* OnboardingPlaceholderView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000080 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000030 /* Assets.xcassets */,
+				C00000000000000000000081 /* Fonts */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000081 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000031 /* Inter_400Regular.ttf */,
+				A00000000000000000000032 /* Inter_500Medium.ttf */,
+				A00000000000000000000033 /* Inter_600SemiBold.ttf */,
+				A00000000000000000000034 /* Inter_700Bold.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000090 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000037 /* Reasi.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E00000000000000000000002 /* Reasi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D00000000000000000000020 /* Build configuration list for PBXNativeTarget "Reasi" */;
+			buildPhases = (
+				C00000000000000000000003 /* Sources */,
+				C00000000000000000000002 /* Frameworks */,
+				C00000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Reasi;
+			packageProductDependencies = (
+				F00000000000000000000101 /* Supabase */,
+				F00000000000000000000102 /* PostHog */,
+				F00000000000000000000103 /* RevenueCat */,
+				F00000000000000000000104 /* GoogleSignIn */,
+			);
+			productName = Reasi;
+			productReference = A00000000000000000000037 /* Reasi.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					E00000000000000000000002 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = D00000000000000000000010 /* Build configuration list for PBXProject "Reasi" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C00000000000000000000001;
+			packageReferences = (
+				F00000000000000000000001 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				F00000000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */,
+				F00000000000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+				F00000000000000000000004 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
+			productRefGroup = C00000000000000000000090 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E00000000000000000000002 /* Reasi */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C00000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000000000000000000030 /* Assets.xcassets in Resources */,
+				B00000000000000000000031 /* Inter_400Regular.ttf in Resources */,
+				B00000000000000000000032 /* Inter_500Medium.ttf in Resources */,
+				B00000000000000000000033 /* Inter_600SemiBold.ttf in Resources */,
+				B00000000000000000000034 /* Inter_700Bold.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C00000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B00000000000000000000001 /* ReasiApp.swift in Sources */,
+				B00000000000000000000002 /* AppShellView.swift in Sources */,
+				B00000000000000000000003 /* AppTab.swift in Sources */,
+				B00000000000000000000004 /* AppRoute.swift in Sources */,
+				B00000000000000000000005 /* AppState.swift in Sources */,
+				B00000000000000000000006 /* ReasiColors.swift in Sources */,
+				B00000000000000000000007 /* ReasiSpacing.swift in Sources */,
+				B00000000000000000000008 /* ReasiRadius.swift in Sources */,
+				B00000000000000000000009 /* ReasiMotion.swift in Sources */,
+				B00000000000000000000010 /* ReasiTypography.swift in Sources */,
+				B00000000000000000000011 /* ReasiTheme.swift in Sources */,
+				B00000000000000000000012 /* ReasiHaptics.swift in Sources */,
+				B00000000000000000000013 /* ReasiPressStyle.swift in Sources */,
+				B00000000000000000000014 /* SkeletonView.swift in Sources */,
+				B00000000000000000000015 /* FloatingTabBar.swift in Sources */,
+				B00000000000000000000016 /* Store.swift in Sources */,
+				B00000000000000000000017 /* MealPlanModels.swift in Sources */,
+				B00000000000000000000018 /* FixtureStores.swift in Sources */,
+				B00000000000000000000019 /* ReasiConfig.swift in Sources */,
+				B00000000000000000000020 /* ServiceStatus.swift in Sources */,
+				B00000000000000000000021 /* KeychainSessionStore.swift in Sources */,
+				B00000000000000000000022 /* SupabaseService.swift in Sources */,
+				B00000000000000000000023 /* AnalyticsService.swift in Sources */,
+				B00000000000000000000024 /* RevenueCatService.swift in Sources */,
+				B00000000000000000000035 /* CoreLoopStore.swift in Sources */,
+				B00000000000000000000025 /* HomeView.swift in Sources */,
+				B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */,
+				B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */,
+				B00000000000000000000028 /* ProfileView.swift in Sources */,
+				B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */,
+				B00000000000000000000044 /* OnboardingPreferences.swift in Sources */,
+				B00000000000000000000045 /* OnboardingStore.swift in Sources */,
+				B00000000000000000000046 /* BrandLaunchView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D00000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			};
+			name = Debug;
+		};
+		D00000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		D00000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000039 /* ReasiConfig.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F8W652VS4L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Reasi/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.reasi.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D00000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000039 /* ReasiConfig.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F8W652VS4L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Reasi/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.reasi.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REASI_ENABLE_DEBUG_FIXTURES = NO;
+				REASI_ENABLE_DEBUG_GUEST_AUTH = NO;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D00000000000000000000010 /* Build configuration list for PBXProject "Reasi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D00000000000000000000011 /* Debug */,
+				D00000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D00000000000000000000020 /* Build configuration list for PBXNativeTarget "Reasi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D00000000000000000000021 /* Debug */,
+				D00000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F00000000000000000000001 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.50.0;
+			};
+		};
+		F00000000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.64.1;
+			};
+		};
+		F00000000000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = exactVersion;
+				version = 5.80.2;
+			};
+		};
+		F00000000000000000000004 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F00000000000000000000101 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F00000000000000000000001 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		F00000000000000000000102 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F00000000000000000000002 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+		F00000000000000000000103 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F00000000000000000000003 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		F00000000000000000000104 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F00000000000000000000004 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E00000000000000000000001 /* Project object */;
+}
