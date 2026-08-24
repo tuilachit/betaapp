@@ -1180,6 +1180,7 @@ private struct ProductTextImportSheet: View {
 }
 
 private struct CandidateReviewSheet: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     let context: ReviewContext
     let onAdd: (ReviewCandidateRow, Double?) async -> Bool
@@ -1187,11 +1188,16 @@ private struct CandidateReviewSheet: View {
     let onDiscard: (String, ProductConfidence) -> Void
     @State private var selectedIDs: Set<String> = []
     @State private var addedIDs: Set<String> = []
+    @State private var discardedIDs: Set<String> = []
     @State private var addingID: String?
     @State private var isComparing = false
 
     var selectedRows: [ReviewCandidateRow] {
-        context.rows.filter { selectedIDs.contains($0.id) }
+        context.rows.filter { selectedIDs.contains($0.id) && !discardedIDs.contains($0.id) }
+    }
+
+    var visibleRows: [ReviewCandidateRow] {
+        context.rows.filter { !discardedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -1200,13 +1206,13 @@ private struct CandidateReviewSheet: View {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
                     Text(
                         context.targetItemID == nil
-                            ? "Review before adding. Prices and sources stay visible when Reasi is not certain."
-                            : "Choose the product you picked. Add the shelf price if it differs, then Reasi will check this item off."
+                            ? "Choose what to add. Source and freshness stay visible."
+                            : "Choose the product you picked, then add the shelf price if it changed."
                     )
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
 
-                    ForEach(context.rows) { row in
+                    ForEach(visibleRows) { row in
                         CandidateReviewRow(
                             row: row,
                             isSelected: selectedIDs.contains(row.id),
@@ -1230,8 +1236,30 @@ private struct CandidateReviewSheet: View {
                             },
                             discard: {
                                 onDiscard(context.method, row.candidate.confidence)
+                                selectedIDs.remove(row.id)
+                                withAnimation(reduceMotion ? nil : ReasiMotion.fast) {
+                                    _ = discardedIDs.insert(row.id)
+                                }
                             }
                         )
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    }
+
+                    if visibleRows.isEmpty {
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 28, weight: .medium))
+                                .foregroundStyle(Color.reasi.textMuted)
+                            Text("No products left to review")
+                                .font(ReasiTypography.headline)
+                                .foregroundStyle(Color.reasi.text)
+                            Text("Close this screen to try another search or photo.")
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(Color.reasi.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(ReasiSpacing.s5)
+                        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
                     }
                 }
                 .padding(ReasiSpacing.s5)
@@ -1262,6 +1290,7 @@ private struct CandidateReviewSheet: View {
 }
 
 private struct CandidateReviewRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let row: ReviewCandidateRow
     let isSelected: Bool
     let isAdding: Bool
@@ -1271,57 +1300,92 @@ private struct CandidateReviewRow: View {
     let add: (Double?) async -> Void
     let discard: () -> Void
     @State private var actualPriceText = ""
+    @State private var showsSourceDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack(alignment: .top, spacing: ReasiSpacing.s3) {
                 Button(action: toggleSelection) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(isSelected ? Color.reasi.success : Color.reasi.dim)
+                    CandidateProductArtwork(candidate: row.candidate)
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+                        .overlay(alignment: .topLeading) {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(isSelected ? Color.reasi.success : .white)
+                                .background(.black.opacity(0.5), in: Circle())
+                                .padding(6)
+                        }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isSelected ? "Deselect \(row.candidate.displayName)" : "Select \(row.candidate.displayName)")
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(row.candidate.displayName)
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
+                        .lineLimit(3)
                     if let size = row.candidate.size {
                         Text(size)
                             .font(ReasiTypography.caption)
                             .foregroundStyle(Color.reasi.textMuted)
                     }
+
+                    if let price = row.candidate.priceAud {
+                        Text("$\(price, specifier: "%.2f")")
+                            .font(ReasiTypography.bodyMedium)
+                            .foregroundStyle(Color.reasi.text)
+                    } else {
+                        Label("Current price not certain", systemImage: "exclamationmark.triangle.fill")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.warning)
+                    }
                 }
 
-                Spacer()
-
-                if let price = row.candidate.priceAud {
-                    Text("$\(price, specifier: "%.2f")")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-                } else {
-                    Text("Price not certain")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.warning)
-                }
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: ReasiSpacing.s2) {
                 ConfidenceBadge(confidence: row.candidate.confidence)
-                Text(row.candidate.sourceName)
-                Text("·")
-                Text(row.candidate.freshnessLabel)
+                Text("\(row.candidate.sourceName) · \(row.candidate.freshnessLabel)")
+                    .lineLimit(1)
             }
             .font(ReasiTypography.caption)
             .foregroundStyle(Color.reasi.muted)
 
-            Text(row.candidate.confidenceReason)
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.textMuted)
+            if hasSourceDetails {
+                Button {
+                    withAnimation(reduceMotion ? nil : ReasiMotion.fast) {
+                        showsSourceDetails.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(showsSourceDetails ? "Hide source details" : "Source details")
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .rotationEffect(.degrees(showsSourceDetails ? 180 : 0))
+                    }
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.text)
+                }
+                .buttonStyle(ReasiPressStyle())
 
-            Text(row.candidate.uncertaintyText)
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.warning)
+                if showsSourceDetails {
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                        if !row.candidate.confidenceReason.isEmpty {
+                            Text(row.candidate.confidenceReason)
+                                .foregroundStyle(Color.reasi.textMuted)
+                        }
+                        if !row.candidate.uncertaintyText.isEmpty {
+                            Text(row.candidate.uncertaintyText)
+                                .foregroundStyle(Color.reasi.warning)
+                        }
+                    }
+                    .font(ReasiTypography.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
 
             if isFulfillingItem {
                 TextField("Shelf price (optional)", text: $actualPriceText)
@@ -1370,6 +1434,49 @@ private struct CandidateReviewRow: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
         return Double(normalized)
+    }
+
+    private var hasSourceDetails: Bool {
+        !row.candidate.confidenceReason.isEmpty || !row.candidate.uncertaintyText.isEmpty
+    }
+}
+
+private struct CandidateProductArtwork: View {
+    let candidate: ProductCandidate
+
+    var body: some View {
+        ZStack {
+            Color.reasi.surfaceHigh
+
+            if let imageURL = candidate.imageUrl {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .padding(5)
+                    case .empty:
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Color.reasi.textMuted)
+                    case .failure:
+                        fallback
+                    @unknown default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .clipped()
+    }
+
+    private var fallback: some View {
+        Image(systemName: "basket")
+            .font(.system(size: 22, weight: .medium))
+            .foregroundStyle(Color.reasi.textMuted)
     }
 }
 
