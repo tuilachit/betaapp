@@ -30,6 +30,7 @@ struct HomeView: View {
                 if coreLoop.isRestoringPlan {
                     SkeletonBlock(height: 178, radius: ReasiRadius.xl)
                 } else if coreLoop.hasPlan {
+                    featuredMealCard
                     currentPlanCard
                 } else {
                     emptyPlanCard
@@ -43,9 +44,6 @@ struct HomeView: View {
                         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                 }
                 storeCard
-                if coreLoop.hasPlan {
-                    tonightCard
-                }
                 #if DEBUG
                 serviceStrip
                 #endif
@@ -84,17 +82,21 @@ struct HomeView: View {
 
             Spacer()
 
-            Circle()
-                .fill(Color.reasi.surface)
-                .frame(width: 54, height: 54)
-                .overlay {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color.reasi.text)
-                }
-                .overlay {
-                    Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
-                }
+            Button {
+                ReasiHaptics.light()
+                appState.selectedTab = .profile
+            } label: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .frame(width: 54, height: 54)
+                    .background(Color.reasi.surface, in: Circle())
+                    .overlay {
+                        Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
+                    }
+            }
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityLabel("Open profile")
         }
     }
 
@@ -119,7 +121,7 @@ struct HomeView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .semibold))
                 }
-                Text(coreLoop.generationState.isGenerating ? "Planning your week" : "Plan my week")
+                Text(planButtonTitle)
                     .lineLimit(1)
             }
         }
@@ -127,6 +129,13 @@ struct HomeView: View {
         .disabled(coreLoop.generationState.isGenerating)
         .opacity(coreLoop.generationState.isGenerating ? 0.86 : 1)
         .animation(ReasiMotion.fast, value: coreLoop.generationState)
+    }
+
+    private var planButtonTitle: String {
+        if coreLoop.generationState.isGenerating {
+            return "Planning your week"
+        }
+        return coreLoop.hasPlan ? "Plan a new week" : "Plan my week"
     }
 
     private var currentPlanCard: some View {
@@ -151,12 +160,6 @@ struct HomeView: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.reasi.dim)
                 }
-
-                Text(coreLoop.plan.planningNotes)
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
 
                 Label(coreLoop.plan.storeName, systemImage: "storefront")
                     .font(ReasiTypography.caption)
@@ -275,28 +278,31 @@ struct HomeView: View {
             ReasiHaptics.light()
             showStorePicker = true
         } label: {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-                Text("Selected store")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.selectedStore.name)
-                            .font(ReasiTypography.headline)
-                            .foregroundStyle(Color.reasi.text)
-                        Text("Grouped for \(appState.selectedStore.shortName)'s shop flow.")
-                            .font(ReasiTypography.callout)
-                            .foregroundStyle(Color.reasi.textMuted)
-                            .multilineTextAlignment(.leading)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.reasi.dim)
+            HStack(spacing: ReasiSpacing.s3) {
+                Image(systemName: "storefront.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .frame(width: 38, height: 38)
+                    .background(Color.reasi.surfaceHigh, in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Shopping at")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                    Text(appState.selectedStore.name)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                        .lineLimit(1)
                 }
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.reasi.dim)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(ReasiSpacing.s5)
+            .padding(ReasiSpacing.s4)
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
@@ -321,36 +327,115 @@ struct HomeView: View {
         }
     }
 
-    private var tonightCard: some View {
-        let meal = coreLoop.plan.meals.first
+    @ViewBuilder
+    private var featuredMealCard: some View {
+        if let meal = coreLoop.plan.meals.first {
+            Button {
+                ReasiHaptics.light()
+                appState.showPlan()
+            } label: {
+                HomeMealArtwork(meal: meal)
+                    .frame(height: 220)
+                    .overlay {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.84)],
+                            startPoint: .center,
+                            endPoint: .bottom
+                        )
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                            Text(meal.day.uppercased())
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(.white.opacity(0.78))
 
-        return VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            Text("Tonight")
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
-            Text(meal?.dish ?? "Plan your week")
-                .font(ReasiTypography.title2)
-                .foregroundStyle(Color.reasi.text)
-            Text(meal?.description ?? "Create a plan to fill tonight's dinner.")
-                .font(ReasiTypography.body)
-                .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+                            Text(meal.dish)
+                                .font(ReasiTypography.title2)
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
 
-            if let meal {
-                HStack(spacing: ReasiSpacing.s2) {
-                    PillMetric(label: "\(meal.cookTimeMin) min", symbol: "timer")
-                    PillMetric(label: meal.cuisine, symbol: "globe.asia.australia")
-                }
+                            HStack(spacing: ReasiSpacing.s2) {
+                                HomeMealMetric(label: "\(meal.cookTimeMin) min", symbol: "clock")
+                                HomeMealMetric(label: meal.cuisine, symbol: "fork.knife")
+                            }
+                        }
+                        .padding(ReasiSpacing.s5)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                            .stroke(Color.reasi.border, lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(ReasiSpacing.s5)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityLabel(
+                "\(meal.day), \(meal.dish), \(meal.cuisine), \(meal.cookTimeMin) minutes"
+            )
+            .accessibilityHint("Opens your week plan")
         }
     }
+}
+
+private struct HomeMealArtwork: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let meal: MealSummary
+
+    var body: some View {
+        ZStack {
+            Color.reasi.surfaceHigh
+
+            if let imageURL = meal.imageUrl {
+                AsyncImage(
+                    url: imageURL,
+                    transaction: Transaction(animation: reduceMotion ? nil : ReasiMotion.fast)
+                ) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .transition(.opacity)
+                    case .empty:
+                        ProgressView()
+                            .tint(Color.reasi.textMuted)
+                    case .failure:
+                        fallback
+                    @unknown default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .clipped()
+    }
+
+    private var fallback: some View {
+        Image(systemName: "fork.knife")
+            .font(.system(size: 30, weight: .medium))
+            .foregroundStyle(Color.reasi.textMuted)
+    }
+}
+
+private struct HomeMealMetric: View {
+    let label: String
+    let symbol: String
+
+    var body: some View {
+        Label(label, systemImage: symbol)
+            .font(ReasiTypography.caption)
+            .foregroundStyle(.white.opacity(0.9))
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, ReasiSpacing.s3)
+            .padding(.vertical, ReasiSpacing.s2)
+            .background(.black.opacity(0.45), in: Capsule())
+    }
+}
+
+private extension HomeView {
 
     #if DEBUG
     private var serviceStrip: some View {
