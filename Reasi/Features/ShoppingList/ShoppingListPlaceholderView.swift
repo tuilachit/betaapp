@@ -308,12 +308,12 @@ struct ShoppingListPlaceholderView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add item")
                         .font(ReasiTypography.bodyMedium)
-                    Text("Search, link, product photo, or handwritten list")
+                    Text("Search, scan, or photograph")
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.muted)
                 }
                 Spacer()
-                Image(systemName: "chevron.up")
+                Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.reasi.dim)
             }
@@ -1817,7 +1817,7 @@ private struct ShoppingSectionCard: View {
                         .foregroundStyle(Color.reasi.muted)
                 }
                 Spacer()
-                Image(systemName: section.type == .numbered ? "number" : "leaf")
+                Image(systemName: sectionSymbol)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.reasi.dim)
                     .frame(width: 34, height: 34)
@@ -1830,15 +1830,20 @@ private struct ShoppingSectionCard: View {
                         Button {
                             toggle(item)
                         } label: {
-                            Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 23, weight: .semibold))
-                                .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
-                                .symbolEffect(.bounce, value: checkedItemIDs.contains(item.id))
+                            HStack(spacing: ReasiSpacing.s3) {
+                                Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 23, weight: .semibold))
+                                    .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
+                                    .symbolEffect(.bounce, value: checkedItemIDs.contains(item.id))
+
+                                ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(checkedItemIDs.contains(item.id) ? "Uncheck \(item.name)" : "Check \(item.name)")
-
-                        ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
+                        .accessibilityHint("Double-tap anywhere on this item to update it")
 
                         Menu {
                             Button {
@@ -1863,12 +1868,12 @@ private struct ShoppingSectionCard: View {
                             Image(systemName: item.product?.sku != nil || item.product?.barcode != nil ? "checkmark.seal.fill" : "barcode.viewfinder")
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(item.product?.sku != nil || item.product?.barcode != nil ? Color.reasi.success : Color.reasi.textMuted)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .background(Color.reasi.surfaceHigh, in: Circle())
                         }
                         .accessibilityLabel("Product options for \(item.name)")
                     }
-                    .padding(.vertical, ReasiSpacing.s2)
+                    .padding(.vertical, ReasiSpacing.s1)
                     .padding(.horizontal, ReasiSpacing.s2)
                     .background(
                         checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.clear,
@@ -1884,6 +1889,17 @@ private struct ShoppingSectionCard: View {
                 .stroke(Color.reasi.border, lineWidth: 1)
         }
     }
+
+    private var sectionSymbol: String {
+        switch section.type {
+        case .numbered:
+            "number"
+        case .perimeter:
+            "leaf"
+        case .unknown:
+            "questionmark"
+        }
+    }
 }
 
 private struct ShoppingItemRow: View {
@@ -1896,7 +1912,7 @@ private struct ShoppingItemRow: View {
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(isChecked ? Color.reasi.muted : Color.reasi.text)
                     .strikethrough(isChecked, color: Color.reasi.muted)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(detailText)
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.muted)
@@ -1925,7 +1941,15 @@ private struct ShoppingItemRow: View {
     }
 
     private var detailText: String {
-        "\(item.quantity) · \(item.aisleLabel ?? "Unmatched")"
+        "\(item.quantity) · \(locationLabel)"
+    }
+
+    private var locationLabel: String {
+        guard let aisleLabel = item.aisleLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !aisleLabel.isEmpty else {
+            return "Location not certain"
+        }
+        return aisleLabel
     }
 }
 
