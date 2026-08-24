@@ -716,6 +716,31 @@ final class SupabaseService {
         #endif
     }
 
+    func regroupShoppingList(shoppingListId: String, for storeId: StoreID) async throws -> WeekPlan {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        let _: RegroupShoppingListResponse = try await client.functions.invoke(
+            "regroup-shopping-list",
+            options: FunctionInvokeOptions(
+                body: RegroupShoppingListInput(
+                    shoppingListId: shoppingListId,
+                    storeId: storeId
+                )
+            )
+        )
+
+        guard let refreshedPlan = try await fetchLatestWeekPlan() else {
+            throw ReasiServiceError.invalidResponse
+        }
+        return refreshedPlan
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
     func fetchLatestWeekPlan() async throws -> WeekPlan? {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
@@ -740,7 +765,7 @@ final class SupabaseService {
         async let mealRowsRequest: [PersistedMealRow] = client
             .from("meals")
             .select(
-                "id,day_label,dish,description,cuisine,cook_time_min,cost_aud,estimated_protein_g,estimated_calories,estimated_carbs_g,recipe_json,sort_order"
+                "id,day_label,dish,description,cuisine,cook_time_min,cost_aud,estimated_protein_g,estimated_calories,estimated_carbs_g,recipe_json,image_url,image_source_name,image_source_url,image_photographer_name,image_photographer_url,sort_order"
             )
             .eq("meal_plan_id", value: planRow.id)
             .order("sort_order")
@@ -813,7 +838,12 @@ final class SupabaseService {
                 estimatedCalories: Int((row.estimatedCalories ?? 0).rounded()),
                 estimatedCarbsG: Int((row.estimatedCarbsG ?? 0).rounded()),
                 tone: tones[index % tones.count],
-                recipe: row.recipeJson?.normalized(fallbackCookTimeMin: row.cookTimeMin)
+                recipe: row.recipeJson?.normalized(fallbackCookTimeMin: row.cookTimeMin),
+                imageUrl: row.imageUrl,
+                imageSourceName: row.imageSourceName,
+                imageSourceUrl: row.imageSourceUrl,
+                imagePhotographerName: row.imagePhotographerName,
+                imagePhotographerUrl: row.imagePhotographerUrl
             )
         }
 
@@ -982,6 +1012,33 @@ final class SupabaseService {
         #endif
     }
 
+    func searchProducts(
+        query: String,
+        storeId: StoreID,
+        limit: Int = 16
+    ) async throws -> [ProductCandidate] {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            #if DEBUG
+            if config.debugFixtureFallbackEnabled {
+                return [Self.fixtureCandidate(named: query)]
+            }
+            #endif
+            throw AuthFlowError.notSignedIn
+        }
+
+        let result: ProductImportResult = try await client.functions.invoke(
+            "search-products",
+            options: FunctionInvokeOptions(
+                body: SearchProductsInput(query: query, storeId: storeId, limit: limit)
+            )
+        )
+        return result.candidates
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
     func extractShoppingListPhoto(storeId: StoreID, uploadPath: String) async throws -> ListExtractionResult {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
@@ -1089,18 +1146,30 @@ final class SupabaseService {
             throw AuthFlowError.notSignedIn
         }
 
+        let sectionLabel = candidate.sectionLabel ?? "Location not certain"
+        let sectionSortKey = candidate.sectionSortKey ?? 999
+        let sectionType = candidate.sectionType ?? .unknown
+        let aisleLabel = candidate.aisleLabel ?? "Location not certain"
+        let productSnapshot = ProductSnapshot(candidate: candidate)
         let row = ImportedShoppingListItemInsert(
             shoppingListId: shoppingListId,
             userId: userId,
-            sectionLabel: "Added items",
-            sectionSortKey: 980,
-            sectionType: ShoppingSectionType.unknown.rawValue,
+            sectionLabel: sectionLabel,
+            sectionSortKey: sectionSortKey,
+            sectionType: sectionType.rawValue,
             itemName: candidate.displayName,
             productName: candidate.displayName,
             quantity: Self.numericQuantity(from: quantity),
             quantityLabel: quantity,
-            aisleLabel: "Location not certain",
-            productSnapshot: candidate,
+            aisleLabel: aisleLabel,
+            matchedSku: candidate.sku,
+            selectedRetailer: candidate.retailer,
+            selectedProductObservationId: candidate.observationId,
+            selectedBarcode: candidate.barcode,
+            priceCents: candidate.priceAud.map { Int(($0 * 100).rounded()) },
+            priceSnapshot: CatalogPriceSnapshot(candidate: candidate),
+            productSnapshot: productSnapshot,
+            productSelectedAt: Self.isoTimestamp(Date()),
             sortOrder: sortOrder,
             clientId: idempotencyKey
         )
@@ -1116,6 +1185,62 @@ final class SupabaseService {
         return inserted.id
         #else
         return nil
+        #endif
+    }
+
+    func selectProduct(
+        _ candidate: ProductCandidate,
+        for item: ShoppingListItem,
+        shoppingListId: String,
+        sectionLabel: String,
+        sectionSortKey: Int,
+        sectionType: ShoppingSectionType,
+        actualPriceAud: Double?
+    ) async throws {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        let now = Self.isoTimestamp(Date())
+        let resolvedSectionLabel = candidate.sectionLabel ?? sectionLabel
+        let resolvedSectionSortKey = candidate.sectionSortKey ?? sectionSortKey
+        let resolvedSectionType = candidate.sectionType ?? sectionType
+        let resolvedAisleLabel = candidate.aisleLabel ?? item.aisleLabel ?? "Location not certain"
+        let updated: ImportedShoppingListItemResponse = try await client
+            .from("shopping_list_items")
+            .update(
+                ShoppingListProductSelectionUpdate(
+                    sectionLabel: resolvedSectionLabel,
+                    sectionSortKey: resolvedSectionSortKey,
+                    sectionType: resolvedSectionType.rawValue,
+                    aisleLabel: resolvedAisleLabel,
+                    matchedSku: candidate.sku,
+                    selectedRetailer: candidate.retailer,
+                    selectedProductObservationId: candidate.observationId,
+                    selectedBarcode: candidate.barcode,
+                    priceCents: candidate.priceAud.map { Int(($0 * 100).rounded()) },
+                    priceSnapshot: CatalogPriceSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+                    actualPriceAud: actualPriceAud,
+                    productSnapshot: ProductSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+                    productSelectedAt: now,
+                    checked: true,
+                    purchased: true,
+                    checkedAt: now,
+                    updatedAt: now
+                )
+            )
+            .eq("id", value: item.id)
+            .eq("shopping_list_id", value: shoppingListId)
+            .eq("user_id", value: userId)
+            .select("id")
+            .single()
+            .execute()
+            .value
+
+        guard updated.id == item.id else { throw ReasiServiceError.invalidResponse }
+        #else
+        throw AuthFlowError.notConfigured
         #endif
     }
 
@@ -1433,6 +1558,26 @@ struct ResolveProductInput: Encodable, Hashable {
     let query: String?
     let url: String?
     let uploadPath: String?
+    var barcode: String? = nil
+}
+
+private struct SearchProductsInput: Encodable {
+    let query: String
+    let storeId: StoreID
+    let limit: Int
+}
+
+private struct RegroupShoppingListInput: Encodable {
+    let shoppingListId: String
+    let storeId: StoreID
+}
+
+private struct RegroupShoppingListResponse: Decodable {
+    let shoppingListId: String
+    let storeId: StoreID
+    let storeName: String
+    let itemCount: Int
+    let uncertainItemCount: Int
 }
 
 private struct ExtractShoppingListPhotoInput: Encodable {
@@ -1478,7 +1623,14 @@ private struct ImportedShoppingListItemInsert: Encodable {
     let quantity: Double
     let quantityLabel: String
     let aisleLabel: String
-    let productSnapshot: ProductCandidate
+    let matchedSku: String?
+    let selectedRetailer: String?
+    let selectedProductObservationId: String?
+    let selectedBarcode: String?
+    let priceCents: Int?
+    let priceSnapshot: CatalogPriceSnapshot
+    let productSnapshot: ProductSnapshot
+    let productSelectedAt: String
     let sortOrder: Int
     let clientId: UUID
 
@@ -1493,7 +1645,14 @@ private struct ImportedShoppingListItemInsert: Encodable {
         case quantity
         case quantityLabel = "quantity_label"
         case aisleLabel = "aisle_label"
+        case matchedSku = "matched_sku"
+        case selectedRetailer = "selected_retailer"
+        case selectedProductObservationId = "selected_product_observation_id"
+        case selectedBarcode = "selected_barcode"
+        case priceCents = "price_cents"
+        case priceSnapshot = "price_snapshot"
         case productSnapshot = "product_snapshot"
+        case productSelectedAt = "product_selected_at"
         case sortOrder = "sort_order"
         case clientId = "client_id"
     }
@@ -1514,6 +1673,64 @@ private struct ShoppingListItemCheckedUpdate: Encodable {
         case purchased
         case checkedAt = "checked_at"
         case updatedAt = "updated_at"
+    }
+}
+
+private struct ShoppingListProductSelectionUpdate: Encodable {
+    let sectionLabel: String
+    let sectionSortKey: Int
+    let sectionType: String
+    let aisleLabel: String
+    let matchedSku: String?
+    let selectedRetailer: String?
+    let selectedProductObservationId: String?
+    let selectedBarcode: String?
+    let priceCents: Int?
+    let priceSnapshot: CatalogPriceSnapshot
+    let actualPriceAud: Double?
+    let productSnapshot: ProductSnapshot
+    let productSelectedAt: String
+    let checked: Bool
+    let purchased: Bool
+    let checkedAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case sectionLabel = "section_label"
+        case sectionSortKey = "section_sort_key"
+        case sectionType = "section_type"
+        case aisleLabel = "aisle_label"
+        case matchedSku = "matched_sku"
+        case selectedRetailer = "selected_retailer"
+        case selectedProductObservationId = "selected_product_observation_id"
+        case selectedBarcode = "selected_barcode"
+        case priceCents = "price_cents"
+        case priceSnapshot = "price_snapshot"
+        case actualPriceAud = "actual_price_aud"
+        case productSnapshot = "product_snapshot"
+        case productSelectedAt = "product_selected_at"
+        case checked
+        case purchased
+        case checkedAt = "checked_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct CatalogPriceSnapshot: Encodable {
+    let priceAud: Double?
+    let actualPriceAud: Double?
+    let sourceName: String
+    let sourceURL: URL?
+    let capturedAt: String?
+    let freshnessLabel: String
+
+    init(candidate: ProductCandidate, actualPriceAud: Double? = nil) {
+        priceAud = candidate.priceAud
+        self.actualPriceAud = actualPriceAud
+        sourceName = candidate.sourceName
+        sourceURL = candidate.sourceUrl
+        capturedAt = candidate.capturedAt
+        freshnessLabel = candidate.freshnessLabel
     }
 }
 
@@ -1679,6 +1896,11 @@ private struct PersistedMealRow: Decodable {
     let estimatedCalories: Double?
     let estimatedCarbsG: Double?
     let recipeJson: RecipeInfo?
+    let imageUrl: URL?
+    let imageSourceName: String?
+    let imageSourceUrl: URL?
+    let imagePhotographerName: String?
+    let imagePhotographerUrl: URL?
     let sortOrder: Int
 
     enum CodingKeys: String, CodingKey {
@@ -1693,6 +1915,11 @@ private struct PersistedMealRow: Decodable {
         case estimatedCalories = "estimated_calories"
         case estimatedCarbsG = "estimated_carbs_g"
         case recipeJson = "recipe_json"
+        case imageUrl = "image_url"
+        case imageSourceName = "image_source_name"
+        case imageSourceUrl = "image_source_url"
+        case imagePhotographerName = "image_photographer_name"
+        case imagePhotographerUrl = "image_photographer_url"
         case sortOrder = "sort_order"
     }
 
@@ -1709,6 +1936,11 @@ private struct PersistedMealRow: Decodable {
         estimatedCalories = try container.decodeIfPresent(Double.self, forKey: .estimatedCalories)
         estimatedCarbsG = try container.decodeIfPresent(Double.self, forKey: .estimatedCarbsG)
         recipeJson = try? container.decode(RecipeInfo.self, forKey: .recipeJson)
+        imageUrl = try container.decodeIfPresent(URL.self, forKey: .imageUrl)
+        imageSourceName = try container.decodeIfPresent(String.self, forKey: .imageSourceName)
+        imageSourceUrl = try container.decodeIfPresent(URL.self, forKey: .imageSourceUrl)
+        imagePhotographerName = try container.decodeIfPresent(String.self, forKey: .imagePhotographerName)
+        imagePhotographerUrl = try container.decodeIfPresent(URL.self, forKey: .imagePhotographerUrl)
         sortOrder = try container.decode(Int.self, forKey: .sortOrder)
     }
 }

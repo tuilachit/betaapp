@@ -36,7 +36,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Reasi uses the camera to identify grocery products and extract handwritten shopping lists before you review them.</string>
+	<string>Reasi uses the camera to scan grocery barcodes, identify products, and extract handwritten shopping lists before you review them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Reasi lets you choose product and shopping-list photos so you can review imported grocery details before adding them.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

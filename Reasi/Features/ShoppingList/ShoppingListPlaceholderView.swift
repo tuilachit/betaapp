@@ -1,6 +1,8 @@
 import PhotosUI
 import SwiftUI
 import UIKit
+import Vision
+import VisionKit
 
 struct ShoppingListPlaceholderView: View {
     @Environment(AppState.self) private var appState
@@ -18,6 +20,7 @@ struct ShoppingListPlaceholderView: View {
     @State private var selectedProductPhoto: PhotosPickerItem?
     @State private var selectedListPhoto: PhotosPickerItem?
     @State private var activeSheet: ShoppingListSheet?
+    @State private var productSearchContext: ProductSearchContext?
     @State private var inlineError: String?
     @State private var inputIsBusy = false
 
@@ -28,6 +31,8 @@ struct ShoppingListPlaceholderView: View {
                     header
                     if coreLoop.generationState.isGenerating {
                         loadingSections
+                    } else if coreLoop.isSwitchingStore {
+                        storeSwitchLoading
                     } else if !coreLoop.hasPlan {
                         emptyListState
                     } else {
@@ -47,7 +52,19 @@ struct ShoppingListPlaceholderView: View {
                                 .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                         }
 
-                        if coreLoop.plan.shoppingList.sections.isEmpty {
+
+                        if let storeSwitchMessage = coreLoop.storeSwitchMessage {
+                            Label(storeSwitchMessage, systemImage: "exclamationmark.triangle")
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(Color.reasi.warning)
+                                .padding(ReasiSpacing.s4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                        }
+
+                        if coreLoop.plan.storeId != appState.selectedStore.id {
+                            storeRouteUnavailableState
+                        } else if coreLoop.plan.shoppingList.sections.isEmpty {
                             emptyShoppingItemsState
                         } else {
                             sections
@@ -67,7 +84,11 @@ struct ShoppingListPlaceholderView: View {
         .toolbar(.hidden, for: .navigationBar)
         .confirmationDialog("Add item", isPresented: $showAddDialog, titleVisibility: .visible) {
             Button("Search or paste product link") {
-                activeSheet = .textImport
+                productSearchContext = ProductSearchContext(
+                    targetItemID: nil,
+                    targetItemName: nil,
+                    initialQuery: ""
+                )
             }
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
                 Button("Take product photo") {
@@ -101,6 +122,32 @@ struct ShoppingListPlaceholderView: View {
             }
             .ignoresSafeArea()
         }
+        .fullScreenCover(item: $productSearchContext) { context in
+            ProductSearchView(
+                context: context,
+                store: FixtureStores.store(id: coreLoop.plan.storeId) ?? appState.selectedStore,
+                recentCandidates: recentProductCandidates,
+                searchProducts: { query in
+                    try await searchCatalog(query)
+                },
+                importProductLink: { url in
+                    try await importProductLink(url)
+                },
+                resolveBarcode: { barcode in
+                    try await lookupBarcode(barcode)
+                },
+                addCandidate: { candidate, actualPriceAud in
+                    await addSearchCandidate(
+                        candidate,
+                        actualPriceAud: actualPriceAud,
+                        targetItemID: context.targetItemID
+                    )
+                },
+                addManualItem: { text in
+                    await addManualItem(text)
+                }
+            )
+        }
         .photosPicker(isPresented: $showProductPhotoPicker, selection: $selectedProductPhoto, matching: .images)
         .photosPicker(isPresented: $showListPhotoPicker, selection: $selectedListPhoto, matching: .images)
         .onChange(of: selectedProductPhoto) { _, item in
@@ -113,17 +160,24 @@ struct ShoppingListPlaceholderView: View {
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
-            case .textImport:
-                ProductTextImportSheet { text in
-                    await resolveTextInput(text)
+            case .textImport(let targetItemID, let initialQuery):
+                ProductTextImportSheet(
+                    initialText: initialQuery,
+                    title: targetItemID == nil ? "Add item" : "Choose product",
+                    allowsManualAdd: targetItemID == nil,
+                    onAddManual: { text in
+                        await addManualItem(text)
+                    }
+                ) { text in
+                    await resolveTextInput(text, targetItemID: targetItemID)
                 }
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
             case .review(let context):
                 CandidateReviewSheet(
                     context: context,
-                    onAdd: { row in
-                        await addReviewed(row)
+                    onAdd: { row, actualPriceAud in
+                        await addReviewed(row, actualPriceAud: actualPriceAud, context: context)
                     },
                     onCompare: { rows in
                         await compare(rows)
@@ -164,9 +218,35 @@ struct ShoppingListPlaceholderView: View {
             Text("Shopping list")
                 .font(ReasiTypography.largeTitle)
                 .foregroundStyle(Color.reasi.text)
-            Text(coreLoop.hasPlan ? coreLoop.plan.shoppingList.storeName : appState.selectedStore.name)
+            Menu {
+                ForEach(FixtureStores.launchStores) { store in
+                    Button {
+                        selectStore(store)
+                    } label: {
+                        if store.id == appState.selectedStore.id {
+                            Label(store.name, systemImage: "checkmark")
+                        } else {
+                            Text(store.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: ReasiSpacing.s2) {
+                    if coreLoop.isSwitchingStore {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Color.reasi.textMuted)
+                    } else {
+                        Image(systemName: "storefront")
+                    }
+                    Text(appState.selectedStore.name)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                }
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.muted)
+            }
+            .accessibilityLabel("Choose shopping store")
         }
     }
 
@@ -198,6 +278,23 @@ struct ShoppingListPlaceholderView: View {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
                 .stroke(Color.reasi.border, lineWidth: 1)
         }
+    }
+
+    private func selectStore(_ store: StoreSummary) {
+        guard store.id != appState.selectedStore.id else {
+            coreLoop.requestStoreSwitch(to: store, supabase: supabase, analytics: analytics)
+            return
+        }
+
+        withAnimation(ReasiMotion.tactileSpring) {
+            appState.selectStore(store)
+        }
+        ReasiHaptics.selection()
+        analytics.capture(.storeSelected, properties: [
+            "store_id": .string(store.id.rawValue),
+            "store_name": .string(store.name)
+        ])
+        coreLoop.requestStoreSwitch(to: store, supabase: supabase, analytics: analytics)
     }
 
     private var addItemSurface: some View {
@@ -249,6 +346,51 @@ struct ShoppingListPlaceholderView: View {
         .padding(ReasiSpacing.s4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+
+    private var storeSwitchLoading: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack(spacing: ReasiSpacing.s3) {
+                ProgressView()
+                    .tint(Color.reasi.text)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Updating item locations")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Text("Reordering this list for \(coreLoop.switchingStoreName ?? appState.selectedStore.name).")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+            }
+
+            ForEach(0..<4, id: \.self) { _ in
+                SkeletonBlock(height: 68, radius: ReasiRadius.lg)
+            }
+        }
+        .padding(ReasiSpacing.s5)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+    }
+
+    private var storeRouteUnavailableState: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            Text("Locations need an update")
+                .font(ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.text)
+            Text("Try selecting \(appState.selectedStore.shortName) again when you are online. Reasi will not show aisles from a different store.")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+            Button("Retry") {
+                coreLoop.requestStoreSwitch(
+                    to: appState.selectedStore,
+                    supabase: supabase,
+                    analytics: analytics
+                )
+            }
+            .buttonStyle(ReasiPrimaryButtonStyle())
+        }
+        .padding(ReasiSpacing.s5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
     }
 
     private var emptyListState: some View {
@@ -349,13 +491,28 @@ struct ShoppingListPlaceholderView: View {
                     checkedItemIDs: coreLoop.checkedItemIDs,
                     toggle: { item in
                         coreLoop.toggleItem(item, supabase: supabase, analytics: analytics)
+                    },
+                    chooseProduct: { item in
+                        productSearchContext = ProductSearchContext(
+                            targetItemID: item.id,
+                            targetItemName: item.name,
+                            initialQuery: item.name
+                        )
+                    },
+                    scanBarcode: { item in
+                        productSearchContext = ProductSearchContext(
+                            targetItemID: item.id,
+                            targetItemName: item.name,
+                            initialQuery: "",
+                            startsWithScanner: true
+                        )
                     }
                 )
             }
         }
     }
 
-    private func resolveTextInput(_ text: String) async {
+    private func resolveTextInput(_ text: String, targetItemID: String?) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -381,7 +538,13 @@ struct ShoppingListPlaceholderView: View {
                 "method": .string(method),
                 "candidate_count": .int(result.candidates.count)
             ])
-            activeSheet = .review(ReviewContext(method: method, rows: result.candidates.map { ReviewCandidateRow(candidate: $0) }))
+            activeSheet = .review(
+                ReviewContext(
+                    method: method,
+                    rows: result.candidates.map { ReviewCandidateRow(candidate: $0) },
+                    targetItemID: targetItemID
+                )
+            )
         } catch {
             inlineError = supabase.userFacingMessage(
                 for: error,
@@ -389,6 +552,243 @@ struct ShoppingListPlaceholderView: View {
             )
             analytics.capture(.productInputFailed, properties: [
                 "method": .string(method),
+                "error": .string(error.localizedDescription)
+            ])
+            ReasiHaptics.warning()
+        }
+    }
+
+    private var recentProductCandidates: [ProductCandidate] {
+        var seen = Set<String>()
+        return coreLoop.allShoppingItems.reversed().compactMap { item in
+            guard item.clientId != nil,
+                  let candidate = item.importedCandidate ?? restoredCandidate(from: item),
+                  seen.insert(candidate.id).inserted else { return nil }
+            return candidate
+        }
+    }
+
+    private func restoredCandidate(from item: ShoppingListItem) -> ProductCandidate? {
+        guard let product = item.product,
+              let name = product.productName,
+              !name.isEmpty else { return nil }
+
+        return ProductCandidate(
+            observationId: product.observationId,
+            name: name,
+            brand: product.brand,
+            size: product.size,
+            priceAud: product.actualPriceAud ?? product.priceAud,
+            unitPriceAud: nil,
+            unitQuantity: nil,
+            unitMeasure: nil,
+            comparablePrice: nil,
+            imageUrl: product.imageUrl,
+            productUrl: nil,
+            sourceName: product.sourceName ?? "Saved product",
+            sourceUrl: nil,
+            capturedAt: product.capturedAt,
+            freshnessLabel: "Previously selected",
+            confidence: .medium,
+            confidenceReason: "Restored from your saved shopping list.",
+            uncertaintyText: "Search again if you need to confirm the current price.",
+            sku: product.sku,
+            barcode: product.barcode,
+            retailer: nil,
+            aisleLabel: item.aisleLabel,
+            sectionLabel: nil,
+            sectionSortKey: nil,
+            sectionType: item.sectionType
+        )
+    }
+
+    private func searchCatalog(_ query: String) async throws -> [ProductCandidate] {
+        analytics.capture(.productInputStarted, properties: [
+            "method": .string("search"),
+            "store_id": .string(coreLoop.plan.storeId.rawValue)
+        ])
+        do {
+            let candidates = try await supabase.searchProducts(
+                query: query,
+                storeId: coreLoop.plan.storeId
+            )
+            analytics.capture(.productInputSucceeded, properties: [
+                "method": .string("search"),
+                "candidate_count": .int(candidates.count),
+                "store_id": .string(coreLoop.plan.storeId.rawValue)
+            ])
+            return candidates
+        } catch {
+            analytics.capture(.productInputFailed, properties: [
+                "method": .string("search"),
+                "error": .string(error.localizedDescription)
+            ])
+            throw error
+        }
+    }
+
+    private func importProductLink(_ url: String) async throws -> [ProductCandidate] {
+        analytics.capture(.productInputStarted, properties: ["method": .string("link")])
+        do {
+            let result = try await supabase.resolveProduct(
+                input: ResolveProductInput(
+                    method: "link",
+                    storeId: coreLoop.plan.storeId,
+                    query: nil,
+                    url: url,
+                    uploadPath: nil
+                )
+            )
+            analytics.capture(.productInputSucceeded, properties: [
+                "method": .string("link"),
+                "candidate_count": .int(result.candidates.count)
+            ])
+            return result.candidates
+        } catch {
+            analytics.capture(.productInputFailed, properties: [
+                "method": .string("link"),
+                "error": .string(error.localizedDescription)
+            ])
+            throw error
+        }
+    }
+
+    private func lookupBarcode(_ barcode: String) async throws -> [ProductCandidate] {
+        analytics.capture(.productInputStarted, properties: ["method": .string("barcode")])
+        do {
+            let result = try await supabase.resolveProduct(
+                input: ResolveProductInput(
+                    method: "barcode",
+                    storeId: coreLoop.plan.storeId,
+                    query: nil,
+                    url: nil,
+                    uploadPath: nil,
+                    barcode: barcode
+                )
+            )
+            analytics.capture(.productInputSucceeded, properties: [
+                "method": .string("barcode"),
+                "candidate_count": .int(result.candidates.count)
+            ])
+            return result.candidates
+        } catch {
+            analytics.capture(.productInputFailed, properties: [
+                "method": .string("barcode"),
+                "error": .string(error.localizedDescription)
+            ])
+            throw error
+        }
+    }
+
+    private func addSearchCandidate(
+        _ candidate: ProductCandidate,
+        actualPriceAud: Double?,
+        targetItemID: String?
+    ) async -> Bool {
+        if let targetItemID,
+           let item = coreLoop.allShoppingItems.first(where: { $0.id == targetItemID }) {
+            do {
+                try await coreLoop.selectProduct(
+                    candidate,
+                    for: item,
+                    actualPriceAud: actualPriceAud,
+                    supabase: supabase,
+                    analytics: analytics
+                )
+                return true
+            } catch {
+                inlineError = supabase.userFacingMessage(
+                    for: error,
+                    fallback: "That product could not be attached to this item. Please try again."
+                )
+                ReasiHaptics.warning()
+                return false
+            }
+        }
+
+        return await coreLoop.addImportedCandidate(
+            candidate,
+            idempotencyKey: UUID().uuidString,
+            analyticsMethod: "search",
+            supabase: supabase,
+            analytics: analytics
+        )
+    }
+
+    private func addManualItem(_ text: String) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        analytics.capture(.productInputStarted, properties: ["method": .string("manual")])
+        let candidate = ProductCandidate(
+            observationId: nil,
+            name: trimmed,
+            brand: nil,
+            size: nil,
+            priceAud: nil,
+            unitPriceAud: nil,
+            unitQuantity: nil,
+            unitMeasure: nil,
+            comparablePrice: nil,
+            imageUrl: nil,
+            productUrl: nil,
+            sourceName: "Manual entry",
+            sourceUrl: nil,
+            capturedAt: nil,
+            freshnessLabel: "Added now",
+            confidence: .low,
+            confidenceReason: "Added exactly as written; no specific product has been selected yet.",
+            uncertaintyText: "Search or scan a product when you pick it up to record the exact item and price."
+        )
+        let added = await coreLoop.addImportedCandidate(
+            candidate,
+            idempotencyKey: UUID().uuidString,
+            analyticsMethod: "manual",
+            supabase: supabase,
+            analytics: analytics
+        )
+        analytics.capture(
+            added ? .productInputSucceeded : .productInputFailed,
+            properties: ["method": .string("manual")]
+        )
+        return added
+    }
+
+    private func resolveBarcode(_ barcode: String, for item: ShoppingListItem) async {
+        inlineError = nil
+        inputIsBusy = true
+        defer { inputIsBusy = false }
+        analytics.capture(.productInputStarted, properties: ["method": .string("barcode")])
+
+        do {
+            let result = try await supabase.resolveProduct(
+                input: ResolveProductInput(
+                    method: "barcode",
+                    storeId: appState.selectedStore.id,
+                    query: nil,
+                    url: nil,
+                    uploadPath: nil,
+                    barcode: barcode
+                )
+            )
+            analytics.capture(.productInputSucceeded, properties: [
+                "method": .string("barcode"),
+                "candidate_count": .int(result.candidates.count)
+            ])
+            activeSheet = .review(
+                ReviewContext(
+                    method: "barcode",
+                    rows: result.candidates.map { ReviewCandidateRow(candidate: $0) },
+                    targetItemID: item.id
+                )
+            )
+        } catch {
+            inlineError = supabase.userFacingMessage(
+                for: error,
+                fallback: "That barcode could not be matched. Try searching by the product name."
+            )
+            analytics.capture(.productInputFailed, properties: [
+                "method": .string("barcode"),
                 "error": .string(error.localizedDescription)
             ])
             ReasiHaptics.warning()
@@ -551,11 +951,37 @@ struct ShoppingListPlaceholderView: View {
         }
     }
 
-    private func addReviewed(_ row: ReviewCandidateRow) async -> Bool {
+    private func addReviewed(
+        _ row: ReviewCandidateRow,
+        actualPriceAud: Double?,
+        context: ReviewContext
+    ) async -> Bool {
         analytics.capture(.productCandidateReviewed, properties: [
             "method": .string(row.group ?? "candidate"),
             "confidence": .string(row.candidate.confidence.rawValue)
         ])
+
+        if let targetItemID = context.targetItemID,
+           let item = coreLoop.allShoppingItems.first(where: { $0.id == targetItemID }) {
+            do {
+                try await coreLoop.selectProduct(
+                    row.candidate,
+                    for: item,
+                    actualPriceAud: actualPriceAud,
+                    supabase: supabase,
+                    analytics: analytics
+                )
+                return true
+            } catch {
+                inlineError = supabase.userFacingMessage(
+                    for: error,
+                    fallback: "That product could not be attached to this item. Please try again."
+                )
+                ReasiHaptics.warning()
+                return false
+            }
+        }
+
         return await coreLoop.addImportedCandidate(
             row.candidate,
             quantity: row.quantity,
@@ -593,15 +1019,15 @@ struct ShoppingListPlaceholderView: View {
 }
 
 private enum ShoppingListSheet: Identifiable {
-    case textImport
+    case textImport(targetItemID: String?, initialQuery: String)
     case review(ReviewContext)
     case comparison(ProductComparisonResult)
     case assistant
 
     var id: String {
         switch self {
-        case .textImport:
-            "textImport"
+        case .textImport(let targetItemID, _):
+            "textImport-\(targetItemID ?? "new")"
         case .review(let context):
             context.id
         case .comparison:
@@ -616,6 +1042,7 @@ private struct ReviewContext: Identifiable, Hashable {
     let id = UUID().uuidString
     let method: String
     let rows: [ReviewCandidateRow]
+    var targetItemID: String? = nil
 }
 
 private struct ReviewCandidateRow: Identifiable, Hashable {
@@ -640,7 +1067,25 @@ private struct ProductTextImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var isLoading = false
+    @State private var isAddingManual = false
+    let title: String
+    let allowsManualAdd: Bool
+    let onAddManual: (String) async -> Bool
     let onSubmit: (String) async -> Void
+
+    init(
+        initialText: String,
+        title: String,
+        allowsManualAdd: Bool,
+        onAddManual: @escaping (String) async -> Bool,
+        onSubmit: @escaping (String) async -> Void
+    ) {
+        _text = State(initialValue: initialText)
+        self.title = title
+        self.allowsManualAdd = allowsManualAdd
+        self.onAddManual = onAddManual
+        self.onSubmit = onSubmit
+    }
 
     var body: some View {
         NavigationStack {
@@ -677,14 +1122,45 @@ private struct ProductTextImportSheet: View {
                     .foregroundStyle(Color.reasi.background)
                     .background(Color.reasi.text, in: Capsule())
                 }
-                .disabled(isLoading)
+                .disabled(isLoading || isAddingManual)
                 .buttonStyle(ReasiPressStyle())
+
+                if allowsManualAdd {
+                    Button {
+                        guard !trimmedText.isEmpty, !isLink else { return }
+                        isAddingManual = true
+                        Task {
+                            let added = await onAddManual(trimmedText)
+                            isAddingManual = false
+                            if added { dismiss() }
+                        }
+                    } label: {
+                        HStack {
+                            if isAddingManual {
+                                ProgressView()
+                                    .tint(Color.reasi.text)
+                            } else {
+                                Image(systemName: "plus")
+                            }
+                            Text(isAddingManual ? "Adding..." : "Add as written")
+                                .font(ReasiTypography.bodyMedium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, ReasiSpacing.s4)
+                        .foregroundStyle(Color.reasi.text)
+                        .overlay {
+                            Capsule().stroke(Color.reasi.border, lineWidth: 1)
+                        }
+                    }
+                    .disabled(isLoading || isAddingManual || trimmedText.isEmpty || isLink)
+                    .buttonStyle(ReasiPressStyle())
+                }
 
                 Spacer()
             }
             .padding(ReasiSpacing.s5)
             .background(Color.reasi.background)
-            .navigationTitle("Add product")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -693,12 +1169,20 @@ private struct ProductTextImportSheet: View {
             }
         }
     }
+
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isLink: Bool {
+        URL(string: trimmedText)?.scheme?.hasPrefix("http") == true
+    }
 }
 
 private struct CandidateReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let context: ReviewContext
-    let onAdd: (ReviewCandidateRow) async -> Bool
+    let onAdd: (ReviewCandidateRow, Double?) async -> Bool
     let onCompare: ([ReviewCandidateRow]) async -> Void
     let onDiscard: (String, ProductConfidence) -> Void
     @State private var selectedIDs: Set<String> = []
@@ -714,7 +1198,11 @@ private struct CandidateReviewSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-                    Text("Review before adding. Prices and sources stay visible when Reasi is not certain.")
+                    Text(
+                        context.targetItemID == nil
+                            ? "Review before adding. Prices and sources stay visible when Reasi is not certain."
+                            : "Choose the product you picked. Add the shelf price if it differs, then Reasi will check this item off."
+                    )
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
 
@@ -724,6 +1212,7 @@ private struct CandidateReviewSheet: View {
                             isSelected: selectedIDs.contains(row.id),
                             isAdding: addingID == row.id,
                             isAdded: addedIDs.contains(row.id),
+                            isFulfillingItem: context.targetItemID != nil,
                             toggleSelection: {
                                 if selectedIDs.contains(row.id) {
                                     selectedIDs.remove(row.id)
@@ -731,10 +1220,10 @@ private struct CandidateReviewSheet: View {
                                     selectedIDs.insert(row.id)
                                 }
                             },
-                            add: {
+                            add: { actualPriceAud in
                                 guard !addedIDs.contains(row.id), addingID == nil else { return }
                                 addingID = row.id
-                                if await onAdd(row) {
+                                if await onAdd(row, actualPriceAud) {
                                     addedIDs.insert(row.id)
                                 }
                                 addingID = nil
@@ -777,9 +1266,11 @@ private struct CandidateReviewRow: View {
     let isSelected: Bool
     let isAdding: Bool
     let isAdded: Bool
+    let isFulfillingItem: Bool
     let toggleSelection: () -> Void
-    let add: () async -> Void
+    let add: (Double?) async -> Void
     let discard: () -> Void
+    @State private var actualPriceText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
@@ -832,13 +1323,26 @@ private struct CandidateReviewRow: View {
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.warning)
 
+            if isFulfillingItem {
+                TextField("Shelf price (optional)", text: $actualPriceText)
+                    .keyboardType(.decimalPad)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.text)
+                    .padding(ReasiSpacing.s3)
+                    .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+            }
+
             HStack {
                 Button {
-                    Task { await add() }
+                    Task { await add(parsedActualPrice) }
                 } label: {
                     Label(
-                        isAdded ? "Added" : isAdding ? "Adding" : "Add",
-                        systemImage: isAdded ? "checkmark" : "plus"
+                        isAdded
+                            ? (isFulfillingItem ? "Selected" : "Added")
+                            : isAdding
+                                ? "Saving"
+                                : (isFulfillingItem ? "Use & check" : "Add"),
+                        systemImage: isAdded ? "checkmark" : (isFulfillingItem ? "barcode.viewfinder" : "plus")
                     )
                 }
                 .disabled(isAdding || isAdded)
@@ -857,6 +1361,15 @@ private struct CandidateReviewRow: View {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
                 .stroke(Color.reasi.border, lineWidth: 1)
         }
+    }
+
+    private var parsedActualPrice: Double? {
+        let normalized = actualPriceText
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        return Double(normalized)
     }
 }
 
@@ -1088,6 +1601,165 @@ private struct ConfidenceBadge: View {
     }
 }
 
+struct BarcodeScannerScreen: View {
+    let itemName: String
+    let onScanned: (String) -> Void
+    let onCancel: () -> Void
+    @State private var manualBarcode = ""
+
+    var body: some View {
+        ZStack {
+            if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                LiveBarcodeScanner(onScanned: onScanned)
+                    .ignoresSafeArea()
+            } else {
+                Color.reasi.background.ignoresSafeArea()
+            }
+
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Scan product")
+                            .font(ReasiTypography.title2)
+                            .foregroundStyle(.white)
+                        Text(itemName)
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                }
+                .padding(.horizontal, ReasiSpacing.s5)
+                .padding(.top, ReasiSpacing.s7)
+
+                Spacer()
+
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(.white.opacity(0.9), lineWidth: 2)
+                    .frame(height: 190)
+                    .padding(.horizontal, ReasiSpacing.s7)
+                    .overlay {
+                        Text("Hold the barcode inside the frame")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, ReasiSpacing.s3)
+                            .padding(.vertical, ReasiSpacing.s2)
+                            .background(.black.opacity(0.58), in: Capsule())
+                    }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                    if !DataScannerViewController.isSupported || !DataScannerViewController.isAvailable {
+                        Text("Camera scanning is unavailable. You can enter the digits below.")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.textMuted)
+                    }
+                    HStack(spacing: ReasiSpacing.s3) {
+                        TextField("Barcode number", text: $manualBarcode)
+                            .keyboardType(.numberPad)
+                            .font(ReasiTypography.body)
+                            .foregroundStyle(Color.reasi.text)
+                            .padding(ReasiSpacing.s3)
+                            .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+
+                        Button {
+                            onScanned(normalizedManualBarcode)
+                        } label: {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Color.reasi.background)
+                                .frame(width: 44, height: 44)
+                                .background(Color.reasi.text, in: Circle())
+                        }
+                        .disabled(!manualBarcodeIsValid)
+                        .opacity(manualBarcodeIsValid ? 1 : 0.45)
+                    }
+                }
+                .padding(ReasiSpacing.s5)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+                .padding(ReasiSpacing.s5)
+            }
+        }
+        .background(Color.black)
+    }
+
+    private var normalizedManualBarcode: String {
+        manualBarcode.filter(\.isNumber)
+    }
+
+    private var manualBarcodeIsValid: Bool {
+        (8...14).contains(normalizedManualBarcode.count)
+    }
+}
+
+private struct LiveBarcodeScanner: UIViewControllerRepresentable {
+    let onScanned: (String) -> Void
+
+    func makeUIViewController(context: Context) -> DataScannerViewController {
+        let controller = DataScannerViewController(
+            recognizedDataTypes: [
+                .barcode(symbologies: [.ean13, .ean8, .upce, .code128])
+            ],
+            qualityLevel: .balanced,
+            recognizesMultipleItems: false,
+            isHighFrameRateTrackingEnabled: true,
+            isPinchToZoomEnabled: true,
+            isGuidanceEnabled: false,
+            isHighlightingEnabled: true
+        )
+        controller.delegate = context.coordinator
+        try? controller.startScanning()
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {}
+
+    static func dismantleUIViewController(_ uiViewController: DataScannerViewController, coordinator: Coordinator) {
+        uiViewController.stopScanning()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onScanned: onScanned)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, DataScannerViewControllerDelegate {
+        private let onScanned: (String) -> Void
+        private var didScan = false
+
+        init(onScanned: @escaping (String) -> Void) {
+            self.onScanned = onScanned
+        }
+
+        func dataScanner(
+            _ dataScanner: DataScannerViewController,
+            didAdd addedItems: [RecognizedItem],
+            allItems: [RecognizedItem]
+        ) {
+            guard !didScan else { return }
+            for item in addedItems {
+                guard case .barcode(let barcode) = item,
+                      let payload = barcode.payloadStringValue else { continue }
+                let digits = payload.filter(\.isNumber)
+                guard (8...14).contains(digits.count) else { continue }
+                didScan = true
+                dataScanner.stopScanning()
+                ReasiHaptics.success()
+                onScanned(digits)
+                return
+            }
+        }
+    }
+}
+
 private struct CameraCaptureView: UIViewControllerRepresentable {
     let onComplete: (UIImage?) -> Void
 
@@ -1126,6 +1798,8 @@ private struct ShoppingSectionCard: View {
     let section: ShoppingListSection
     let checkedItemIDs: Set<String>
     let toggle: (ShoppingListItem) -> Void
+    let chooseProduct: (ShoppingListItem) -> Void
+    let scanBarcode: (ShoppingListItem) -> Void
 
     var checkedCount: Int {
         section.items.filter { checkedItemIDs.contains($0.id) }.count
@@ -1152,12 +1826,54 @@ private struct ShoppingSectionCard: View {
 
             VStack(spacing: ReasiSpacing.s2) {
                 ForEach(section.items) { item in
-                    Button {
-                        toggle(item)
-                    } label: {
+                    HStack(spacing: ReasiSpacing.s3) {
+                        Button {
+                            toggle(item)
+                        } label: {
+                            Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 23, weight: .semibold))
+                                .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
+                                .symbolEffect(.bounce, value: checkedItemIDs.contains(item.id))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(checkedItemIDs.contains(item.id) ? "Uncheck \(item.name)" : "Check \(item.name)")
+
                         ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
+
+                        Menu {
+                            Button {
+                                chooseProduct(item)
+                            } label: {
+                                Label("Search exact product", systemImage: "magnifyingglass")
+                            }
+                            Button {
+                                scanBarcode(item)
+                            } label: {
+                                Label("Scan barcode", systemImage: "barcode.viewfinder")
+                            }
+                            Button {
+                                toggle(item)
+                            } label: {
+                                Label(
+                                    checkedItemIDs.contains(item.id) ? "Mark not bought" : "Mark bought without product",
+                                    systemImage: checkedItemIDs.contains(item.id) ? "arrow.uturn.backward" : "checkmark"
+                                )
+                            }
+                        } label: {
+                            Image(systemName: item.product?.sku != nil || item.product?.barcode != nil ? "checkmark.seal.fill" : "barcode.viewfinder")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(item.product?.sku != nil || item.product?.barcode != nil ? Color.reasi.success : Color.reasi.textMuted)
+                                .frame(width: 36, height: 36)
+                                .background(Color.reasi.surfaceHigh, in: Circle())
+                        }
+                        .accessibilityLabel("Product options for \(item.name)")
                     }
-                    .buttonStyle(ReasiPressStyle())
+                    .padding(.vertical, ReasiSpacing.s2)
+                    .padding(.horizontal, ReasiSpacing.s2)
+                    .background(
+                        checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                    )
                 }
             }
         }
@@ -1175,13 +1891,7 @@ private struct ShoppingItemRow: View {
     let isChecked: Bool
 
     var body: some View {
-        HStack(spacing: ReasiSpacing.s3) {
-            Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 23, weight: .semibold))
-                .foregroundStyle(isChecked ? Color.reasi.success : Color.reasi.dim)
-                .symbolEffect(.bounce, value: isChecked)
-
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 3) {
                 Text(item.name)
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(isChecked ? Color.reasi.muted : Color.reasi.text)
@@ -1197,22 +1907,20 @@ private struct ShoppingItemRow: View {
                         .foregroundStyle(imported.confidence == .low ? Color.reasi.warning : Color.reasi.dim)
                         .lineLimit(2)
                 }
-            }
-
-            Spacer()
-
-            if let price = item.product?.priceAud {
-                Text("$\(price, specifier: "%.2f")")
+                if let productName = item.product?.productName,
+                   productName.localizedCaseInsensitiveCompare(item.name) != .orderedSame {
+                    Text(productName)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .lineLimit(1)
+                }
+                if let price = item.product?.actualPriceAud ?? item.product?.priceAud {
+                    Text("$\(price, specifier: "%.2f")\(item.product?.actualPriceAud == nil ? " catalog" : " paid")")
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.textMuted)
+                }
             }
-        }
-        .padding(.vertical, ReasiSpacing.s2)
-        .padding(.horizontal, ReasiSpacing.s2)
-        .background(
-            isChecked ? Color.reasi.surfaceHigh.opacity(0.36) : Color.clear,
-            in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(ReasiMotion.fast, value: isChecked)
     }
 

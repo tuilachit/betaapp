@@ -65,6 +65,11 @@ struct MealSummary: Identifiable, Codable, Hashable {
     let estimatedCarbsG: Int
     let tone: String
     var recipe: RecipeInfo? = nil
+    var imageUrl: URL? = nil
+    var imageSourceName: String? = nil
+    var imageSourceUrl: URL? = nil
+    var imagePhotographerName: String? = nil
+    var imagePhotographerUrl: URL? = nil
 
     func withRecipe(_ recipe: RecipeInfo?) -> MealSummary {
         MealSummary(
@@ -79,7 +84,12 @@ struct MealSummary: Identifiable, Codable, Hashable {
             estimatedCalories: estimatedCalories,
             estimatedCarbsG: estimatedCarbsG,
             tone: tone,
-            recipe: recipe
+            recipe: recipe,
+            imageUrl: imageUrl,
+            imageSourceName: imageSourceName,
+            imageSourceUrl: imageSourceUrl,
+            imagePhotographerName: imagePhotographerName,
+            imagePhotographerUrl: imagePhotographerUrl
         )
     }
 }
@@ -92,6 +102,50 @@ struct ProductSnapshot: Codable, Hashable {
     let priceAud: Double?
     let imageUrl: URL?
     let capturedAt: String?
+    var barcode: String? = nil
+    var sourceName: String? = nil
+    var observationId: String? = nil
+    var actualPriceAud: Double? = nil
+
+    init(
+        sku: String?,
+        productName: String?,
+        brand: String?,
+        size: String?,
+        priceAud: Double?,
+        imageUrl: URL?,
+        capturedAt: String?,
+        barcode: String? = nil,
+        sourceName: String? = nil,
+        observationId: String? = nil,
+        actualPriceAud: Double? = nil
+    ) {
+        self.sku = sku
+        self.productName = productName
+        self.brand = brand
+        self.size = size
+        self.priceAud = priceAud
+        self.imageUrl = imageUrl
+        self.capturedAt = capturedAt
+        self.barcode = barcode
+        self.sourceName = sourceName
+        self.observationId = observationId
+        self.actualPriceAud = actualPriceAud
+    }
+
+    init(candidate: ProductCandidate, actualPriceAud: Double? = nil) {
+        sku = candidate.sku
+        productName = candidate.displayName
+        brand = candidate.brand
+        size = candidate.size
+        priceAud = actualPriceAud ?? candidate.priceAud
+        imageUrl = candidate.imageUrl
+        capturedAt = candidate.capturedAt
+        barcode = candidate.barcode
+        sourceName = candidate.sourceName
+        observationId = candidate.observationId
+        self.actualPriceAud = actualPriceAud
+    }
 }
 
 enum ProductConfidence: String, Codable, Hashable, CaseIterable {
@@ -112,7 +166,7 @@ enum ProductConfidence: String, Codable, Hashable, CaseIterable {
 }
 
 struct ProductCandidate: Identifiable, Codable, Hashable {
-    var id: String { observationId ?? "\(name)-\(sourceName)-\(size ?? "")" }
+    var id: String { observationId ?? sku ?? barcode ?? "\(name)-\(sourceName)-\(size ?? "")" }
     let observationId: String?
     let name: String
     let brand: String?
@@ -131,6 +185,13 @@ struct ProductCandidate: Identifiable, Codable, Hashable {
     let confidence: ProductConfidence
     let confidenceReason: String
     let uncertaintyText: String
+    var sku: String? = nil
+    var barcode: String? = nil
+    var retailer: String? = nil
+    var aisleLabel: String? = nil
+    var sectionLabel: String? = nil
+    var sectionSortKey: Int? = nil
+    var sectionType: ShoppingSectionType? = nil
 
     var displayName: String {
         if let brand, !brand.isEmpty, !name.localizedCaseInsensitiveContains(brand) {

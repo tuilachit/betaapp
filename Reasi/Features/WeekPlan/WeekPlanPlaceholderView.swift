@@ -211,13 +211,17 @@ private struct MealRow: View {
 
     var body: some View {
         HStack(spacing: ReasiSpacing.s4) {
-            RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                .fill(Color(hexString: meal.tone) ?? Color.reasi.surfaceHigh)
-                .frame(width: 58, height: 58)
-                .overlay {
+            MealArtwork(meal: meal)
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+                .overlay(alignment: .topLeading) {
                     Text(meal.day)
                         .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.text)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.black.opacity(0.62), in: Capsule())
+                        .padding(6)
                 }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -294,18 +298,17 @@ private struct MealDetailSheet: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .fill(
+            MealArtwork(meal: meal)
+                .frame(height: 230)
+                .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+                .overlay {
                     LinearGradient(
-                        colors: [
-                            Color(hexString: meal.tone) ?? Color.reasi.surfaceHigh,
-                            Color.reasi.surface
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        colors: [.clear, .black.opacity(0.76)],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                )
-                .frame(height: 144)
+                    .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+                }
                 .overlay(alignment: .bottomLeading) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(meal.day)
@@ -319,6 +322,24 @@ private struct MealDetailSheet: View {
                     }
                     .padding(ReasiSpacing.s5)
                 }
+
+            if meal.imageUrl != nil {
+                HStack(spacing: 4) {
+                    Text("Photo")
+                    if let photographerName = meal.imagePhotographerName,
+                       let photographerUrl = meal.imagePhotographerUrl {
+                        Text("by")
+                        Link(photographerName, destination: photographerUrl)
+                    }
+                    if let sourceName = meal.imageSourceName,
+                       let sourceUrl = meal.imageSourceUrl {
+                        Text("on")
+                        Link(sourceName, destination: sourceUrl)
+                    }
+                }
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+            }
 
             Text(meal.description)
                 .font(ReasiTypography.body)
@@ -392,6 +413,44 @@ private struct MealDetailSheet: View {
             .padding(ReasiSpacing.s5)
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         }
+    }
+}
+
+private struct MealArtwork: View {
+    let meal: MealSummary
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(hexString: meal.tone) ?? Color.reasi.surfaceHigh,
+                    Color.reasi.surface
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            if let imageUrl = meal.imageUrl {
+                AsyncImage(url: imageUrl, transaction: Transaction(animation: ReasiMotion.fast)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .transition(.opacity)
+                    case .failure:
+                        Image(systemName: "fork.knife")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundStyle(Color.reasi.text.opacity(0.65))
+                    case .empty:
+                        SkeletonBlock(height: 230, radius: 0)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            }
+        }
+        .clipped()
     }
 }
 

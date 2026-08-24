@@ -82,6 +82,9 @@ final class CoreLoopStore {
     var generationStage: WeekPlanGenerationStage = .preparing
     var generationElapsedSeconds = 0
     var checkedItemIDs: Set<String>
+    var isSwitchingStore = false
+    var switchingStoreName: String?
+    var storeSwitchMessage: String?
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
@@ -95,6 +98,8 @@ final class CoreLoopStore {
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var generationProgressTask: Task<Void, Never>?
     @ObservationIgnored private var activeGenerationID: UUID?
+    @ObservationIgnored private var requestedStore: StoreSummary?
+    @ObservationIgnored private var storeSwitchTask: Task<Void, Never>?
 
     private let lastSuccessfulWeekKeyPrefix = "reasi.lastSuccessfulGeneratedWeekKey"
 
@@ -130,6 +135,99 @@ final class CoreLoopStore {
         plan = updatedPlan
         checkedItemIDs = previousCheckedIDs.intersection(validItemIDs)
         progressMilestones = []
+    }
+
+    func requestStoreSwitch(
+        to store: StoreSummary,
+        supabase: SupabaseService,
+        analytics: AnalyticsService
+    ) {
+        requestedStore = store
+        guard storeSwitchTask == nil else { return }
+
+        storeSwitchTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.storeSwitchTask = nil
+                self.isSwitchingStore = false
+                self.switchingStoreName = nil
+            }
+
+            while let target = self.requestedStore, !Task.isCancelled {
+                self.requestedStore = nil
+                await self.performStoreSwitch(to: target, supabase: supabase, analytics: analytics)
+            }
+        }
+    }
+
+    private func performStoreSwitch(
+        to store: StoreSummary,
+        supabase: SupabaseService,
+        analytics: AnalyticsService
+    ) async {
+        storeSwitchMessage = nil
+
+        guard hasPlan else {
+            syncFixturePlan(to: store)
+            return
+        }
+        guard plan.storeId != store.id || plan.shoppingList.storeId != store.id else { return }
+
+        if plan.source == .fixture {
+            withAnimation(ReasiMotion.fast) {
+                syncFixturePlan(to: store)
+            }
+            return
+        }
+
+        guard supabase.isSignedIn else {
+            storeSwitchMessage = "Sign in again to update this list for \(store.shortName)."
+            return
+        }
+
+        isSwitchingStore = true
+        switchingStoreName = store.name
+        let existingPlan = plan
+
+        do {
+            try await supabase.saveSelectedStore(store.id)
+            var refreshed = try await supabase.regroupShoppingList(
+                shoppingListId: existingPlan.shoppingList.id,
+                for: store.id
+            )
+            guard refreshed.storeId == store.id, refreshed.shoppingList.storeId == store.id else {
+                throw ReasiServiceError.invalidResponse
+            }
+
+            mergePendingImportedItems(from: existingPlan, into: &refreshed)
+            for itemId in pendingCheckItemIDs {
+                setItemChecked(itemId, checked: checkedStates[itemId] ?? false, in: &refreshed)
+            }
+
+            // A newer selection waits in the serialized queue. Do not flash this intermediate route.
+            guard requestedStore == nil else { return }
+
+            withAnimation(ReasiMotion.base) {
+                plan = refreshed
+                checkedItemIDs = Self.checkedIDs(from: refreshed)
+                progressMilestones = []
+            }
+            persistPlanCache()
+            persistCheckCache()
+            ReasiHaptics.success()
+        } catch {
+            guard requestedStore == nil else { return }
+            storeSwitchMessage = supabase.userFacingMessage(
+                for: error,
+                fallback: "The store changed, but item locations could not update yet. Try again when you are online."
+            )
+            analytics.capture(.storeSelected, properties: [
+                "store_id": .string(store.id.rawValue),
+                "store_name": .string(store.name),
+                "regroup_succeeded": .bool(false)
+            ])
+            ReasiHaptics.warning()
+        }
     }
 
     func activateUser(_ userId: String?, selectedStore: StoreSummary) {
@@ -247,6 +345,9 @@ final class CoreLoopStore {
         generationState = .idle
         generationStage = .preparing
         generationElapsedSeconds = 0
+        isSwitchingStore = false
+        switchingStoreName = nil
+        storeSwitchMessage = nil
     }
 
     func generateWeekPlan(
@@ -448,31 +549,34 @@ final class CoreLoopStore {
         _ candidate: ProductCandidate,
         quantity: String = "1",
         idempotencyKey: String,
+        analyticsMethod: String = "review",
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) async -> Bool {
         guard hasPlan, let clientId = UUID(uuidString: idempotencyKey) else { return false }
         if addedImportKeys.contains(idempotencyKey) { return true }
+        if allShoppingItems.contains(where: { item in
+            if let sku = candidate.sku, item.product?.sku == sku { return true }
+            if let barcode = candidate.barcode, item.product?.barcode == barcode { return true }
+            return false
+        }) {
+            return true
+        }
 
         let sortOrder = allShoppingItems.count + 1
         let localItemID = "local-import-\(idempotencyKey)"
+        let sectionLabel = candidate.sectionLabel ?? "Location not certain"
+        let sectionSortKey = candidate.sectionSortKey ?? 999
+        let sectionType = candidate.sectionType ?? .unknown
 
         let item = ShoppingListItem(
             id: localItemID,
             name: candidate.displayName,
             quantity: quantity,
             checked: false,
-            aisleLabel: "Location not certain",
-            sectionType: .unknown,
-            product: ProductSnapshot(
-                sku: nil,
-                productName: candidate.displayName,
-                brand: candidate.brand,
-                size: candidate.size,
-                priceAud: candidate.priceAud,
-                imageUrl: candidate.imageUrl,
-                capturedAt: candidate.capturedAt
-            ),
+            aisleLabel: candidate.aisleLabel ?? "Location not certain",
+            sectionType: sectionType,
+            product: ProductSnapshot(candidate: candidate),
             importedCandidate: candidate,
             locationUncertaintyText: candidate.uncertaintyText,
             clientId: idempotencyKey
@@ -491,25 +595,20 @@ final class CoreLoopStore {
         checkedStates[localItemID] = false
 
         withAnimation(ReasiMotion.tactileSpring) {
-            if let sectionIndex = plan.shoppingList.sections.firstIndex(where: { $0.label == "Added items" }) {
-                plan.shoppingList.sections[sectionIndex].items.append(item)
-            } else {
-                plan.shoppingList.sections.append(
-                    ShoppingListSection(
-                        label: "Added items",
-                        sortKey: 980,
-                        type: .unknown,
-                        items: [item]
-                    )
-                )
-            }
+            insertItem(
+                item,
+                sectionLabel: sectionLabel,
+                sectionSortKey: sectionSortKey,
+                sectionType: sectionType,
+                into: &plan
+            )
         }
         persistPlanCache()
         persistCheckCache()
 
         ReasiHaptics.success()
         analytics.capture(.productCandidateAdded, properties: [
-            "method": .string("review"),
+            "method": .string(analyticsMethod),
             "store_id": .string(plan.storeId.rawValue),
             "shopping_list_id": .string(plan.shoppingList.id),
             "confidence": .string(candidate.confidence.rawValue),
@@ -519,6 +618,76 @@ final class CoreLoopStore {
 
         await syncPendingImport(pending, clientId: clientId, supabase: supabase)
         return true
+    }
+
+    func selectProduct(
+        _ candidate: ProductCandidate,
+        for item: ShoppingListItem,
+        actualPriceAud: Double?,
+        supabase: SupabaseService,
+        analytics: AnalyticsService
+    ) async throws {
+        guard hasPlan,
+              !item.id.hasPrefix("local-import-"),
+              let context = sectionContext(for: item.id, in: plan) else {
+            throw ReasiServiceError.invalidResponse
+        }
+
+        let resolvedLabel = candidate.sectionLabel ?? context.label
+        let resolvedSortKey = candidate.sectionSortKey ?? context.sortKey
+        let resolvedType = candidate.sectionType ?? context.type
+        let resolvedAisle = candidate.aisleLabel ?? item.aisleLabel ?? "Location not certain"
+
+        try await supabase.selectProduct(
+            candidate,
+            for: item,
+            shoppingListId: plan.shoppingList.id,
+            sectionLabel: context.label,
+            sectionSortKey: context.sortKey,
+            sectionType: context.type,
+            actualPriceAud: actualPriceAud
+        )
+
+        let selectedItem = ShoppingListItem(
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            checked: true,
+            aisleLabel: resolvedAisle,
+            sectionType: resolvedType,
+            product: ProductSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+            importedCandidate: candidate,
+            locationUncertaintyText: resolvedType == .unknown ? candidate.uncertaintyText : nil,
+            clientId: item.clientId
+        )
+
+        withAnimation(ReasiMotion.tactileSpring) {
+            removeItem(item.id, from: &plan)
+            insertItem(
+                selectedItem,
+                sectionLabel: resolvedLabel,
+                sectionSortKey: resolvedSortKey,
+                sectionType: resolvedType,
+                into: &plan
+            )
+            checkedItemIDs.insert(item.id)
+        }
+        checkedStates[item.id] = true
+        pendingCheckItemIDs.remove(item.id)
+        persistPlanCache()
+        persistCheckCache()
+        ReasiHaptics.success()
+        analytics.capture(.productCandidateAdded, properties: [
+            "method": .string(candidate.barcode == nil ? "item_search" : "barcode"),
+            "store_id": .string(plan.storeId.rawValue),
+            "shopping_list_id": .string(plan.shoppingList.id),
+            "item_id": .string(item.id),
+            "confidence": .string(candidate.confidence.rawValue),
+            "has_sku": .bool(candidate.sku != nil),
+            "has_barcode": .bool(candidate.barcode != nil),
+            "has_price": .bool(candidate.priceAud != nil || actualPriceAud != nil)
+        ])
+        captureProgressMilestones(analytics: analytics)
     }
 
     func markWeekPlanViewed(analytics: AnalyticsService) {
@@ -596,9 +765,12 @@ final class CoreLoopStore {
     private func cancelOutstandingWork() {
         generationTask?.cancel()
         generationProgressTask?.cancel()
+        storeSwitchTask?.cancel()
         itemSyncTasks.values.forEach { $0.cancel() }
         generationTask = nil
         generationProgressTask = nil
+        storeSwitchTask = nil
+        requestedStore = nil
         itemSyncTasks = [:]
         activeGenerationID = nil
     }
@@ -719,13 +891,13 @@ final class CoreLoopStore {
                 .flatMap(\.items)
                 .first(where: { $0.id == pending.localItemID }) else { continue }
 
-            if let sectionIndex = restored.shoppingList.sections.firstIndex(where: { $0.label == "Added items" }) {
-                restored.shoppingList.sections[sectionIndex].items.append(cachedItem)
-            } else {
-                restored.shoppingList.sections.append(
-                    ShoppingListSection(label: "Added items", sortKey: 980, type: .unknown, items: [cachedItem])
-                )
-            }
+            insertItem(
+                cachedItem,
+                sectionLabel: pending.candidate.sectionLabel ?? "Location not certain",
+                sectionSortKey: pending.candidate.sectionSortKey ?? 999,
+                sectionType: pending.candidate.sectionType ?? .unknown,
+                into: &restored
+            )
         }
     }
 
@@ -770,6 +942,46 @@ final class CoreLoopStore {
             plan.shoppingList.sections[sectionIndex].items.removeAll { $0.id == itemId }
         }
         plan.shoppingList.sections.removeAll { $0.items.isEmpty }
+    }
+
+    private func insertItem(
+        _ item: ShoppingListItem,
+        sectionLabel: String,
+        sectionSortKey: Int,
+        sectionType: ShoppingSectionType,
+        into plan: inout WeekPlan
+    ) {
+        if let sectionIndex = plan.shoppingList.sections.firstIndex(where: {
+            $0.label == sectionLabel && $0.sortKey == sectionSortKey
+        }) {
+            plan.shoppingList.sections[sectionIndex].items.append(item)
+        } else {
+            plan.shoppingList.sections.append(
+                ShoppingListSection(
+                    label: sectionLabel,
+                    sortKey: sectionSortKey,
+                    type: sectionType,
+                    items: [item]
+                )
+            )
+        }
+
+        plan.shoppingList.sections.sort {
+            if $0.sortKey == $1.sortKey { return $0.label < $1.label }
+            return $0.sortKey < $1.sortKey
+        }
+    }
+
+    private func sectionContext(for itemId: String, in plan: WeekPlan) -> ShoppingItemSectionContext? {
+        guard let section = plan.shoppingList.sections.first(where: { section in
+            section.items.contains(where: { $0.id == itemId })
+        }) else { return nil }
+
+        return ShoppingItemSectionContext(
+            label: section.label,
+            sortKey: section.sortKey,
+            type: section.type
+        )
     }
 
     private func allItemIDs(in plan: WeekPlan) -> [String] {
@@ -818,6 +1030,12 @@ final class CoreLoopStore {
         let year = calendar.component(.yearForWeekOfYear, from: date)
         return "\(year)-W\(String(format: "%02d", week))"
     }
+}
+
+private struct ShoppingItemSectionContext {
+    let label: String
+    let sortKey: Int
+    let type: ShoppingSectionType
 }
 
 private struct PendingImportedItem: Codable, Hashable {

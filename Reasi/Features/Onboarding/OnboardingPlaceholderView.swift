@@ -374,6 +374,17 @@ struct OnboardingPlaceholderView: View {
                 }
             }
 
+            #if DEBUG
+            if supabase.config.debugGuestAuthEnabled {
+                authButton(title: "Debug guest session", symbol: "ladybug") {
+                    runAuth(method: .anonymous) {
+                        try await supabase.signInAnonymously()
+                    }
+                }
+                .accessibilityHint("Available only in debug builds")
+            }
+            #endif
+
             if showsEmailForm {
                 emailForm
                     .transition(.opacity.combined(with: .move(edge: .top)))

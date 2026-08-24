@@ -49,6 +49,7 @@
 		B00000000000000000000044 /* OnboardingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* OnboardingPreferences.swift */; };
 		B00000000000000000000045 /* OnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* OnboardingStore.swift */; };
 		B00000000000000000000046 /* BrandLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* BrandLaunchView.swift */; };
+		B00000000000000000000047 /* ProductSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* ProductSearchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -95,6 +96,7 @@
 		A00000000000000000000041 /* OnboardingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPreferences.swift; sourceTree = "<group>"; };
 		A00000000000000000000042 /* OnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000043 /* BrandLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandLaunchView.swift; sourceTree = "<group>"; };
+		A00000000000000000000044 /* ProductSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSearchView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -249,6 +251,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000027 /* ShoppingListPlaceholderView.swift */,
+				A00000000000000000000044 /* ProductSearchView.swift */,
 			);
 			path = ShoppingList;
 			sourceTree = "<group>";
@@ -410,6 +413,7 @@
 				B00000000000000000000025 /* HomeView.swift in Sources */,
 				B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */,
 				B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */,
+				B00000000000000000000047 /* ProductSearchView.swift in Sources */,
 				B00000000000000000000028 /* ProfileView.swift in Sources */,
 				B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */,
 				B00000000000000000000044 /* OnboardingPreferences.swift in Sources */,
@@ -541,7 +545,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = F8W652VS4L;
+				DEVELOPMENT_TEAM = Y57R7X3G78;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Reasi/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -570,7 +574,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = F8W652VS4L;
+				DEVELOPMENT_TEAM = Y57R7X3G78;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Reasi/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
