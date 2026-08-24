@@ -2,6 +2,8 @@ import SwiftUI
 
 struct FloatingTabBar: View {
     @Binding var selectedTab: AppTab
+    var primaryActionSymbol = "plus"
+    var primaryActionLabel = "Create new"
     var primaryAction: () -> Void
     @Namespace private var activeNamespace
 
@@ -38,7 +40,7 @@ struct FloatingTabBar: View {
                     ReasiHaptics.light()
                     primaryAction()
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: primaryActionSymbol)
                         .font(.system(size: 25, weight: .medium))
                         .foregroundStyle(Color.reasi.text)
                         .frame(width: plusSize, height: plusSize)
@@ -49,7 +51,7 @@ struct FloatingTabBar: View {
                         }
                 }
                 .buttonStyle(ReasiPressStyle())
-                .accessibilityLabel("Create new")
+                .accessibilityLabel(primaryActionLabel)
             }
         }
         .frame(height: 70)

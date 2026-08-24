@@ -17,17 +17,9 @@ struct AppShellView: View {
                     get: { appState.selectedTab },
                     set: { appState.selectedTab = $0 }
                 ),
-                primaryAction: {
-                    Task {
-                        await coreLoop.generateWeekPlan(
-                            store: appState.selectedStore,
-                            supabase: supabase,
-                            analytics: analytics,
-                            appState: appState,
-                            network: network
-                        )
-                    }
-                }
+                primaryActionSymbol: primaryActionSymbol,
+                primaryActionLabel: primaryActionLabel,
+                primaryAction: performPrimaryAction
             )
         }
         .background(Color.reasi.background.ignoresSafeArea())
@@ -82,6 +74,39 @@ struct AppShellView: View {
                 ProfileView()
                     .withReasiNavigationDestinations()
             }
+        }
+    }
+
+    private var primaryActionSymbol: String {
+        appState.selectedTab == .list && coreLoop.hasPlan ? "cart.badge.plus" : "plus"
+    }
+
+    private var primaryActionLabel: String {
+        appState.selectedTab == .list && coreLoop.hasPlan
+            ? "Add shopping item"
+            : "Create week plan"
+    }
+
+    private func performPrimaryAction() {
+        if appState.selectedTab == .list && coreLoop.hasPlan {
+            appState.requestShoppingListAdd()
+            return
+        }
+
+        if appState.selectedTab == .profile {
+            withAnimation(ReasiMotion.tactileSpring) {
+                appState.selectedTab = .home
+            }
+        }
+
+        Task {
+            await coreLoop.generateWeekPlan(
+                store: appState.selectedStore,
+                supabase: supabase,
+                analytics: analytics,
+                appState: appState,
+                network: network
+            )
         }
     }
 }
