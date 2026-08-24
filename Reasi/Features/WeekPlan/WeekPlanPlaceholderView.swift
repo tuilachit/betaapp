@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WeekPlanPlaceholderView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
@@ -8,6 +9,7 @@ struct WeekPlanPlaceholderView: View {
     @Environment(NetworkMonitor.self) private var network
     @State private var selectedMeal: MealSummary?
     @State private var didTrackView = false
+    @State private var arePlanNotesExpanded = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -165,16 +167,90 @@ struct WeekPlanPlaceholderView: View {
     }
 
     private var planNotes: some View {
-        Text(coreLoop.plan.planningNotes)
-            .font(ReasiTypography.body)
-            .foregroundStyle(Color.reasi.textMuted)
-            .padding(ReasiSpacing.s5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack {
+                Text("At a glance")
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+
+                Spacer()
+
+                Label(coreLoop.plan.storeName, systemImage: "storefront")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(1)
             }
+
+            HStack(spacing: ReasiSpacing.s2) {
+                PlanMetric(
+                    label: "\(coreLoop.plan.meals.count) dinners",
+                    symbol: "fork.knife"
+                )
+                PlanMetric(
+                    label: "\(averageMealTime) min avg",
+                    symbol: "clock"
+                )
+                PlanMetric(
+                    label: estimatedWeekCost,
+                    symbol: "banknote"
+                )
+            }
+
+            if !coreLoop.plan.planningNotes.isEmpty {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                    Text(coreLoop.plan.planningNotes)
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .lineLimit(arePlanNotesExpanded ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button {
+                        ReasiHaptics.light()
+                        withAnimation(reduceMotion ? nil : ReasiMotion.tactileSpring) {
+                            arePlanNotesExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(arePlanNotesExpanded ? "Show less" : "More details")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .rotationEffect(.degrees(arePlanNotesExpanded ? 180 : 0))
+                        }
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.text)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(ReasiPressStyle())
+                    .accessibilityLabel(arePlanNotesExpanded ? "Collapse plan details" : "Expand plan details")
+                }
+            }
+        }
+        .padding(ReasiSpacing.s5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .stroke(Color.reasi.border, lineWidth: 1)
+        }
+        .onChange(of: coreLoop.plan.id) { _, _ in
+            arePlanNotesExpanded = false
+        }
+    }
+
+    private var averageMealTime: Int {
+        guard !coreLoop.plan.meals.isEmpty else { return 0 }
+        let total = coreLoop.plan.meals.reduce(0) { result, meal in
+            result + (meal.recipe?.totalTimeMin ?? meal.cookTimeMin)
+        }
+        return Int((Double(total) / Double(coreLoop.plan.meals.count)).rounded())
+    }
+
+    private var estimatedWeekCost: String {
+        let total = coreLoop.plan.meals.reduce(0) { $0 + $1.costAud }
+        return total.formatted(
+            .currency(code: "AUD")
+                .precision(.fractionLength(0))
+        )
     }
 
     private var mealList: some View {
@@ -210,50 +286,84 @@ private struct MealRow: View {
     let meal: MealSummary
 
     var body: some View {
-        HStack(spacing: ReasiSpacing.s4) {
+        HStack(spacing: ReasiSpacing.s3) {
             MealArtwork(meal: meal)
-                .frame(width: 72, height: 72)
+                .frame(width: 96, height: 108)
                 .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
-                .overlay(alignment: .topLeading) {
-                    Text(meal.day)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(.black.opacity(0.62), in: Capsule())
-                        .padding(6)
-                }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text(meal.day.uppercased())
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(1)
+
                 Text(meal.dish)
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
-                    .lineLimit(1)
-                Text(meal.description)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
                     .lineLimit(2)
-                HStack(spacing: ReasiSpacing.s2) {
-                    Text(meal.cuisine)
-                    Text("\(meal.cookTimeMin) min")
-                    Text("$\(Int(meal.costAud))")
+
+                HStack(spacing: ReasiSpacing.s3) {
+                    Label("\(meal.cookTimeMin) min", systemImage: "clock")
+                    Label(
+                        costLabel,
+                        systemImage: "banknote"
+                    )
                 }
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.textMuted)
+
+                Text(meal.cuisine)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(1)
             }
 
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.reasi.dim)
         }
-        .padding(ReasiSpacing.s4)
+        .padding(ReasiSpacing.s3)
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
                 .stroke(Color.reasi.border, lineWidth: 1)
         }
+        .contentShape(RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(meal.day), \(meal.dish), \(meal.cuisine), \(meal.cookTimeMin) minutes, estimated \(costLabel)"
+        )
+        .accessibilityHint("Opens recipe details")
+    }
+
+    private var costLabel: String {
+        meal.costAud.formatted(
+            .currency(code: "AUD")
+                .precision(.fractionLength(0))
+        )
+    }
+}
+
+private struct PlanMetric: View {
+    let label: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+            Text(label)
+                .font(ReasiTypography.caption)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .foregroundStyle(Color.reasi.textMuted)
+        .padding(.horizontal, ReasiSpacing.s3)
+        .frame(maxWidth: .infinity)
+        .frame(height: 34)
+        .background(Color.reasi.surfaceHigh, in: Capsule())
     }
 }
 
@@ -443,7 +553,12 @@ private struct MealArtwork: View {
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(Color.reasi.text.opacity(0.65))
                     case .empty:
-                        SkeletonBlock(height: 230, radius: 0)
+                        Color.reasi.surfaceHigh
+                            .overlay {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(Color.reasi.textMuted)
+                            }
                     @unknown default:
                         EmptyView()
                     }
