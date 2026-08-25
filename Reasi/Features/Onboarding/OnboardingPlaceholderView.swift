@@ -34,13 +34,20 @@ struct OnboardingPlaceholderView: View {
                     .padding(.bottom, ReasiSpacing.s5)
             }
             .scrollBounceBehavior(.basedOnSize)
-
-            bottomAction
-                .padding(.top, ReasiSpacing.s3)
         }
         .padding(.horizontal, ReasiSpacing.s5)
         .safeAreaPadding(.top, ReasiSpacing.s2)
-        .safeAreaPadding(.bottom, ReasiSpacing.s4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomAction
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
+                .padding(.horizontal, ReasiSpacing.s5)
+                .padding(.top, ReasiSpacing.s3)
+                .padding(.bottom, ReasiSpacing.s4)
+                .background(Color.reasi.background)
+        }
         .background(Color.reasi.background.ignoresSafeArea())
         .animation(ReasiMotion.slow, value: onboarding.currentStep)
         .onAppear {
@@ -491,49 +498,52 @@ struct OnboardingPlaceholderView: View {
         }
     }
 
-    @ViewBuilder
     private var bottomAction: some View {
+        primaryButton(bottomActionTitle, enabled: bottomActionIsEnabled) {
+            performBottomAction()
+        }
+    }
+
+    private var bottomActionTitle: String {
         switch onboarding.currentStep {
         case .value:
-            primaryButton("Get started", enabled: true) {
-                onboarding.advance()
-            }
-        case .benefit:
-            primaryButton("Continue", enabled: true) {
-                onboarding.advance()
-            }
-        case .purpose:
-            primaryButton("Continue", enabled: onboarding.preferences.purpose != nil) {
-                onboarding.submitPurpose(analytics: analytics)
-            }
-        case .household:
-            primaryButton("Continue", enabled: onboarding.preferences.household != nil) {
-                onboarding.advance()
-            }
-        case .foodStyle:
-            primaryButton("Continue", enabled: !onboarding.preferences.foodStyles.isEmpty) {
-                onboarding.advance()
-            }
-        case .store:
-            primaryButton("Continue", enabled: onboarding.preferences.selectedStoreId != nil) {
-                onboarding.advance()
-            }
+            "Get started"
+        case .benefit, .purpose, .household, .foodStyle, .store:
+            "Continue"
         case .signIn:
-            if supabase.isSignedIn {
-                primaryButton("Continue", enabled: true) {
-                    onboarding.advance()
-                }
-            } else {
-                primaryButton("Sign in to continue", enabled: false) {
-                }
-            }
+            supabase.isSignedIn ? "Continue" : "Sign in to continue"
         case .ready:
-            primaryButton(
-                onboarding.isSaving ? "Saving your choices" : "Plan my first week",
-                enabled: !onboarding.isSaving
-            ) {
-                completeOnboarding()
-            }
+            onboarding.isSaving ? "Saving your choices" : "Plan my first week"
+        }
+    }
+
+    private var bottomActionIsEnabled: Bool {
+        switch onboarding.currentStep {
+        case .value, .benefit:
+            true
+        case .purpose:
+            onboarding.preferences.purpose != nil
+        case .household:
+            onboarding.preferences.household != nil
+        case .foodStyle:
+            !onboarding.preferences.foodStyles.isEmpty
+        case .store:
+            onboarding.preferences.selectedStoreId != nil
+        case .signIn:
+            supabase.isSignedIn
+        case .ready:
+            !onboarding.isSaving
+        }
+    }
+
+    private func performBottomAction() {
+        switch onboarding.currentStep {
+        case .value, .benefit, .household, .foodStyle, .store, .signIn:
+            onboarding.advance()
+        case .purpose:
+            onboarding.submitPurpose(analytics: analytics)
+        case .ready:
+            completeOnboarding()
         }
     }
 
