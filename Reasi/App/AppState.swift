@@ -8,6 +8,7 @@ final class AppState {
     var selectedTab: AppTab = .home
     var selectedStore: StoreSummary
     var activePlan: WeekPlan = FixtureWeekPlan.current
+    private(set) var shoppingListAddRequest = 0
 
     let homeRouter = RouterPath()
     let plansRouter = RouterPath()
@@ -47,6 +48,11 @@ final class AppState {
 
     func showShoppingList() {
         selectedTab = .list
+    }
+
+    func requestShoppingListAdd() {
+        selectedTab = .list
+        shoppingListAddRequest &+= 1
     }
 }
 

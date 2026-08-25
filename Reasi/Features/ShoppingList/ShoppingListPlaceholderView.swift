@@ -158,6 +158,10 @@ struct ShoppingListPlaceholderView: View {
             guard let item else { return }
             Task { await extractListPhoto(item) }
         }
+        .onChange(of: appState.shoppingListAddRequest) { _, _ in
+            guard coreLoop.hasPlan, !inputIsBusy else { return }
+            showAddDialog = true
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .textImport(let targetItemID, let initialQuery):
