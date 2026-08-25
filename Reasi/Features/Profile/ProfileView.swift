@@ -13,25 +13,36 @@ struct ProfileView: View {
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
     @Environment(RevenueCatService.self) private var revenueCat
+    @Environment(OnboardingStore.self) private var onboarding
 
     @State private var email = ""
     @State private var password = ""
     @State private var authMessage: String?
     @State private var authIsBusy = false
     @State private var showDeleteConfirmation = false
+    @State private var showStorePicker = false
+    @State private var showDeveloperDiagnostics = false
     @State private var appleRawNonce: String?
+    @State private var storeSyncTask: Task<Void, Never>?
+    @State private var storeSyncMessage: String?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                 header
-                authCard
+                if supabase.isSignedIn {
+                    signedInAccountCard
+                } else {
+                    authCard
+                }
+                planPreferencesSection
+                supportSection
+                if supabase.isSignedIn {
+                    accountActionsSection
+                }
                 #if DEBUG
-                statusCard(supabase.status)
-                statusCard(analytics.status)
-                statusCard(revenueCat.status)
+                developerDiagnosticsSection
                 #endif
-                accountCard
             }
             .padding(.horizontal, ReasiSpacing.s5)
             .padding(.top, ReasiSpacing.s8)
@@ -39,10 +50,9 @@ struct ProfileView: View {
         }
         .background(Color.reasi.background)
         .toolbar(.hidden, for: .navigationBar)
-        .confirmationDialog(
+        .alert(
             "Delete your Reasi account?",
             isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
         ) {
             Button("Delete account", role: .destructive) {
                 runAuthAction(mode: .deleteAccount)
@@ -51,39 +61,55 @@ struct ProfileView: View {
         } message: {
             Text("This permanently deletes your account, preferences, plans, shopping lists, product imports, assistant history, and uploaded photos.")
         }
+        .confirmationDialog("Choose store", isPresented: $showStorePicker, titleVisibility: .visible) {
+            ForEach(FixtureStores.launchStores) { store in
+                Button(store.name) {
+                    selectStore(store)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Future plans and shopping lists will use this store.")
+        }
         .onAppear {
             supabase.refreshAuthLabel()
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Circle()
-                .fill(Color.reasi.surfaceHigh)
-                .frame(width: 84, height: 84)
+        HStack(alignment: .center, spacing: ReasiSpacing.s4) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text("Profile")
+                    .font(ReasiTypography.largeTitle)
+                    .foregroundStyle(Color.reasi.text)
+                Text(supabase.isSignedIn ? "Your account and preferences" : "Sign in to keep your plans in sync")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+
+            Spacer()
+
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(Color.reasi.textMuted)
+                .frame(width: 58, height: 58)
+                .background(Color.reasi.surfaceHigh, in: Circle())
                 .overlay {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 42))
-                        .foregroundStyle(Color.reasi.textMuted)
+                    Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
                 }
-            Text("Profile")
-                .font(ReasiTypography.largeTitle)
-                .foregroundStyle(Color.reasi.text)
-            Text(supabase.isSignedIn ? "Signed in and ready to plan." : "Sign in to save your meal plans and shopping lists.")
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
+                .accessibilityHidden(true)
         }
     }
 
     private var authCard: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
             HStack(alignment: .top, spacing: ReasiSpacing.s4) {
-                Image(systemName: supabase.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.plus")
+                Image(systemName: "person.crop.circle.badge.plus")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(supabase.isSignedIn ? Color.reasi.success : Color.reasi.text)
+                    .foregroundStyle(Color.reasi.text)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(supabase.isSignedIn ? "Account" : "Sign in")
+                    Text("Sign in")
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
                     Text(accountStatusText)
@@ -94,11 +120,7 @@ struct ProfileView: View {
                 Spacer()
             }
 
-            if supabase.isSignedIn {
-                signedInControls
-            } else {
-                signedOutControls
-            }
+            signedOutControls
 
             if authIsBusy {
                 HStack(spacing: ReasiSpacing.s3) {
@@ -162,6 +184,19 @@ struct ProfileView: View {
             .disabled(authIsBusy || !supabase.config.hasSupabase || supabase.config.googleClientID.isEmpty)
             .opacity(authIsBusy || !supabase.config.hasSupabase || supabase.config.googleClientID.isEmpty ? 0.62 : 1)
 
+            HStack(spacing: ReasiSpacing.s3) {
+                Rectangle()
+                    .fill(Color.reasi.border)
+                    .frame(height: 1)
+                Text("or use email")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .fixedSize()
+                Rectangle()
+                    .fill(Color.reasi.border)
+                    .frame(height: 1)
+            }
+
             VStack(spacing: ReasiSpacing.s3) {
                 authField("Email", text: $email, symbol: "envelope", keyboardType: .emailAddress)
                 passwordField
@@ -172,19 +207,13 @@ struct ProfileView: View {
                     runAuthAction(mode: .signIn)
                 }
 
-                secondaryAuthButton("Sign up", symbol: "plus.circle") {
+                secondaryAuthButton("Create account", symbol: "plus.circle") {
                     runAuthAction(mode: .signUp)
                 }
             }
 
-            HStack(spacing: ReasiSpacing.s3) {
-                secondaryAuthButton("Reset password", symbol: "key") {
-                    runAuthAction(mode: .resetPassword)
-                }
-
-                secondaryAuthButton("Resend email", symbol: "envelope.badge") {
-                    runAuthAction(mode: .resendVerification)
-                }
+            secondaryAuthButton("Forgot password", symbol: "key") {
+                runAuthAction(mode: .resetPassword)
             }
 
             #if DEBUG
@@ -236,8 +265,26 @@ struct ProfileView: View {
         .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
     }
 
-    private var signedInControls: some View {
-        VStack(spacing: ReasiSpacing.s3) {
+    private var signedInAccountCard: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack(spacing: ReasiSpacing.s3) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.reasi.success)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(accountIdentityTitle)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                        .lineLimit(1)
+                    Text(authMethodLabel)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                }
+
+                Spacer()
+            }
+
             if supabase.currentAuthMethod == .email && !supabase.emailIsVerified {
                 HStack(alignment: .top, spacing: ReasiSpacing.s3) {
                     Image(systemName: "exclamationmark.circle")
@@ -254,70 +301,249 @@ struct ProfileView: View {
                 }
             }
 
-            Button {
-                runAuthAction(mode: .signOut)
-            } label: {
-                Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(Color.reasi.surfaceHigh, in: Capsule())
+            if authIsBusy {
+                HStack(spacing: ReasiSpacing.s3) {
+                    ProgressView()
+                        .tint(Color.reasi.text)
+                    Text("Updating your account")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
             }
-            .buttonStyle(ReasiPressStyle())
-            .disabled(authIsBusy)
+
+            if let authMessage {
+                Text(authMessage)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(isErrorMessage(authMessage) ? Color.reasi.danger : Color.reasi.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(ReasiSpacing.s5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .stroke(Color.reasi.border, lineWidth: 1)
         }
     }
 
-    private var accountCard: some View {
-        VStack(spacing: 1) {
-            profileRow("Selected store", value: appState.selectedStore.name, symbol: "shippingbox")
-            privacyPolicyRow
-            Button {
-                showDeleteConfirmation = true
-            } label: {
-                HStack(spacing: ReasiSpacing.s4) {
-                    Image(systemName: "trash")
-                        .frame(width: 22)
-                        .foregroundStyle(Color.reasi.danger)
-                    Text("Delete account")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.danger)
-                    Spacer()
-                    Text(supabase.isSignedIn ? "Available" : "Sign in first")
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(Color.reasi.muted)
+    private var planPreferencesSection: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            sectionTitle("Plan preferences")
+
+            VStack(spacing: 1) {
+                Button {
+                    ReasiHaptics.light()
+                    showStorePicker = true
+                } label: {
+                    profileRow(
+                        "Shopping at",
+                        value: appState.selectedStore.name,
+                        symbol: "storefront",
+                        accessory: .chevron
+                    )
                 }
-                .padding(ReasiSpacing.s4)
-                .background(Color.reasi.surface)
+                .buttonStyle(ReasiPressStyle())
+
+                profileRow(
+                    "Main goal",
+                    value: onboarding.preferences.purpose?.title ?? "Not set",
+                    symbol: onboarding.preferences.purpose?.symbol ?? "sparkles"
+                )
+                profileRow(
+                    "Cooking for",
+                    value: onboarding.preferences.household?.title ?? "Two (default)",
+                    symbol: "person.2"
+                )
+                profileRow(
+                    "Food styles",
+                    value: foodStylesSummary,
+                    symbol: "fork.knife"
+                )
             }
-            .buttonStyle(ReasiPressStyle())
-            .disabled(!supabase.isSignedIn || authIsBusy)
+            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+
+            if let storeSyncMessage {
+                Label(storeSyncMessage, systemImage: "icloud.slash")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+    }
+
+    private var supportSection: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            sectionTitle("Support & privacy")
+
+            VStack(spacing: 1) {
+                privacyPolicyRow
+                profileRow("App version", value: appVersion, symbol: "info.circle")
+            }
+            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+        }
+    }
+
+    private var accountActionsSection: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            sectionTitle("Account")
+
+            VStack(spacing: 1) {
+                Button {
+                    runAuthAction(mode: .signOut)
+                } label: {
+                    profileRow(
+                        "Sign out",
+                        symbol: "rectangle.portrait.and.arrow.right"
+                    )
+                }
+                .buttonStyle(ReasiPressStyle())
+                .disabled(authIsBusy)
+
+                Button {
+                    showDeleteConfirmation = true
+                } label: {
+                    HStack(spacing: ReasiSpacing.s4) {
+                        Image(systemName: "trash")
+                            .frame(width: 22)
+                            .foregroundStyle(Color.reasi.danger)
+                        Text("Delete account")
+                            .font(ReasiTypography.bodyMedium)
+                            .foregroundStyle(Color.reasi.danger)
+                        Spacer()
+                    }
+                    .padding(ReasiSpacing.s4)
+                    .frame(minHeight: 54)
+                    .background(Color.reasi.surface)
+                    .accessibilityElement(children: .combine)
+                }
+                .buttonStyle(ReasiPressStyle())
+                .disabled(authIsBusy)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+        }
+    }
+
+    #if DEBUG
+    private var developerDiagnosticsSection: some View {
+        DisclosureGroup(isExpanded: $showDeveloperDiagnostics) {
+            VStack(spacing: 1) {
+                developerStatusRow(supabase.status)
+                developerStatusRow(analytics.status)
+                developerStatusRow(revenueCat.status)
+            }
+            .padding(.top, ReasiSpacing.s3)
+        } label: {
+            Label("Developer diagnostics", systemImage: "wrench.and.screwdriver")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.muted)
+        }
+        .tint(Color.reasi.muted)
+        .padding(ReasiSpacing.s4)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+    #endif
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(ReasiTypography.caption)
+            .foregroundStyle(Color.reasi.muted)
+            .textCase(.uppercase)
+            .padding(.leading, ReasiSpacing.s1)
+    }
+
+    private var foodStylesSummary: String {
+        let titles = onboarding.preferences.foodStyles
+            .map(\.title)
+            .sorted()
+        guard !titles.isEmpty else { return "Not set" }
+        if titles.count <= 2 { return titles.joined(separator: ", ") }
+        return "\(titles.prefix(2).joined(separator: ", ")) +\(titles.count - 2)"
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { "\(version) (\($0))" } ?? version
+    }
+
+    private var authMethodLabel: String {
+        switch supabase.currentAuthMethod {
+        case .apple:
+            supabase.currentUserUsesApplePrivateRelay ? "Apple · Private email" : "Apple"
+        case .google:
+            "Google"
+        case .email:
+            supabase.emailIsVerified ? "Email verified" : "Email verification needed"
+        case .anonymous:
+            "Development session"
+        case .unknown, .none:
+            "Signed in"
+        }
+    }
+
+    private var accountIdentityTitle: String {
+        if let email = supabase.currentUserEmail?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !email.isEmpty {
+            return email
+        }
+        return supabase.currentAuthMethod == .anonymous ? "Test account" : "Reasi account"
+    }
+
+    private func selectStore(_ store: StoreSummary) {
+        guard store.id != appState.selectedStore.id else { return }
+        storeSyncMessage = nil
+        withAnimation(ReasiMotion.tactileSpring) {
+            appState.selectStore(store)
+            onboarding.selectStore(store)
+        }
+        analytics.capture(.storeSelected, properties: [
+            "store_id": .string(store.id.rawValue),
+            "store_name": .string(store.name),
+            "source": .string("profile")
+        ])
+
+        let previousTask = storeSyncTask
+        let preferences = onboarding.preferences
+        storeSyncTask = Task {
+            await previousTask?.value
+            guard !Task.isCancelled,
+                  supabase.isSignedIn,
+                  onboarding.preferences.selectedStoreId == store.id else { return }
+
+            do {
+                // This writes both user_preferences and profiles.selected_store_id.
+                try await supabase.saveOnboardingPreferences(preferences)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard onboarding.preferences.selectedStoreId == store.id else { return }
+                storeSyncMessage = "Saved on this iPhone. Store sync will retry when you're online."
+            }
+        }
     }
 
     @ViewBuilder
     private var privacyPolicyRow: some View {
         if let privacyPolicyURL = supabase.config.privacyPolicyURL {
             Link(destination: privacyPolicyURL) {
-                HStack(spacing: ReasiSpacing.s4) {
-                    Image(systemName: "hand.raised")
-                        .frame(width: 22)
-                        .foregroundStyle(Color.reasi.muted)
-                    Text("Privacy policy")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.reasi.muted)
-                }
-                .padding(ReasiSpacing.s4)
-                .background(Color.reasi.surface)
+                profileRow("Privacy policy", symbol: "hand.raised", accessory: .externalLink)
             }
         } else {
-            profileRow("Privacy policy", value: "URL not configured", symbol: "hand.raised")
+            profileRow("Privacy policy", value: "Unavailable", symbol: "hand.raised")
         }
     }
 
@@ -337,40 +563,50 @@ struct ProfileView: View {
     }
 
     private var accountStatusText: String {
-        guard supabase.isSignedIn else {
-            if !supabase.config.hasSupabase {
-                return "Supabase is not configured. Live features are unavailable."
-            }
-            if supabase.config.googleClientID.isEmpty {
-                return "Email is ready. Add Google client IDs to enable Google sign-in."
-            }
-            return "Google and email are available."
+        if !supabase.config.hasSupabase {
+            return "Sign-in is temporarily unavailable."
         }
 
-        let method = supabase.currentAuthMethod?.rawValue.capitalized ?? "Supabase"
-        return "\(supabase.authLabel) · \(method)"
+        var methods: [String] = []
+        if supabase.config.appleAuthEnabled {
+            methods.append("Apple")
+        }
+        if !supabase.config.googleClientID.isEmpty {
+            methods.append("Google")
+        }
+        methods.append("email")
+
+        switch methods.count {
+        case 1:
+            return "Continue with \(methods[0])."
+        case 2:
+            return "Continue with \(methods[0]) or \(methods[1])."
+        default:
+            return "Continue with \(methods.dropLast().joined(separator: ", ")), or \(methods.last!)."
+        }
     }
 
     #if DEBUG
-    private func statusCard(_ status: ServiceStatus) -> some View {
-        HStack(alignment: .top, spacing: ReasiSpacing.s4) {
+    private func developerStatusRow(_ status: ServiceStatus) -> some View {
+        HStack(alignment: .center, spacing: ReasiSpacing.s3) {
             Image(systemName: status.state == .configured ? "checkmark.seal.fill" : "circle.dashed")
                 .foregroundStyle(status.state == .configured ? Color.reasi.success : Color.reasi.muted)
             VStack(alignment: .leading, spacing: 4) {
                 Text(status.name)
-                    .font(ReasiTypography.headline)
+                    .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.text)
                 Text(status.detail)
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.textMuted)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(2)
             }
             Spacer()
             Text(status.state.rawValue)
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.muted)
         }
-        .padding(ReasiSpacing.s5)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .padding(ReasiSpacing.s3)
+        .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
     }
     #endif
 
@@ -413,7 +649,26 @@ struct ProfileView: View {
         .opacity(authIsBusy || !supabase.config.hasSupabase ? 0.62 : 1)
     }
 
-    private func profileRow(_ title: String, value: String, symbol: String) -> some View {
+    private enum ProfileRowAccessory {
+        case none
+        case chevron
+        case externalLink
+
+        var symbol: String? {
+            switch self {
+            case .none: nil
+            case .chevron: "chevron.right"
+            case .externalLink: "arrow.up.right"
+            }
+        }
+    }
+
+    private func profileRow(
+        _ title: String,
+        value: String? = nil,
+        symbol: String,
+        accessory: ProfileRowAccessory = .none
+    ) -> some View {
         HStack(spacing: ReasiSpacing.s4) {
             Image(systemName: symbol)
                 .frame(width: 22)
@@ -422,12 +677,26 @@ struct ProfileView: View {
                 .font(ReasiTypography.bodyMedium)
                 .foregroundStyle(Color.reasi.text)
             Spacer()
-            Text(value)
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
+            if let value, !value.isEmpty {
+                Text(value)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+            if let accessorySymbol = accessory.symbol {
+                Image(systemName: accessorySymbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.reasi.dim)
+            }
         }
         .padding(ReasiSpacing.s4)
+        .frame(minHeight: 54)
         .background(Color.reasi.surface)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(value ?? "")
     }
 
     private func handleAppleCompletion(_ result: Result<ASAuthorization, Error>) {
@@ -519,7 +788,7 @@ struct ProfileView: View {
                     nonce: nonce
                 )
                 captureSuccessfulAuth(method: .google, signedUp: false)
-                authMessage = "Signed in with Google. Plan my week will use your Supabase session."
+                authMessage = "Signed in with Google."
                 ReasiHaptics.success()
             } catch {
                 if supabase.isAuthCancellation(error) {
@@ -584,8 +853,8 @@ struct ProfileView: View {
                     )
                     captureSuccessfulAuth(method: .apple, signedUp: outcome.isNewUser)
                     authMessage = outcome.usesPrivateRelayEmail
-                        ? "Signed in with Apple using Private Relay. Your real email stays hidden."
-                        : "Signed in with Apple. Plan my week will use your Supabase session."
+                        ? "Signed in with Apple. Your email stays private."
+                        : "Signed in with Apple."
                     ReasiHaptics.success()
 
                 case .signIn:
@@ -594,8 +863,8 @@ struct ProfileView: View {
                     try await supabase.signIn(email: trimmedEmailOrCurrentEmail, password: password)
                     captureSuccessfulAuth(method: .email, signedUp: false)
                     authMessage = supabase.emailIsVerified
-                        ? "Signed in. Plan my week will use your Supabase session."
-                        : "Signed in, but email is not verified yet."
+                        ? "You're signed in."
+                        : "You're signed in. Verify your email before using live planning tools."
                     ReasiHaptics.success()
 
                 case .signUp:
@@ -604,7 +873,7 @@ struct ProfileView: View {
                     try await supabase.signUp(email: trimmedEmail, password: password)
                     if supabase.isSignedIn {
                         captureSuccessfulAuth(method: .email, signedUp: true)
-                        authMessage = "Account created and signed in. Plan my week will use your Supabase session."
+                        authMessage = "Account created. You're signed in."
                     } else {
                         capturePendingEmailSignUp()
                         authMessage = "Account created. Check your email, tap the verification link, then sign in here."
@@ -774,7 +1043,7 @@ private enum ProfileAuthError: LocalizedError {
         case .missingEmail:
             "Enter your email first."
         case .nonceGenerationFailed:
-            "Could not create a secure Google sign-in nonce."
+            "Could not start secure sign-in. Please try again."
         case .passwordTooShort:
             "Password must be at least 6 characters."
         }
@@ -798,5 +1067,6 @@ private extension UIApplication {
         .environment(SupabaseService())
         .environment(AnalyticsService())
         .environment(RevenueCatService())
+        .environment(OnboardingStore())
         .preferredColorScheme(.dark)
 }
