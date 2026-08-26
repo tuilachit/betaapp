@@ -85,6 +85,7 @@ final class CoreLoopStore {
     var isSwitchingStore = false
     var switchingStoreName: String?
     var storeSwitchMessage: String?
+    var failedStoreSwitch: StoreSummary?
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
@@ -98,7 +99,6 @@ final class CoreLoopStore {
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var generationProgressTask: Task<Void, Never>?
     @ObservationIgnored private var activeGenerationID: UUID?
-    @ObservationIgnored private var requestedStore: StoreSummary?
     @ObservationIgnored private var storeSwitchTask: Task<Void, Never>?
 
     private let lastSuccessfulWeekKeyPrefix = "reasi.lastSuccessfulGeneratedWeekKey"
@@ -139,11 +139,19 @@ final class CoreLoopStore {
 
     func requestStoreSwitch(
         to store: StoreSummary,
+        appState: AppState,
         supabase: SupabaseService,
-        analytics: AnalyticsService
+        analytics: AnalyticsService,
+        completion: (@MainActor (Bool, StoreSummary) -> Void)? = nil
     ) {
-        requestedStore = store
-        guard storeSwitchTask == nil else { return }
+        failedStoreSwitch = nil
+        guard storeSwitchTask == nil else {
+            if let displayedStore = FixtureStores.store(id: plan.shoppingList.storeId) {
+                appState.selectStore(displayedStore)
+                completion?(false, displayedStore)
+            }
+            return
+        }
 
         storeSwitchTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -152,37 +160,53 @@ final class CoreLoopStore {
                 self.isSwitchingStore = false
                 self.switchingStoreName = nil
             }
-
-            while let target = self.requestedStore, !Task.isCancelled {
-                self.requestedStore = nil
-                await self.performStoreSwitch(to: target, supabase: supabase, analytics: analytics)
-            }
+            let outcome = await self.performStoreSwitch(
+                to: store,
+                appState: appState,
+                supabase: supabase,
+                analytics: analytics
+            )
+            completion?(outcome.succeeded, outcome.confirmedStore)
         }
     }
 
     private func performStoreSwitch(
         to store: StoreSummary,
+        appState: AppState,
         supabase: SupabaseService,
         analytics: AnalyticsService
-    ) async {
+    ) async -> (succeeded: Bool, confirmedStore: StoreSummary) {
         storeSwitchMessage = nil
+        let previousStore = FixtureStores.store(id: plan.shoppingList.storeId)
+            ?? FixtureStores.store(id: plan.storeId)
+            ?? appState.selectedStore
 
         guard hasPlan else {
             syncFixturePlan(to: store)
-            return
+            try? await supabase.saveSelectedStore(store.id)
+            appState.selectStore(store)
+            return (true, store)
         }
-        guard plan.storeId != store.id || plan.shoppingList.storeId != store.id else { return }
+        guard plan.storeId != store.id || plan.shoppingList.storeId != store.id else {
+            try? await supabase.saveSelectedStore(store.id)
+            appState.selectStore(store)
+            return (true, store)
+        }
 
         if plan.source == .fixture {
             withAnimation(ReasiMotion.fast) {
                 syncFixturePlan(to: store)
+                appState.selectStore(store)
             }
-            return
+            try? await supabase.saveSelectedStore(store.id)
+            return (true, store)
         }
 
         guard supabase.isSignedIn else {
+            appState.selectStore(previousStore)
+            failedStoreSwitch = store
             storeSwitchMessage = "Sign in again to update this list for \(store.shortName)."
-            return
+            return (false, previousStore)
         }
 
         isSwitchingStore = true
@@ -190,10 +214,10 @@ final class CoreLoopStore {
         let existingPlan = plan
 
         do {
-            try await supabase.saveSelectedStore(store.id)
             var refreshed = try await supabase.regroupShoppingList(
                 shoppingListId: existingPlan.shoppingList.id,
-                for: store.id
+                from: existingPlan.shoppingList.storeId,
+                to: store.id
             )
             guard refreshed.storeId == store.id, refreshed.shoppingList.storeId == store.id else {
                 throw ReasiServiceError.invalidResponse
@@ -204,29 +228,32 @@ final class CoreLoopStore {
                 setItemChecked(itemId, checked: checkedStates[itemId] ?? false, in: &refreshed)
             }
 
-            // A newer selection waits in the serialized queue. Do not flash this intermediate route.
-            guard requestedStore == nil else { return }
-
             withAnimation(ReasiMotion.base) {
                 plan = refreshed
+                appState.selectStore(store)
                 checkedItemIDs = Self.checkedIDs(from: refreshed)
                 progressMilestones = []
             }
             persistPlanCache()
             persistCheckCache()
+            failedStoreSwitch = nil
             ReasiHaptics.success()
+            return (true, store)
         } catch {
-            guard requestedStore == nil else { return }
-            storeSwitchMessage = supabase.userFacingMessage(
+            appState.selectStore(previousStore)
+            failedStoreSwitch = store
+            let reason = supabase.userFacingMessage(
                 for: error,
-                fallback: "The store changed, but item locations could not update yet. Try again when you are online."
+                fallback: "Item locations could not update yet. Try again when you are online."
             )
+            storeSwitchMessage = "Still showing \(previousStore.shortName). \(reason)"
             analytics.capture(.storeSelected, properties: [
                 "store_id": .string(store.id.rawValue),
                 "store_name": .string(store.name),
                 "regroup_succeeded": .bool(false)
             ])
             ReasiHaptics.warning()
+            return (false, previousStore)
         }
     }
 
@@ -272,7 +299,19 @@ final class CoreLoopStore {
         defer { isRestoringPlan = false }
 
         do {
-            guard var restored = try await supabase.fetchLatestWeekPlan() else {
+            let cachedPlan = activeUserId.flatMap { localCache.loadPlan(userId: $0) }
+            let remotePlan: WeekPlan?
+            if let cachedPlan, cachedPlan.plan.source == .supabase {
+                if let exactPlan = try await supabase.fetchWeekPlan(id: cachedPlan.plan.id) {
+                    remotePlan = exactPlan
+                } else {
+                    remotePlan = try await supabase.fetchLatestWeekPlan()
+                }
+            } else {
+                remotePlan = try await supabase.fetchLatestWeekPlan()
+            }
+
+            guard var restored = remotePlan else {
                 if let activeUserId {
                     localCache.remove(userId: activeUserId)
                 }
@@ -280,7 +319,6 @@ final class CoreLoopStore {
                 return
             }
 
-            let cachedPlan = activeUserId.flatMap { localCache.loadPlan(userId: $0) }
             if cachedPlan?.plan.shoppingList.id == restored.shoppingList.id {
                 pendingImports = cachedPlan?.pendingImports ?? []
                 addedImportKeys = Set(pendingImports.map(\.idempotencyKey))
@@ -348,6 +386,7 @@ final class CoreLoopStore {
         isSwitchingStore = false
         switchingStoreName = nil
         storeSwitchMessage = nil
+        failedStoreSwitch = nil
     }
 
     func generateWeekPlan(
@@ -770,7 +809,6 @@ final class CoreLoopStore {
         generationTask = nil
         generationProgressTask = nil
         storeSwitchTask = nil
-        requestedStore = nil
         itemSyncTasks = [:]
         activeGenerationID = nil
     }

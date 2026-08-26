@@ -716,23 +716,30 @@ final class SupabaseService {
         #endif
     }
 
-    func regroupShoppingList(shoppingListId: String, for storeId: StoreID) async throws -> WeekPlan {
+    func regroupShoppingList(
+        shoppingListId: String,
+        from expectedStoreId: StoreID,
+        to storeId: StoreID
+    ) async throws -> WeekPlan {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
             throw AuthFlowError.notSignedIn
         }
 
-        let _: RegroupShoppingListResponse = try await client.functions.invoke(
+        let response: RegroupShoppingListResponse = try await client.functions.invoke(
             "regroup-shopping-list",
             options: FunctionInvokeOptions(
                 body: RegroupShoppingListInput(
                     shoppingListId: shoppingListId,
-                    storeId: storeId
+                    storeId: storeId,
+                    expectedStoreId: expectedStoreId
                 )
             )
         )
 
-        guard let refreshedPlan = try await fetchLatestWeekPlan() else {
+        guard response.shoppingListId == shoppingListId,
+              response.storeId == storeId,
+              let refreshedPlan = try await fetchWeekPlan(id: response.mealPlanId) else {
             throw ReasiServiceError.invalidResponse
         }
         return refreshedPlan
@@ -742,19 +749,39 @@ final class SupabaseService {
     }
 
     func fetchLatestWeekPlan() async throws -> WeekPlan? {
+        try await fetchPersistedWeekPlan(planId: nil)
+    }
+
+    func fetchWeekPlan(id: String) async throws -> WeekPlan? {
+        try await fetchPersistedWeekPlan(planId: id)
+    }
+
+    private func fetchPersistedWeekPlan(planId: String?) async throws -> WeekPlan? {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             throw AuthFlowError.notSignedIn
         }
 
-        let planRows: [PersistedMealPlanSummaryRow] = try await client
-            .from("meal_plans")
-            .select("id,name,store_id,week_start,planning_notes,created_at")
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .limit(1)
-            .execute()
-            .value
+        let planRows: [PersistedMealPlanSummaryRow]
+        if let planId {
+            planRows = try await client
+                .from("meal_plans")
+                .select("id,name,store_id,week_start,planning_notes,created_at")
+                .eq("user_id", value: userId)
+                .eq("id", value: planId)
+                .limit(1)
+                .execute()
+                .value
+        } else {
+            planRows = try await client
+                .from("meal_plans")
+                .select("id,name,store_id,week_start,planning_notes,created_at")
+                .eq("user_id", value: userId)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+        }
 
         guard let planRow = planRows.first else { return nil }
         guard let storeId = planRow.storeId.flatMap(StoreID.init(rawValue:)),
@@ -1123,6 +1150,7 @@ final class SupabaseService {
             options: FunctionInvokeOptions(
                 body: ShoppingAssistantInput(
                     shoppingListId: shoppingList.id,
+                    expectedStoreId: shoppingList.storeId,
                     threadId: threadId,
                     message: message,
                     shoppingListSnapshot: listSnapshot
@@ -1577,10 +1605,12 @@ private struct SearchProductsInput: Encodable {
 private struct RegroupShoppingListInput: Encodable {
     let shoppingListId: String
     let storeId: StoreID
+    let expectedStoreId: StoreID
 }
 
 private struct RegroupShoppingListResponse: Decodable {
     let shoppingListId: String
+    let mealPlanId: String
     let storeId: StoreID
     let storeName: String
     let itemCount: Int
@@ -1598,6 +1628,7 @@ private struct CompareProductsInput: Encodable {
 
 private struct ShoppingAssistantInput: Encodable {
     let shoppingListId: String
+    let expectedStoreId: StoreID
     let threadId: String?
     let message: String
     let shoppingListSnapshot: ShoppingAssistantListSnapshot

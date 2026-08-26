@@ -22,7 +22,6 @@ struct ProfileView: View {
     @State private var showDeleteConfirmation = false
     @State private var activeSettingsDestination: ProfileSettingsDestination?
     @State private var appleRawNonce: String?
-    @State private var storeSyncTask: Task<Void, Never>?
     @State private var preferenceSyncMessage: String?
 
     var body: some View {
@@ -557,37 +556,27 @@ struct ProfileView: View {
     }
 
     private func selectStore(_ store: StoreSummary) {
-        guard store.id != appState.selectedStore.id else { return }
+        let displayedStoreId = coreLoop.hasPlan ? coreLoop.plan.shoppingList.storeId : appState.selectedStore.id
+        guard store.id != displayedStoreId || store.id != appState.selectedStore.id else { return }
         preferenceSyncMessage = nil
-        withAnimation(ReasiMotion.tactileSpring) {
-            appState.selectStore(store)
-            onboarding.selectStore(store)
-        }
         analytics.capture(.storeSelected, properties: [
             "store_id": .string(store.id.rawValue),
             "store_name": .string(store.name),
             "source": .string("profile")
         ])
 
-        let previousTask = storeSyncTask
-        let preferences = onboarding.preferences
-        storeSyncTask = Task {
-            await previousTask?.value
-            guard !Task.isCancelled,
-                  supabase.isSignedIn,
-                  onboarding.preferences.selectedStoreId == store.id else { return }
-
-            do {
-                // This writes both user_preferences and profiles.selected_store_id.
-                try await supabase.saveOnboardingPreferences(preferences)
-                onboarding.markPreferencesSynced()
-            } catch is CancellationError {
-                return
-            } catch {
-                guard onboarding.preferences.selectedStoreId == store.id else { return }
-                preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
+        coreLoop.requestStoreSwitch(
+            to: store,
+            appState: appState,
+            supabase: supabase,
+            analytics: analytics,
+            completion: { succeeded, confirmedStore in
+                onboarding.applyConfirmedStore(confirmedStore)
+                if !succeeded {
+                    preferenceSyncMessage = "Your previous store is still selected. Try again when you're online."
+                }
             }
-        }
+        )
     }
 
     private func savePlanningPreferences(_ preferences: OnboardingPreferences) async {

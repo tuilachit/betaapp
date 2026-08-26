@@ -11,6 +11,7 @@ struct ShoppingListPlaceholderView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
     @Environment(UserSettingsStore.self) private var userSettings
+    @Environment(OnboardingStore.self) private var onboarding
 
     @State private var didTrackView = false
     @State private var showAddDialog = false
@@ -32,13 +33,15 @@ struct ShoppingListPlaceholderView: View {
                     header
                     if coreLoop.generationState.isGenerating {
                         loadingSections
-                    } else if coreLoop.isSwitchingStore {
-                        storeSwitchLoading
                     } else if !coreLoop.hasPlan {
                         emptyListState
                     } else {
                         progressView
                         addItemSurface
+
+                        if coreLoop.isSwitchingStore {
+                            storeSwitchLoading
+                        }
 
                         if inputIsBusy {
                             inputLoadingCard
@@ -55,17 +58,34 @@ struct ShoppingListPlaceholderView: View {
 
 
                         if let storeSwitchMessage = coreLoop.storeSwitchMessage {
-                            Label(storeSwitchMessage, systemImage: "exclamationmark.triangle")
-                                .font(ReasiTypography.caption)
-                                .foregroundStyle(Color.reasi.warning)
-                                .padding(ReasiSpacing.s4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                                Label(storeSwitchMessage, systemImage: "exclamationmark.triangle")
+                                    .font(ReasiTypography.caption)
+                                    .foregroundStyle(Color.reasi.warning)
+
+                                if let failedStore = coreLoop.failedStoreSwitch {
+                                    Button("Try \(failedStore.shortName) again") {
+                                        coreLoop.requestStoreSwitch(
+                                            to: failedStore,
+                                            appState: appState,
+                                            supabase: supabase,
+                                            analytics: analytics,
+                                            completion: syncConfirmedStore
+                                        )
+                                    }
+                                    .buttonStyle(ReasiPrimaryButtonStyle())
+                                }
+                            }
+                            .padding(ReasiSpacing.s4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                         }
 
                         if coreLoop.plan.storeId != appState.selectedStore.id {
                             storeRouteUnavailableState
-                        } else if coreLoop.plan.shoppingList.sections.isEmpty {
+                        }
+
+                        if coreLoop.plan.shoppingList.sections.isEmpty {
                             emptyShoppingItemsState
                         } else {
                             sections
@@ -228,6 +248,11 @@ struct ShoppingListPlaceholderView: View {
         UIApplication.shared.isIdleTimerDisabled = userSettings.keepScreenAwake && coreLoop.hasPlan
     }
 
+    private var displayedStore: StoreSummary {
+        guard coreLoop.hasPlan else { return appState.selectedStore }
+        return FixtureStores.store(id: coreLoop.plan.shoppingList.storeId) ?? appState.selectedStore
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
             Text("Shopping list")
@@ -238,7 +263,7 @@ struct ShoppingListPlaceholderView: View {
                     Button {
                         selectStore(store)
                     } label: {
-                        if store.id == appState.selectedStore.id {
+                        if store.id == displayedStore.id {
                             Label(store.name, systemImage: "checkmark")
                         } else {
                             Text(store.name)
@@ -254,7 +279,7 @@ struct ShoppingListPlaceholderView: View {
                     } else {
                         Image(systemName: "storefront")
                     }
-                    Text(appState.selectedStore.name)
+                    Text(displayedStore.name)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                 }
@@ -296,20 +321,19 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private func selectStore(_ store: StoreSummary) {
-        guard store.id != appState.selectedStore.id else {
-            coreLoop.requestStoreSwitch(to: store, supabase: supabase, analytics: analytics)
-            return
-        }
-
-        withAnimation(ReasiMotion.tactileSpring) {
-            appState.selectStore(store)
-        }
+        guard store.id != displayedStore.id || store.id != appState.selectedStore.id else { return }
         ReasiHaptics.selection()
         analytics.capture(.storeSelected, properties: [
             "store_id": .string(store.id.rawValue),
             "store_name": .string(store.name)
         ])
-        coreLoop.requestStoreSwitch(to: store, supabase: supabase, analytics: analytics)
+        coreLoop.requestStoreSwitch(
+            to: store,
+            appState: appState,
+            supabase: supabase,
+            analytics: analytics,
+            completion: syncConfirmedStore
+        )
     }
 
     private var addItemSurface: some View {
@@ -364,41 +388,38 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private var storeSwitchLoading: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            HStack(spacing: ReasiSpacing.s3) {
-                ProgressView()
-                    .tint(Color.reasi.text)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Updating item locations")
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                    Text("Reordering this list for \(coreLoop.switchingStoreName ?? appState.selectedStore.name).")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
-                }
-            }
-
-            ForEach(0..<4, id: \.self) { _ in
-                SkeletonBlock(height: 68, radius: ReasiRadius.lg)
+        HStack(spacing: ReasiSpacing.s3) {
+            ProgressView()
+                .tint(Color.reasi.text)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Updating item locations")
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                Text("Still showing \(displayedStore.shortName) until \(coreLoop.switchingStoreName ?? "the new route") is ready.")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.textMuted)
             }
         }
-        .padding(ReasiSpacing.s5)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .padding(ReasiSpacing.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
     }
 
     private var storeRouteUnavailableState: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Text("Locations need an update")
+            Text("This list is arranged for \(displayedStore.shortName)")
                 .font(ReasiTypography.headline)
                 .foregroundStyle(Color.reasi.text)
-            Text("Try selecting \(appState.selectedStore.shortName) again when you are online. Reasi will not show aisles from a different store.")
+            Text("Your preferred store is \(appState.selectedStore.shortName). Update the route when you're ready.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
-            Button("Retry") {
+            Button("Update to \(appState.selectedStore.shortName)") {
                 coreLoop.requestStoreSwitch(
                     to: appState.selectedStore,
+                    appState: appState,
                     supabase: supabase,
-                    analytics: analytics
+                    analytics: analytics,
+                    completion: syncConfirmedStore
                 )
             }
             .buttonStyle(ReasiPrimaryButtonStyle())
@@ -406,6 +427,10 @@ struct ShoppingListPlaceholderView: View {
         .padding(ReasiSpacing.s5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+    }
+
+    private func syncConfirmedStore(_: Bool, _ store: StoreSummary) {
+        onboarding.applyConfirmedStore(store)
     }
 
     private var emptyListState: some View {

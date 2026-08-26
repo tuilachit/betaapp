@@ -16,6 +16,7 @@ struct ReasiApp: App {
     @State private var network = NetworkMonitor()
     @State private var userSettings = UserSettingsStore()
     @State private var showsBrandIntro = true
+    @State private var didFinishStartup = false
 
     var body: some Scene {
         WindowGroup {
@@ -41,6 +42,11 @@ struct ReasiApp: App {
                 .tint(Color.reasi.text)
                 .task {
                     await supabase.restoreSession()
+                    await onboarding.bootstrap(
+                        supabase: supabase,
+                        appState: appState,
+                        analytics: analytics
+                    )
                     coreLoop.activateUser(supabase.currentUserId, selectedStore: appState.selectedStore)
                     if supabase.hasActiveSession, let userId = supabase.currentUserId {
                         analytics.identify(userId: userId, properties: [
@@ -55,14 +61,15 @@ struct ReasiApp: App {
                         analytics.resetIdentity()
                     }
                     analytics.capture(.appOpened)
-                    await onboarding.bootstrap(
-                        supabase: supabase,
-                        appState: appState,
-                        analytics: analytics
-                    )
+                    didFinishStartup = true
                 }
                 .onChange(of: supabase.hasActiveSession) { _, hasActiveSession in
+                    guard didFinishStartup else { return }
                     Task {
+                        await onboarding.syncAfterAuthentication(
+                            supabase: supabase,
+                            appState: appState
+                        )
                         let userId = hasActiveSession ? supabase.currentUserId : nil
                         coreLoop.activateUser(userId, selectedStore: appState.selectedStore)
                         if let userId {
@@ -77,10 +84,6 @@ struct ReasiApp: App {
                         } else {
                             analytics.resetIdentity()
                         }
-                        await onboarding.syncAfterAuthentication(
-                            supabase: supabase,
-                            appState: appState
-                        )
                     }
                 }
                 .onOpenURL { url in
@@ -110,10 +113,6 @@ struct ReasiApp: App {
                             "auth_method": .string(method.rawValue),
                             "email_verified": .bool(supabase.emailIsVerified)
                         ])
-                        await onboarding.syncAfterAuthentication(
-                            supabase: supabase,
-                            appState: appState
-                        )
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in

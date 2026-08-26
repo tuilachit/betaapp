@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
+    @Environment(OnboardingStore.self) private var onboarding
 
     @State private var showStorePicker = false
 
@@ -59,7 +60,7 @@ struct HomeView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("New meal plans use this store. Existing generated plans and lists keep the store they were created for.")
+            Text("Reasi will keep your current list visible while it reorders item locations for this store.")
         }
         .task {
             analytics.capture(.coreHomeViewed)
@@ -165,6 +166,12 @@ struct HomeView: View {
                             ? Color.reasi.muted
                             : Color.reasi.warning
                     )
+
+                if coreLoop.plan.storeId != appState.selectedStore.id {
+                    Text("This list is still arranged for \(coreLoop.plan.storeName).")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.warning)
+                }
 
                 HStack(spacing: ReasiSpacing.s2) {
                     PillMetric(label: "\(coreLoop.plan.meals.count) dinners", symbol: "fork.knife")
@@ -310,18 +317,22 @@ struct HomeView: View {
     }
 
     private func selectStore(_ store: StoreSummary) {
-        guard store.id != appState.selectedStore.id else { return }
-        withAnimation(ReasiMotion.tactileSpring) {
-            appState.selectStore(store)
-        }
+        let displayedStoreId = coreLoop.hasPlan ? coreLoop.plan.shoppingList.storeId : appState.selectedStore.id
+        guard store.id != displayedStoreId || store.id != appState.selectedStore.id else { return }
         ReasiHaptics.selection()
         analytics.capture(.storeSelected, properties: [
             "store_id": .string(store.id.rawValue),
             "store_name": .string(store.name)
         ])
-        Task {
-            try? await supabase.saveSelectedStore(store.id)
-        }
+        coreLoop.requestStoreSwitch(
+            to: store,
+            appState: appState,
+            supabase: supabase,
+            analytics: analytics,
+            completion: { _, confirmedStore in
+                onboarding.applyConfirmedStore(confirmedStore)
+            }
+        )
     }
 
     @ViewBuilder
