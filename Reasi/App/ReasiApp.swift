@@ -15,9 +15,17 @@ struct ReasiApp: App {
     @State private var revenueCat = RevenueCatService()
     @State private var network = NetworkMonitor()
     @State private var userSettings = UserSettingsStore()
-    @State private var showsBrandIntro = true
+    @State private var showsBrandIntro = Self.shouldShowBrandIntro
     @State private var didFinishStartup = false
     @State private var authenticationRestoreTask: Task<Void, Never>?
+
+    private static var shouldShowBrandIntro: Bool {
+        #if DEBUG
+        !ProcessInfo.processInfo.arguments.contains("-ReasiSkipBrandIntro")
+        #else
+        true
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
