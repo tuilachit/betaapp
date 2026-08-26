@@ -23,20 +23,6 @@ struct AppShellView: View {
             )
         }
         .background(Color.reasi.background.ignoresSafeArea())
-        .onChange(of: appState.selectedStore.id, initial: true) { _, _ in
-            coreLoop.requestStoreSwitch(
-                to: appState.selectedStore,
-                supabase: supabase,
-                analytics: analytics
-            )
-        }
-        .onChange(of: coreLoop.plan.id, initial: true) { _, _ in
-            coreLoop.requestStoreSwitch(
-                to: appState.selectedStore,
-                supabase: supabase,
-                analytics: analytics
-            )
-        }
     }
 
     @ViewBuilder

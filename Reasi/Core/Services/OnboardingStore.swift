@@ -70,23 +70,20 @@ final class OnboardingStore {
         }
 
         if supabase.isSignedIn {
-            if defaults.bool(forKey: pendingPreferenceSyncKey), preferences.completedAt != nil {
-                do {
-                    try await supabase.saveOnboardingPreferences(preferences)
-                    markPreferencesSynced()
-                } catch {
-                    errorMessage = "Your latest preferences are saved on this iPhone and will sync when you're online."
-                }
-                applySelectedStore(to: appState)
-                persistLocal(completed: true)
-                hasCompleted = true
-                isHydrating = false
-                return
-            }
-
             do {
                 if let remote = try await supabase.fetchOnboardingPreferences(), remote.completedAt != nil {
                     preferences = remote
+                    markPreferencesSynced()
+                    applySelectedStore(to: appState)
+                    persistLocal(completed: true)
+                    hasCompleted = true
+                    isHydrating = false
+                    return
+                }
+
+                if defaults.bool(forKey: pendingPreferenceSyncKey), preferences.completedAt != nil {
+                    try await supabase.saveOnboardingPreferences(preferences)
+                    markPreferencesSynced()
                     applySelectedStore(to: appState)
                     persistLocal(completed: true)
                     hasCompleted = true
@@ -94,7 +91,12 @@ final class OnboardingStore {
                     return
                 }
             } catch {
-                errorMessage = "Your saved preferences could not be loaded. You can still continue locally."
+                errorMessage = "Your saved preferences could not be loaded. Reasi is using the choices saved on this iPhone for now."
+                if hasCompleted {
+                    applySelectedStore(to: appState)
+                    isHydrating = false
+                    return
+                }
             }
         }
 
@@ -194,6 +196,12 @@ final class OnboardingStore {
         ReasiHaptics.selection()
         persistDraft()
         markPreferencesPendingIfCompleted()
+    }
+
+    func applyConfirmedStore(_ store: StoreSummary) {
+        guard preferences.selectedStoreId != store.id else { return }
+        preferences.selectedStoreId = store.id
+        persistDraft()
     }
 
     func updateProfilePreferences(_ updated: OnboardingPreferences) {
