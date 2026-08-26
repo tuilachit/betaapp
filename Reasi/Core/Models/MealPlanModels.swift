@@ -421,3 +421,51 @@ struct GenerateWeekPlanInput: Codable, Hashable {
     let weekStart: String?
     let idempotencyKey: String?
 }
+
+enum GenerationRequestStatus: String, Codable, Hashable {
+    case queued
+    case inProgress = "in_progress"
+    case cancelRequested = "cancel_requested"
+    case completed
+    case failed
+    case expired
+
+    var isTerminal: Bool {
+        switch self {
+        case .completed, .failed, .expired:
+            true
+        case .queued, .inProgress, .cancelRequested:
+            false
+        }
+    }
+}
+
+enum GenerationRequestStage: String, Codable, Hashable {
+    case preparing
+    case planningMeals = "planning_meals"
+    case organizingStoreRoute = "organizing_store_route"
+    case ready
+    case cancelled
+    case failed
+    case expired
+}
+
+struct WeekPlanGenerationRequest: Codable, Hashable {
+    let requestId: String
+    let status: GenerationRequestStatus
+    let stage: GenerationRequestStage
+    let storeId: StoreID?
+    let weekStart: String?
+    let mealPlanId: String?
+    let shoppingListId: String?
+    let errorCode: String?
+    let message: String?
+    let expiresAt: String?
+    let accessMode: String?
+    let createdAt: String?
+}
+
+enum WeekPlanGenerationStartResult: Hashable {
+    case request(WeekPlanGenerationRequest)
+    case fixture(WeekPlan)
+}

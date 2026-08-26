@@ -5,14 +5,22 @@ import SwiftUI
 enum WeekPlanGenerationState: Equatable {
     case idle
     case generating
+    case cancelling
     case succeeded
     case failed(String)
     case cancelled(String)
 
     var isGenerating: Bool {
-        if case .generating = self {
-            return true
+        switch self {
+        case .generating, .cancelling:
+            true
+        case .idle, .succeeded, .failed, .cancelled:
+            false
         }
+    }
+
+    var isCancelling: Bool {
+        if case .cancelling = self { return true }
         return false
     }
 
@@ -40,20 +48,20 @@ enum WeekPlanGenerationState: Equatable {
 
 enum WeekPlanGenerationStage: String, Equatable {
     case preparing
-    case buildingMeals
-    case organizingList
-    case saving
+    case planningMeals
+    case organizingStoreRoute
+    case ready
 
     var title: String {
         switch self {
         case .preparing:
             "Reading your preferences"
-        case .buildingMeals:
+        case .planningMeals:
             "Building seven dinners"
-        case .organizingList:
-            "Combining the shopping list"
-        case .saving:
-            "Saving your week"
+        case .organizingStoreRoute:
+            "Organizing your store route"
+        case .ready:
+            "Finishing your week"
         }
     }
 
@@ -61,12 +69,25 @@ enum WeekPlanGenerationStage: String, Equatable {
         switch self {
         case .preparing:
             "Checking household, food style, and store."
-        case .buildingMeals:
+        case .planningMeals:
             "Choosing practical meals with enough variety."
-        case .organizingList:
-            "Removing duplicates and ordering store sections."
-        case .saving:
-            "Almost there. Your plan will stay linked to your account."
+        case .organizingStoreRoute:
+            "Combining ingredients and ordering real store sections."
+        case .ready:
+            "Your new plan is ready. Loading the final details now."
+        }
+    }
+
+    init(serverStage: GenerationRequestStage) {
+        switch serverStage {
+        case .preparing:
+            self = .preparing
+        case .planningMeals:
+            self = .planningMeals
+        case .organizingStoreRoute:
+            self = .organizingStoreRoute
+        case .ready, .cancelled, .failed, .expired:
+            self = .ready
         }
     }
 }
@@ -87,8 +108,8 @@ final class CoreLoopStore {
     var storeSwitchMessage: String?
     var failedStoreSwitch: StoreSummary?
 
-    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
+    @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
     @ObservationIgnored private var progressMilestones: Set<Int> = []
     @ObservationIgnored private var activeUserId: String?
     @ObservationIgnored private var checkedStates: [String: Bool] = [:]
@@ -97,17 +118,15 @@ final class CoreLoopStore {
     @ObservationIgnored private var addedImportKeys: Set<String> = []
     @ObservationIgnored private var itemSyncTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var generationTask: Task<Void, Never>?
-    @ObservationIgnored private var generationProgressTask: Task<Void, Never>?
-    @ObservationIgnored private var activeGenerationID: UUID?
+    @ObservationIgnored private var generationClockTask: Task<Void, Never>?
+    @ObservationIgnored private var generationRunID: UUID?
+    @ObservationIgnored private var pendingGeneration: PendingGenerationRequest?
     @ObservationIgnored private var storeSwitchTask: Task<Void, Never>?
 
-    private let lastSuccessfulWeekKeyPrefix = "reasi.lastSuccessfulGeneratedWeekKey"
-
-    init(plan: WeekPlan? = nil, defaults: UserDefaults = .standard) {
+    init(plan: WeekPlan? = nil) {
         let initialPlan = plan ?? FixtureWeekPlan.current
         self.plan = initialPlan
         hasPlan = plan != nil
-        self.defaults = defaults
         checkedItemIDs = Self.checkedIDs(from: initialPlan)
     }
 
@@ -123,6 +142,10 @@ final class CoreLoopStore {
     var shoppingProgress: Double {
         guard !allShoppingItems.isEmpty else { return 0 }
         return Double(checkedCount) / Double(allShoppingItems.count)
+    }
+
+    var hasPendingGeneration: Bool {
+        pendingGeneration != nil
     }
 
     func syncFixturePlan(to store: StoreSummary) {
@@ -266,6 +289,7 @@ final class CoreLoopStore {
               let cached = localCache.loadPlan(userId: userId),
               cached.plan.source == .supabase else {
             clearVisiblePlan(selectedStore: selectedStore)
+            restorePendingGenerationCache(for: userId)
             return
         }
 
@@ -289,6 +313,7 @@ final class CoreLoopStore {
             pendingCheckItemIDs = []
         }
         progressMilestones = []
+        restorePendingGenerationCache(for: userId)
     }
 
     func restoreLatestPlan(supabase: SupabaseService, selectedStore: StoreSummary) async {
@@ -387,160 +412,304 @@ final class CoreLoopStore {
         switchingStoreName = nil
         storeSwitchMessage = nil
         failedStoreSwitch = nil
+        pendingGeneration = nil
     }
 
-    func generateWeekPlan(
-        store: StoreSummary,
+    func restorePendingGeneration(
         supabase: SupabaseService,
         analytics: AnalyticsService,
         appState: AppState,
         network: NetworkMonitor? = nil
     ) async {
+        guard supabase.isSignedIn,
+              generationTask == nil,
+              let expectedUserId = activeUserId else { return }
+
+        if pendingGeneration == nil, let activeUserId {
+            pendingGeneration = generationCache.load(userId: activeUserId)
+        }
+
+        if pendingGeneration == nil {
+            do {
+                if let remote = try await supabase.fetchLatestUnfinishedGeneration() {
+                    guard activeUserId == expectedUserId,
+                          supabase.currentUserId == expectedUserId,
+                          pendingGeneration == nil,
+                          generationTask == nil else { return }
+                    pendingGeneration = PendingGenerationRequest(
+                        idempotencyKey: remote.requestId,
+                        requestId: remote.requestId,
+                        storeId: remote.storeId ?? appState.selectedStore.id,
+                        weekStart: remote.weekStart ?? Self.isoWeekStartString(from: Date()),
+                        startedAt: remote.createdAt.flatMap(Self.dateFromISO8601) ?? Date(),
+                        stage: remote.stage,
+                        cancellationRequested: remote.status == .cancelRequested,
+                        opensWhenReady: !hasPlan
+                    )
+                    persistPendingGeneration()
+                }
+            } catch {
+                return
+            }
+        }
+
+        guard pendingGeneration != nil else { return }
+        presentPendingGeneration()
+        launchGenerationWorkflow(
+            supabase: supabase,
+            analytics: analytics,
+            appState: appState,
+            network: network
+        )
+        await Task.yield()
+    }
+
+    func startWeekPlanGeneration(
+        store: StoreSummary,
+        supabase: SupabaseService,
+        analytics: AnalyticsService,
+        appState: AppState,
+        network: NetworkMonitor? = nil
+    ) {
         guard generationTask == nil else { return }
 
-        let generationID = UUID()
-        activeGenerationID = generationID
-        let task = Task { @MainActor [weak self] in
+        if pendingGeneration == nil {
+            let weekStart = Self.isoWeekStartString(from: Date())
+            pendingGeneration = PendingGenerationRequest(
+                idempotencyKey: "ios-\(UUID().uuidString)",
+                requestId: nil,
+                storeId: store.id,
+                weekStart: weekStart,
+                startedAt: Date(),
+                stage: .preparing,
+                cancellationRequested: false,
+                opensWhenReady: !hasPlan
+            )
+            persistPendingGeneration()
+            analytics.capture(.planGenerationStarted, properties: [
+                "store_id": .string(store.id.rawValue),
+                "week_start": .string(weekStart),
+                "source": .string(supabase.status.state == .configured ? "supabase" : "fixture")
+            ])
+            ReasiHaptics.light()
+        }
+
+        presentPendingGeneration()
+        launchGenerationWorkflow(
+            supabase: supabase,
+            analytics: analytics,
+            appState: appState,
+            network: network
+        )
+    }
+
+    func cancelGeneration(
+        supabase: SupabaseService,
+        analytics: AnalyticsService,
+        appState: AppState
+    ) {
+        guard var pending = pendingGeneration else { return }
+        pending.cancellationRequested = true
+        pendingGeneration = pending
+        persistPendingGeneration()
+        generationState = .cancelling
+        ReasiHaptics.selection()
+
+        if generationTask == nil {
+            launchGenerationWorkflow(
+                supabase: supabase,
+                analytics: analytics,
+                appState: appState,
+                network: nil
+            )
+        }
+    }
+
+    func pauseGenerationPolling() {
+        generationTask?.cancel()
+        generationClockTask?.cancel()
+        generationTask = nil
+        generationClockTask = nil
+        generationRunID = nil
+    }
+
+    private func launchGenerationWorkflow(
+        supabase: SupabaseService,
+        analytics: AnalyticsService,
+        appState: AppState,
+        network: NetworkMonitor?
+    ) {
+        guard generationTask == nil, pendingGeneration != nil else { return }
+
+        let runID = UUID()
+        generationRunID = runID
+        startGenerationClock(runID: runID)
+        generationTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performWeekPlanGeneration(
-                generationID: generationID,
-                store: store,
+            defer {
+                if self.generationRunID == runID {
+                    self.generationClockTask?.cancel()
+                    self.generationClockTask = nil
+                    self.generationTask = nil
+                    self.generationRunID = nil
+                }
+            }
+            await self.runGenerationWorkflow(
+                runID: runID,
                 supabase: supabase,
                 analytics: analytics,
                 appState: appState,
                 network: network
             )
         }
-        generationTask = task
-        await task.value
     }
 
-    func cancelGeneration(analytics: AnalyticsService) {
-        guard generationTask != nil else { return }
-
-        generationTask?.cancel()
-        generationProgressTask?.cancel()
-        generationState = .cancelled("Planning stopped. Nothing was changed, and you can try again whenever you’re ready.")
-        analytics.capture(.planGenerationFailed, properties: [
-            "store_id": .string(plan.storeId.rawValue),
-            "reason": .string("cancelled"),
-            "elapsed_seconds": .int(generationElapsedSeconds)
-        ])
-        ReasiHaptics.selection()
-    }
-
-    private func performWeekPlanGeneration(
-        generationID: UUID,
-        store: StoreSummary,
+    private func runGenerationWorkflow(
+        runID: UUID,
         supabase: SupabaseService,
         analytics: AnalyticsService,
         appState: AppState,
         network: NetworkMonitor?
     ) async {
-        defer {
-            if activeGenerationID == generationID {
-                generationProgressTask?.cancel()
-                generationProgressTask = nil
-                generationTask = nil
-                activeGenerationID = nil
-            }
-        }
-
-        let weekStart = Self.isoWeekStartString(from: Date())
-        let source = supabase.status.state == .configured ? "supabase" : "fixture"
-
-        generationState = .generating
-        generationStage = .preparing
-        generationElapsedSeconds = 0
-        startGenerationProgress(for: generationID)
-        ReasiHaptics.light()
-        analytics.capture(.planGenerationStarted, properties: [
-            "store_id": .string(store.id.rawValue),
-            "week_start": .string(weekStart),
-            "source": .string(source)
-        ])
+        guard var pending = pendingGeneration else { return }
 
         do {
             if network?.isConnected == false {
                 throw ReasiServiceError.offline
             }
 
-            let previousWeekStart = try? await supabase.fetchLatestGeneratedWeekStart()
-            try Task.checkCancellation()
-
-            let generated = try await supabase.generateWeekPlan(
-                input: GenerateWeekPlanInput(
-                    storeId: store.id,
-                    weekStart: weekStart,
-                    idempotencyKey: "ios-\(UUID().uuidString)"
+            var request: WeekPlanGenerationRequest
+            if let requestId = pending.requestId {
+                request = try await supabase.generationStatus(requestId: requestId)
+            } else {
+                let result = try await supabase.startWeekPlanGeneration(
+                    input: GenerateWeekPlanInput(
+                        storeId: pending.storeId,
+                        weekStart: pending.weekStart,
+                        idempotencyKey: pending.idempotencyKey
+                    )
                 )
-            )
-            try Task.checkCancellation()
-
-            generationStage = .saving
-
-            withAnimation(ReasiMotion.slow) {
-                plan = generated
-                hasPlan = true
-                checkedItemIDs = Self.checkedIDs(from: generated)
-                checkedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: generated).map {
-                    ($0, checkedItemIDs.contains($0))
-                })
-                pendingCheckItemIDs = []
-                pendingImports = []
-                addedImportKeys = []
-                progressMilestones = []
-                generationState = .succeeded
+                switch result {
+                case .fixture(let fixture):
+                    completeGeneration(
+                        fixture,
+                        opensWhenReady: pending.opensWhenReady,
+                        analytics: analytics,
+                        appState: appState
+                    )
+                    return
+                case .request(let started):
+                    request = started
+                    pending.requestId = started.requestId
+                    pending.stage = started.stage
+                    pendingGeneration = pending
+                    persistPendingGeneration()
+                }
             }
-            persistPlanCache()
-            persistCheckCache()
 
-            analytics.capture(.planGenerationSucceeded, properties: [
-                "store_id": .string(generated.storeId.rawValue),
-                "week_start": .string(weekStart),
-                "source": .string(generated.source.rawValue),
-                "meal_count": .int(generated.meals.count),
-                "item_count": .int(allShoppingItems.count)
-            ])
-            analytics.capture(.shoppingListCreated, properties: [
-                "store_id": .string(generated.storeId.rawValue),
-                "source": .string(generated.source.rawValue),
-                "item_count": .int(allShoppingItems.count),
-                "section_count": .int(generated.shoppingList.sections.count)
-            ])
-            captureWeeklyReturnIfNeeded(
-                previousWeekStart: previousWeekStart,
-                weekStart: weekStart,
-                analytics: analytics
-            )
-            analytics.flush()
-            ReasiHaptics.success()
-            appState.showPlan()
+            while !Task.isCancelled, generationRunID == runID {
+                if pendingGeneration?.cancellationRequested == true,
+                   request.status == .queued || request.status == .inProgress {
+                    generationState = .cancelling
+                    request = try await supabase.cancelWeekPlanGeneration(requestId: request.requestId)
+                }
+
+                updatePendingGeneration(from: request)
+                switch request.status {
+                case .completed:
+                    guard let mealPlanId = request.mealPlanId,
+                          let generated = try await supabase.fetchWeekPlan(id: mealPlanId) else {
+                        throw ReasiServiceError.invalidResponse
+                    }
+                    completeGeneration(
+                        generated,
+                        opensWhenReady: pendingGeneration?.opensWhenReady ?? false,
+                        analytics: analytics,
+                        appState: appState
+                    )
+                    return
+
+                case .failed, .expired:
+                    let fallback = request.status == .expired
+                        ? "Planning took too long this time. Your existing week is safe; please try again."
+                        : "We couldn't finish your new week. Your existing week is safe; please try again."
+                    finishGenerationFailure(request.message ?? fallback)
+                    return
+
+                case .cancelRequested where request.stage == .cancelled:
+                    finishGenerationCancellation()
+                    return
+
+                case .queued, .inProgress, .cancelRequested:
+                    try await Task.sleep(for: .seconds(2))
+                    request = try await supabase.generationStatus(requestId: request.requestId)
+                }
+            }
         } catch is CancellationError {
-            if activeGenerationID == generationID,
-               !generationState.isCancelled {
-                generationState = .cancelled("Planning stopped. Nothing was changed, and you can try again whenever you’re ready.")
-                analytics.capture(.planGenerationFailed, properties: [
-                    "store_id": .string(store.id.rawValue),
-                    "week_start": .string(weekStart),
-                    "source": .string(source),
-                    "reason": .string("cancelled")
-                ])
-            }
+            // Signing out or switching accounts stops local polling. The server job and
+            // user-scoped cache remain available for the next authenticated launch.
         } catch {
             let message = supabase.userFacingMessage(
                 for: error,
-                fallback: "We couldn't finish your week just now. Your existing plan is safe; please try again."
+                fallback: "We couldn't check your plan just now. It may still be running; try again when you're connected."
             )
+            if let serviceError = error as? ReasiServiceError,
+               case .reasiProRequired = serviceError {
+                clearPendingGeneration()
+            }
             generationState = .failed(message)
-            analytics.capture(.planGenerationFailed, properties: [
-                "store_id": .string(store.id.rawValue),
-                "week_start": .string(weekStart),
-                "source": .string(source),
-                "error": .string(message)
-            ])
             ReasiHaptics.warning()
         }
+    }
+
+    private func completeGeneration(
+        _ generated: WeekPlan,
+        opensWhenReady: Bool,
+        analytics: AnalyticsService,
+        appState: AppState
+    ) {
+        generationStage = .ready
+        withAnimation(ReasiMotion.slow) {
+            plan = generated
+            hasPlan = true
+            checkedItemIDs = Self.checkedIDs(from: generated)
+            checkedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: generated).map {
+                ($0, checkedItemIDs.contains($0))
+            })
+            pendingCheckItemIDs = []
+            pendingImports = []
+            addedImportKeys = []
+            progressMilestones = []
+            generationState = .succeeded
+        }
+        clearPendingGeneration()
+        persistPlanCache()
+        persistCheckCache()
+        analytics.capture(.shoppingListCreated, properties: [
+            "store_id": .string(generated.storeId.rawValue),
+            "source": .string(generated.source.rawValue),
+            "item_count": .int(allShoppingItems.count),
+            "section_count": .int(generated.shoppingList.sections.count)
+        ])
+        analytics.flush()
+        ReasiHaptics.success()
+        if opensWhenReady {
+            appState.showPlan()
+        }
+    }
+
+    private func finishGenerationFailure(_ message: String) {
+        clearPendingGeneration()
+        generationState = .failed(message.reasiUserFacingCopy)
+        ReasiHaptics.warning()
+    }
+
+    private func finishGenerationCancellation() {
+        clearPendingGeneration()
+        generationState = .cancelled(
+            "Planning was cancelled. Your previous week was not changed."
+        )
+        ReasiHaptics.selection()
     }
 
     func openShoppingList(appState: AppState, analytics: AnalyticsService) {
@@ -753,64 +922,83 @@ final class CoreLoopStore {
         ]
     }
 
-    private func captureWeeklyReturnIfNeeded(
-        previousWeekStart: String?,
-        weekStart: String,
-        analytics: AnalyticsService
-    ) {
-        guard let currentWeek = Self.calendarWeekKey(fromISODate: weekStart) else { return }
-        let storageKey = "\(lastSuccessfulWeekKeyPrefix).\(activeUserId ?? "anonymous")"
-        let previousWeek = previousWeekStart.flatMap(Self.calendarWeekKey(fromISODate:))
-            ?? defaults.string(forKey: storageKey)
-
-        if let previousWeek, previousWeek != currentWeek {
-            analytics.capture(.weeklyReturnDetected, properties: [
-                "previous_week": .string(previousWeek),
-                "current_week": .string(currentWeek)
-            ])
+    private func restorePendingGenerationCache(for userId: String?) {
+        guard let userId, let cached = generationCache.load(userId: userId) else {
+            pendingGeneration = nil
+            return
         }
-
-        defaults.set(currentWeek, forKey: storageKey)
+        pendingGeneration = cached
+        presentPendingGeneration()
     }
 
-    private func startGenerationProgress(for generationID: UUID) {
-        generationProgressTask?.cancel()
-        generationProgressTask = Task { @MainActor [weak self] in
-            for second in 1...120 {
+    private func presentPendingGeneration() {
+        guard let pending = pendingGeneration else { return }
+        generationState = pending.cancellationRequested ? .cancelling : .generating
+        generationStage = WeekPlanGenerationStage(serverStage: pending.stage)
+        generationElapsedSeconds = max(0, Int(Date().timeIntervalSince(pending.startedAt)))
+    }
+
+    private func updatePendingGeneration(from request: WeekPlanGenerationRequest) {
+        guard let previous = pendingGeneration else { return }
+        var pending = previous
+        pending.requestId = request.requestId
+        pending.stage = request.stage
+        if request.status == .cancelRequested {
+            pending.cancellationRequested = true
+        }
+        pendingGeneration = pending
+        generationStage = WeekPlanGenerationStage(serverStage: request.stage)
+        generationState = pending.cancellationRequested ? .cancelling : .generating
+        if pending != previous {
+            persistPendingGeneration()
+        }
+    }
+
+    private func persistPendingGeneration() {
+        guard let activeUserId, let pendingGeneration else { return }
+        generationCache.save(pendingGeneration, userId: activeUserId)
+    }
+
+    private func clearPendingGeneration() {
+        if let activeUserId {
+            generationCache.remove(userId: activeUserId)
+        }
+        pendingGeneration = nil
+        generationClockTask?.cancel()
+        generationClockTask = nil
+    }
+
+    private func startGenerationClock(runID: UUID) {
+        generationClockTask?.cancel()
+        generationClockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: .seconds(1))
                 } catch {
                     return
                 }
                 guard let self,
-                      self.activeGenerationID == generationID,
+                      self.generationRunID == runID,
+                      let pending = self.pendingGeneration,
                       self.generationState.isGenerating else { return }
-
-                self.generationElapsedSeconds = second
-                switch second {
-                case 0..<8:
-                    self.generationStage = .preparing
-                case 8..<30:
-                    self.generationStage = .buildingMeals
-                case 30..<75:
-                    self.generationStage = .organizingList
-                default:
-                    self.generationStage = .saving
-                }
+                self.generationElapsedSeconds = max(
+                    0,
+                    Int(Date().timeIntervalSince(pending.startedAt))
+                )
             }
         }
     }
 
     private func cancelOutstandingWork() {
         generationTask?.cancel()
-        generationProgressTask?.cancel()
+        generationClockTask?.cancel()
         storeSwitchTask?.cancel()
         itemSyncTasks.values.forEach { $0.cancel() }
         generationTask = nil
-        generationProgressTask = nil
+        generationClockTask = nil
         storeSwitchTask = nil
         itemSyncTasks = [:]
-        activeGenerationID = nil
+        generationRunID = nil
     }
 
     private func startItemSync(itemId: String, supabase: SupabaseService) {
@@ -1055,19 +1243,12 @@ final class CoreLoopStore {
         return formatter.string(from: interval?.start ?? date)
     }
 
-    private static func calendarWeekKey(fromISODate value: String) -> String? {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .iso8601)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-
-        guard let date = formatter.date(from: value) else { return nil }
-
-        let calendar = Calendar(identifier: .iso8601)
-        let week = calendar.component(.weekOfYear, from: date)
-        let year = calendar.component(.yearForWeekOfYear, from: date)
-        return "\(year)-W\(String(format: "%02d", week))"
+    private static func dateFromISO8601(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
+
 }
 
 private struct ShoppingItemSectionContext {
@@ -1094,6 +1275,63 @@ private struct CachedCheckState: Codable {
     let shoppingListId: String
     let states: [String: Bool]
     let pendingItemIDs: [String]
+}
+
+private struct PendingGenerationRequest: Codable, Hashable {
+    let idempotencyKey: String
+    var requestId: String?
+    let storeId: StoreID
+    let weekStart: String
+    let startedAt: Date
+    var stage: GenerationRequestStage
+    var cancellationRequested: Bool
+    let opensWhenReady: Bool
+}
+
+private final class GenerationRequestLocalCache {
+    private let fileManager: FileManager
+    private let directoryURL: URL?
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        directoryURL = applicationSupport?.appendingPathComponent("ReasiGenerationCache", isDirectory: true)
+        if let directoryURL {
+            try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        }
+    }
+
+    func load(userId: String) -> PendingGenerationRequest? {
+        guard let url = fileURL(userId: userId),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? decoder.decode(PendingGenerationRequest.self, from: data)
+    }
+
+    func save(_ request: PendingGenerationRequest, userId: String) {
+        guard let url = fileURL(userId: userId),
+              let data = try? encoder.encode(request) else { return }
+        do {
+            try data.write(to: url, options: [.atomic])
+            try? fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            // The remote generation request remains authoritative.
+        }
+    }
+
+    func remove(userId: String) {
+        guard let url = fileURL(userId: userId) else { return }
+        try? fileManager.removeItem(at: url)
+    }
+
+    private func fileURL(userId: String) -> URL? {
+        let safeUserId = userId.replacingOccurrences(of: "/", with: "_")
+        return directoryURL?.appendingPathComponent("pending-\(safeUserId).json", isDirectory: false)
+    }
 }
 
 private final class ShoppingListLocalCache {

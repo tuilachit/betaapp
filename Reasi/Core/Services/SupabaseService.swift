@@ -894,44 +894,21 @@ final class SupabaseService {
         #endif
     }
 
-    func fetchLatestGeneratedWeekStart() async throws -> String? {
-        #if canImport(Supabase)
-        guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
-            throw AuthFlowError.notSignedIn
-        }
-
-        let rows: [PersistedWeekStartRow] = try await client
-            .from("meal_plans")
-            .select("week_start")
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .limit(1)
-            .execute()
-            .value
-
-        return rows.first?.weekStart
-        #else
-        return nil
-        #endif
-    }
-
-    func generateWeekPlan(input: GenerateWeekPlanInput) async throws -> WeekPlan {
+    func startWeekPlanGeneration(input: GenerateWeekPlanInput) async throws -> WeekPlanGenerationStartResult {
         guard config.hasSupabase else {
             #if DEBUG
             if config.debugFixtureFallbackEnabled {
-                return try await fixtureWeekPlan()
+                return .fixture(try await fixtureWeekPlan())
             }
             #endif
             throw AuthFlowError.notConfigured
         }
 
         #if canImport(Supabase)
-        guard let client = try authenticatedClientOrNil(),
-              let accessToken = currentAccessToken,
-              let supabaseURL = config.supabaseURL else {
+        guard try authenticatedClientOrNil() != nil else {
             #if DEBUG
             if config.debugFixtureFallbackEnabled {
-                return try await fixtureWeekPlan()
+                return .fixture(try await fixtureWeekPlan())
             }
             #endif
             throw AuthFlowError.notSignedIn
@@ -944,39 +921,29 @@ final class SupabaseService {
         )
 
         do {
-            var request = URLRequest(
-                url: supabaseURL.appendingPathComponent("functions/v1/generate-week-plan")
+            let (data, response) = try await performAuthenticatedEdgeRequest(
+                function: "generate-week-plan",
+                body: edgeRequest,
+                timeout: 30
             )
-            request.httpMethod = "POST"
-            request.timeoutInterval = 120
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-            request.setValue(config.supabaseAnonKey, forHTTPHeaderField: "apikey")
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(edgeRequest)
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            try Task.checkCancellation()
-
-            guard let response = response as? HTTPURLResponse else {
-                throw ReasiServiceError.invalidResponse
-            }
             switch response.statusCode {
             case 200..<300:
-                break
-            case 401, 403:
-                throw AuthFlowError.notSignedIn
-            case 408, 504:
-                throw ReasiServiceError.timedOut
-            case 429:
+                return .request(try JSONDecoder().decode(WeekPlanGenerationRequest.self, from: data))
+            case 402:
+                let payload = try? JSONDecoder().decode(EdgeErrorResponse.self, from: data)
+                throw ReasiServiceError.reasiProRequired(
+                    payload?.message ?? "Your free preview is ready to keep. Choose Reasi Pro to create another week."
+                )
+            case 409:
+                let payload = try? JSONDecoder().decode(EdgeErrorResponse.self, from: data)
+                if let requestId = payload?.requestId {
+                    return .request(try await generationStatus(requestId: requestId))
+                }
                 throw ReasiServiceError.busy
-            case 500...599:
-                throw ReasiServiceError.serviceUnavailable
             default:
-                throw ReasiServiceError.invalidResponse
+                throw edgeError(for: response.statusCode, data: data)
             }
-
-            let generated = try JSONDecoder().decode(WeekPlan.self, from: data)
-            return try await hydrateRecipes(for: generated, client: client)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
@@ -991,6 +958,117 @@ final class SupabaseService {
         #else
         throw AuthFlowError.notConfigured
         #endif
+    }
+
+    func generationStatus(requestId: String) async throws -> WeekPlanGenerationRequest {
+        let body = GenerationRequestBody(requestId: requestId)
+        let (data, response) = try await performAuthenticatedEdgeRequest(
+            function: "generation-status",
+            body: body,
+            timeout: 20
+        )
+        guard (200..<300).contains(response.statusCode) else {
+            throw edgeError(for: response.statusCode, data: data)
+        }
+        do {
+            return try JSONDecoder().decode(WeekPlanGenerationRequest.self, from: data)
+        } catch {
+            throw ReasiServiceError.invalidResponse
+        }
+    }
+
+    func cancelWeekPlanGeneration(requestId: String) async throws -> WeekPlanGenerationRequest {
+        let body = GenerationRequestBody(requestId: requestId)
+        let (data, response) = try await performAuthenticatedEdgeRequest(
+            function: "cancel-week-plan",
+            body: body,
+            timeout: 20
+        )
+        guard (200..<300).contains(response.statusCode) || response.statusCode == 409 else {
+            throw edgeError(for: response.statusCode, data: data)
+        }
+        do {
+            return try JSONDecoder().decode(WeekPlanGenerationRequest.self, from: data)
+        } catch {
+            throw ReasiServiceError.invalidResponse
+        }
+    }
+
+    func fetchLatestUnfinishedGeneration() async throws -> WeekPlanGenerationRequest? {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        let rows: [PersistedGenerationRequestRow] = try await client
+            .from("generation_requests")
+            .select(
+                "id,status,stage,store_id,week_start,meal_plan_id,shopping_list_id,error_code,error_message,expires_at,created_at"
+            )
+            .in("status", values: ["queued", "in_progress", "cancel_requested"])
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        return rows.first?.generationRequest
+        #else
+        return nil
+        #endif
+    }
+
+    private func performAuthenticatedEdgeRequest<Body: Encodable>(
+        function: String,
+        body: Body,
+        timeout: TimeInterval
+    ) async throws -> (Data, HTTPURLResponse) {
+        guard let accessToken = currentAccessToken,
+              let supabaseURL = config.supabaseURL else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        var request = URLRequest(
+            url: supabaseURL.appendingPathComponent("functions/v1/\(function)")
+        )
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let response = response as? HTTPURLResponse else {
+                throw ReasiServiceError.invalidResponse
+            }
+            return (data, response)
+        } catch let error as URLError where error.code == .timedOut {
+            throw ReasiServiceError.timedOut
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch let error as URLError where Self.isNetworkError(error) {
+            throw ReasiServiceError.offline
+        }
+    }
+
+    private func edgeError(for statusCode: Int, data: Data) -> Error {
+        let message = (try? JSONDecoder().decode(EdgeErrorResponse.self, from: data))?.message
+        switch statusCode {
+        case 401, 403:
+            return AuthFlowError.notSignedIn
+        case 408, 504:
+            return ReasiServiceError.timedOut
+        case 429:
+            return ReasiServiceError.busy
+        case 500...599:
+            return ReasiServiceError.serviceUnavailable
+        default:
+            if let message, !message.isEmpty {
+                return ReasiServiceError.requestFailed(message)
+            }
+            return ReasiServiceError.invalidResponse
+        }
     }
 
     func uploadUserImage(_ data: Data, kind: UploadKind) async throws -> String {
@@ -1465,6 +1543,63 @@ private struct EdgeGenerateWeekPlanRequest: Encodable {
     let idempotencyKey: String?
 }
 
+private struct GenerationRequestBody: Encodable {
+    let requestId: String
+}
+
+private struct EdgeErrorResponse: Decodable {
+    let error: String?
+    let message: String?
+    let requestId: String?
+}
+
+private struct PersistedGenerationRequestRow: Decodable {
+    let id: String
+    let status: GenerationRequestStatus
+    let stage: GenerationRequestStage
+    let storeId: StoreID?
+    let weekStart: String?
+    let mealPlanId: String?
+    let shoppingListId: String?
+    let errorCode: String?
+    let errorMessage: String?
+    let expiresAt: String?
+    let accessMode: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case status
+        case stage
+        case storeId = "store_id"
+        case weekStart = "week_start"
+        case mealPlanId = "meal_plan_id"
+        case shoppingListId = "shopping_list_id"
+        case errorCode = "error_code"
+        case errorMessage = "error_message"
+        case expiresAt = "expires_at"
+        case accessMode = "access_mode"
+        case createdAt = "created_at"
+    }
+
+    var generationRequest: WeekPlanGenerationRequest {
+        WeekPlanGenerationRequest(
+            requestId: id,
+            status: status,
+            stage: stage,
+            storeId: storeId,
+            weekStart: weekStart,
+            mealPlanId: mealPlanId,
+            shoppingListId: shoppingListId,
+            errorCode: errorCode,
+            message: errorMessage,
+            expiresAt: expiresAt,
+            accessMode: accessMode,
+            createdAt: createdAt
+        )
+    }
+}
+
 private struct OnboardingPreferencesRow: Decodable {
     let primaryPurpose: String?
     let purposeTags: [String]
@@ -1876,6 +2011,8 @@ enum ReasiServiceError: LocalizedError {
     case busy
     case serviceUnavailable
     case invalidResponse
+    case requestFailed(String)
+    case reasiProRequired(String)
     case accountDeletionFailed
 
     var errorDescription: String? {
@@ -1890,6 +2027,8 @@ enum ReasiServiceError: LocalizedError {
             "Reasi could not finish that request right now. Please try again."
         case .invalidResponse:
             "We couldn't finish that request. Please try again."
+        case .requestFailed(let message), .reasiProRequired(let message):
+            message.reasiUserFacingCopy
         case .accountDeletionFailed:
             "Your account could not be deleted yet. Nothing was removed; please try again."
         }
@@ -1911,14 +2050,6 @@ private struct PersistedMealPlanSummaryRow: Decodable {
         case weekStart = "week_start"
         case planningNotes = "planning_notes"
         case createdAt = "created_at"
-    }
-}
-
-private struct PersistedWeekStartRow: Decodable {
-    let weekStart: String?
-
-    enum CodingKeys: String, CodingKey {
-        case weekStart = "week_start"
     }
 }
 

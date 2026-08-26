@@ -38,6 +38,7 @@ struct SkeletonBlock: View {
 struct GenerationProgressCard: View {
     let stage: WeekPlanGenerationStage
     let elapsedSeconds: Int
+    var isCancelling = false
     let cancel: () -> Void
 
     var body: some View {
@@ -69,11 +70,15 @@ struct GenerationProgressCard: View {
             }
 
             Button(action: cancel) {
-                Label("Cancel", systemImage: "xmark")
+                Label(
+                    isCancelling ? "Cancelling" : "Cancel",
+                    systemImage: isCancelling ? "hourglass" : "xmark"
+                )
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(Color.reasi.textMuted)
             }
             .buttonStyle(ReasiPressStyle())
+            .disabled(isCancelling)
         }
         .padding(ReasiSpacing.s5)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -83,6 +88,7 @@ struct GenerationProgressCard: View {
                 .stroke(Color.reasi.border, lineWidth: 1)
         }
         .animation(ReasiMotion.fast, value: stage)
+        .animation(ReasiMotion.fast, value: isCancelling)
         .accessibilityElement(children: .contain)
     }
 }

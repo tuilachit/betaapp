@@ -31,11 +31,30 @@ struct ShoppingListPlaceholderView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                     header
-                    if coreLoop.generationState.isGenerating {
+                    if !coreLoop.generationState.isGenerating,
+                       let error = coreLoop.generationState.errorMessage {
+                        generationFeedback(
+                            error,
+                            symbol: "exclamationmark.triangle.fill",
+                            color: Color.reasi.warning
+                        )
+                    }
+                    if !coreLoop.generationState.isGenerating,
+                       let notice = coreLoop.generationState.noticeMessage {
+                        generationFeedback(
+                            notice,
+                            symbol: "xmark.circle.fill",
+                            color: Color.reasi.textMuted
+                        )
+                    }
+                    if coreLoop.generationState.isGenerating && !coreLoop.hasPlan {
                         loadingSections
                     } else if !coreLoop.hasPlan {
                         emptyListState
                     } else {
+                        if coreLoop.generationState.isGenerating {
+                            generationProgressCard
+                        }
                         progressView
                         addItemSurface
 
@@ -447,7 +466,7 @@ struct ShoppingListPlaceholderView: View {
 
             Button {
                 Task {
-                    await coreLoop.generateWeekPlan(
+                    coreLoop.startWeekPlanGeneration(
                         store: appState.selectedStore,
                         supabase: supabase,
                         analytics: analytics,
@@ -506,11 +525,7 @@ struct ShoppingListPlaceholderView: View {
 
     private var loadingSections: some View {
         VStack(spacing: ReasiSpacing.s4) {
-            GenerationProgressCard(
-                stage: coreLoop.generationStage,
-                elapsedSeconds: coreLoop.generationElapsedSeconds,
-                cancel: { coreLoop.cancelGeneration(analytics: analytics) }
-            )
+            generationProgressCard
             ForEach(0..<4, id: \.self) { _ in
                 VStack(spacing: ReasiSpacing.s3) {
                     SkeletonBlock(height: 18, radius: 9)
@@ -521,6 +536,33 @@ struct ShoppingListPlaceholderView: View {
                 .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             }
         }
+    }
+
+    private var generationProgressCard: some View {
+        GenerationProgressCard(
+            stage: coreLoop.generationStage,
+            elapsedSeconds: coreLoop.generationElapsedSeconds,
+            isCancelling: coreLoop.generationState.isCancelling,
+            cancel: {
+                coreLoop.cancelGeneration(
+                    supabase: supabase,
+                    analytics: analytics,
+                    appState: appState
+                )
+            }
+        )
+    }
+
+    private func generationFeedback(_ message: String, symbol: String, color: Color) -> some View {
+        Label(message, systemImage: symbol)
+            .font(ReasiTypography.callout)
+            .foregroundStyle(color)
+            .padding(ReasiSpacing.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color.reasi.surface,
+                in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+            )
     }
 
     private var sections: some View {

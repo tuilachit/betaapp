@@ -18,6 +18,11 @@ struct WeekPlanPlaceholderView: View {
 
                 if coreLoop.generationState.isGenerating {
                     generationLoading
+                    if coreLoop.hasPlan {
+                        planNotes
+                        mealList
+                        openShoppingListButton
+                    }
                 } else if !coreLoop.hasPlan {
                     if let error = coreLoop.generationState.errorMessage {
                         errorCard(error)
@@ -70,15 +75,24 @@ struct WeekPlanPlaceholderView: View {
             GenerationProgressCard(
                 stage: coreLoop.generationStage,
                 elapsedSeconds: coreLoop.generationElapsedSeconds,
-                cancel: { coreLoop.cancelGeneration(analytics: analytics) }
+                isCancelling: coreLoop.generationState.isCancelling,
+                cancel: {
+                    coreLoop.cancelGeneration(
+                        supabase: supabase,
+                        analytics: analytics,
+                        appState: appState
+                    )
+                }
             )
 
-            VStack(spacing: ReasiSpacing.s3) {
-                ForEach(0..<7, id: \.self) { index in
-                    SkeletonBlock(height: index == 0 ? 102 : 88, radius: ReasiRadius.lg)
+            if !coreLoop.hasPlan {
+                VStack(spacing: ReasiSpacing.s3) {
+                    ForEach(0..<7, id: \.self) { index in
+                        SkeletonBlock(height: index == 0 ? 102 : 88, radius: ReasiRadius.lg)
+                    }
                 }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }
 
@@ -99,7 +113,7 @@ struct WeekPlanPlaceholderView: View {
                     .foregroundStyle(Color.reasi.warning)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Generation paused")
+                    Text(coreLoop.hasPendingGeneration ? "Couldn't check progress" : "Planning didn't finish")
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
                     Text(error)
@@ -111,7 +125,7 @@ struct WeekPlanPlaceholderView: View {
 
             Button {
                 Task {
-                    await coreLoop.generateWeekPlan(
+                    coreLoop.startWeekPlanGeneration(
                         store: appState.selectedStore,
                         supabase: supabase,
                         analytics: analytics,
@@ -120,7 +134,10 @@ struct WeekPlanPlaceholderView: View {
                     )
                 }
             } label: {
-                Label("Try again", systemImage: "arrow.clockwise")
+                Label(
+                    coreLoop.hasPendingGeneration ? "Check status" : "Try again",
+                    systemImage: "arrow.clockwise"
+                )
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(Color.reasi.text)
             }
@@ -148,7 +165,7 @@ struct WeekPlanPlaceholderView: View {
 
             Button {
                 Task {
-                    await coreLoop.generateWeekPlan(
+                    coreLoop.startWeekPlanGeneration(
                         store: appState.selectedStore,
                         supabase: supabase,
                         analytics: analytics,

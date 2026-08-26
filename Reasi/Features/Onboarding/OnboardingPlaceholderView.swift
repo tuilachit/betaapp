@@ -805,7 +805,7 @@ struct OnboardingPlaceholderView: View {
             )
             guard completed else { return }
 
-            await coreLoop.generateWeekPlan(
+            coreLoop.startWeekPlanGeneration(
                 store: appState.selectedStore,
                 supabase: supabase,
                 analytics: analytics,

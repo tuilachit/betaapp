@@ -19,7 +19,14 @@ struct HomeView: View {
                     GenerationProgressCard(
                         stage: coreLoop.generationStage,
                         elapsedSeconds: coreLoop.generationElapsedSeconds,
-                        cancel: { coreLoop.cancelGeneration(analytics: analytics) }
+                        isCancelling: coreLoop.generationState.isCancelling,
+                        cancel: {
+                            coreLoop.cancelGeneration(
+                                supabase: supabase,
+                                analytics: analytics,
+                                appState: appState
+                            )
+                        }
                     )
                 }
                 if let error = coreLoop.generationState.errorMessage {
@@ -101,7 +108,7 @@ struct HomeView: View {
     private var planButton: some View {
         Button {
             Task {
-                await coreLoop.generateWeekPlan(
+                coreLoop.startWeekPlanGeneration(
                     store: appState.selectedStore,
                     supabase: supabase,
                     analytics: analytics,
@@ -130,8 +137,14 @@ struct HomeView: View {
     }
 
     private var planButtonTitle: String {
+        if coreLoop.generationState.isCancelling {
+            return "Cancelling"
+        }
         if coreLoop.generationState.isGenerating {
             return "Planning your week"
+        }
+        if coreLoop.hasPendingGeneration {
+            return "Check plan status"
         }
         return coreLoop.hasPlan ? "Plan a new week" : "Plan my week"
     }
@@ -238,7 +251,7 @@ struct HomeView: View {
 
             Button {
                 Task {
-                    await coreLoop.generateWeekPlan(
+                    coreLoop.startWeekPlanGeneration(
                         store: appState.selectedStore,
                         supabase: supabase,
                         analytics: analytics,
@@ -247,7 +260,10 @@ struct HomeView: View {
                     )
                 }
             } label: {
-                Label("Try again", systemImage: "arrow.clockwise")
+                Label(
+                    coreLoop.hasPendingGeneration ? "Check status" : "Try again",
+                    systemImage: "arrow.clockwise"
+                )
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(Color.reasi.text)
             }
