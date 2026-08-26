@@ -4,6 +4,7 @@ enum ServiceState: String, Codable, Hashable {
     case configured = "Configured"
     case fixtureMode = "Fixture mode"
     case dormant = "Dormant"
+    case unavailable = "Unavailable"
 }
 
 struct ServiceStatus: Identifiable, Hashable {
@@ -12,4 +13,3 @@ struct ServiceStatus: Identifiable, Hashable {
     let state: ServiceState
     let detail: String
 }
-

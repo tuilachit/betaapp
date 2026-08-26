@@ -994,6 +994,20 @@ final class SupabaseService {
         }
     }
 
+    func refreshReasiProAccess() async throws -> ReasiAccessSnapshot {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+        let response: RefreshEntitlementResponse = try await client.functions.invoke(
+            "refresh-entitlement"
+        )
+        return response.access
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
     func fetchLatestUnfinishedGeneration() async throws -> WeekPlanGenerationRequest? {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
@@ -1551,6 +1565,30 @@ private struct EdgeErrorResponse: Decodable {
     let error: String?
     let message: String?
     let requestId: String?
+}
+
+enum FreePreviewStatus: String, Decodable, Hashable {
+    case available
+    case reserved
+    case completed
+}
+
+struct ReasiAccessSnapshot: Decodable, Hashable {
+    let entitlementId: String
+    let offeringId: String
+    let productIds: [String]
+    let isPro: Bool
+    let productId: String?
+    let expiresAt: String?
+    let willRenew: Bool?
+    let freePreviewStatus: FreePreviewStatus
+    let freePreviewMealPlanId: String?
+    let canGenerate: Bool
+    let canUseSmartTools: Bool
+}
+
+private struct RefreshEntitlementResponse: Decodable {
+    let access: ReasiAccessSnapshot
 }
 
 private struct PersistedGenerationRequestRow: Decodable {

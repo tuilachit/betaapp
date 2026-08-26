@@ -53,6 +53,7 @@
 		B00000000000000000000048 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* PrivacyInfo.xcprivacy */; };
 		B00000000000000000000049 /* UserSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* UserSettingsStore.swift */; };
 		B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* ProfileSettingsViews.swift */; };
+		B00000000000000000000051 /* ReasiProPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* ReasiProPaywallView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -103,6 +104,7 @@
 		A00000000000000000000045 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A00000000000000000000046 /* UserSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSettingsStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000047 /* ProfileSettingsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsViews.swift; sourceTree = "<group>"; };
+		A00000000000000000000048 /* ReasiProPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiProPaywallView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +236,7 @@
 				C00000000000000000000063 /* ShoppingList */,
 				C00000000000000000000064 /* Profile */,
 				C00000000000000000000065 /* Onboarding */,
+				C00000000000000000000066 /* Subscriptions */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -278,6 +281,14 @@
 				A00000000000000000000029 /* OnboardingPlaceholderView.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000066 /* Subscriptions */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000048 /* ReasiProPaywallView.swift */,
+			);
+			path = Subscriptions;
 			sourceTree = "<group>";
 		};
 		C00000000000000000000080 /* Resources */ = {
@@ -431,6 +442,7 @@
 				B00000000000000000000046 /* BrandLaunchView.swift in Sources */,
 				B00000000000000000000049 /* UserSettingsStore.swift in Sources */,
 				B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */,
+				B00000000000000000000051 /* ReasiProPaywallView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

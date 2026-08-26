@@ -23,6 +23,28 @@ struct AppShellView: View {
             )
         }
         .background(Color.reasi.background.ignoresSafeArea())
+        .sheet(
+            item: Binding(
+                get: { coreLoop.paywallRequest },
+                set: { request in
+                    if request == nil {
+                        coreLoop.dismissPaywall()
+                    }
+                }
+            )
+        ) { request in
+            ReasiProPaywallView(reason: request.message) {
+                coreLoop.dismissPaywall()
+                startGeneration()
+            }
+        }
+        #if DEBUG
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("-reasi-show-paywall") {
+                coreLoop.presentDebugPaywall()
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -85,15 +107,17 @@ struct AppShellView: View {
             }
         }
 
-        Task {
-            coreLoop.startWeekPlanGeneration(
-                store: appState.selectedStore,
-                supabase: supabase,
-                analytics: analytics,
-                appState: appState,
-                network: network
-            )
-        }
+        startGeneration()
+    }
+
+    private func startGeneration() {
+        coreLoop.startWeekPlanGeneration(
+            store: appState.selectedStore,
+            supabase: supabase,
+            analytics: analytics,
+            appState: appState,
+            network: network
+        )
     }
 }
 

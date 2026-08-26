@@ -46,6 +46,11 @@ enum WeekPlanGenerationState: Equatable {
     }
 }
 
+struct ReasiPaywallRequest: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+}
+
 enum WeekPlanGenerationStage: String, Equatable {
     case preparing
     case planningMeals
@@ -107,6 +112,7 @@ final class CoreLoopStore {
     var switchingStoreName: String?
     var storeSwitchMessage: String?
     var failedStoreSwitch: StoreSummary?
+    var paywallRequest: ReasiPaywallRequest?
 
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
@@ -413,6 +419,7 @@ final class CoreLoopStore {
         storeSwitchMessage = nil
         failedStoreSwitch = nil
         pendingGeneration = nil
+        paywallRequest = nil
     }
 
     func restorePendingGeneration(
@@ -656,11 +663,27 @@ final class CoreLoopStore {
             if let serviceError = error as? ReasiServiceError,
                case .reasiProRequired = serviceError {
                 clearPendingGeneration()
+                generationState = .idle
+                paywallRequest = ReasiPaywallRequest(message: message)
+                ReasiHaptics.selection()
+                return
             }
             generationState = .failed(message)
             ReasiHaptics.warning()
         }
     }
+
+    func dismissPaywall() {
+        paywallRequest = nil
+    }
+
+    #if DEBUG
+    func presentDebugPaywall() {
+        paywallRequest = ReasiPaywallRequest(
+            message: "Your first complete week is included. Reasi Pro unlocks every new week after that."
+        )
+    }
+    #endif
 
     private func completeGeneration(
         _ generated: WeekPlan,

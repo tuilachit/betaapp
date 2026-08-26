@@ -134,6 +134,13 @@ enum AnalyticsEvent: String, CaseIterable {
     case shoppingAssistantResponseReceived = "shopping_assistant_response_received"
     case shoppingAssistantFailed = "shopping_assistant_failed"
     case subscriptionPaywallViewed = "subscription_paywall_viewed"
+    case subscriptionPurchaseStarted = "subscription_purchase_started"
+    case subscriptionPurchaseCompleted = "subscription_purchase_completed"
+    case subscriptionPurchaseCancelled = "subscription_purchase_cancelled"
+    case subscriptionPurchaseFailed = "subscription_purchase_failed"
+    case subscriptionRestoreStarted = "subscription_restore_started"
+    case subscriptionRestoreCompleted = "subscription_restore_completed"
+    case subscriptionRestoreFailed = "subscription_restore_failed"
     case reasiProEntitlementRefreshed = "reasi_pro_entitlement_refreshed"
     case settingsUpdated = "settings_updated"
 }

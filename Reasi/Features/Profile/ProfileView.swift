@@ -12,6 +12,7 @@ struct ProfileView: View {
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
+    @Environment(RevenueCatService.self) private var revenueCat
     @Environment(OnboardingStore.self) private var onboarding
     @Environment(UserSettingsStore.self) private var userSettings
 
@@ -30,6 +31,7 @@ struct ProfileView: View {
                 header
                 if supabase.isSignedIn {
                     signedInAccountCard
+                    subscriptionSection
                 } else {
                     authCard
                 }
@@ -55,7 +57,7 @@ struct ProfileView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your account, preferences, plans, shopping lists, product imports, assistant history, and uploaded photos.")
+            Text("This permanently deletes your Reasi data and subscription profile. It does not cancel billing through Apple; manage or cancel an active App Store subscription separately before deleting.")
         }
         .sheet(item: $activeSettingsDestination) { destination in
             switch destination {
@@ -450,9 +452,56 @@ struct ProfileView: View {
 
             VStack(spacing: 1) {
                 privacyPolicyRow
+                termsOfServiceRow
                 profileRow("App version", value: appVersion, symbol: "info.circle")
             }
             .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+        }
+    }
+
+    private var subscriptionSection: some View {
+        let presentation = subscriptionPresentation
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            sectionTitle("Plan access")
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+                HStack(spacing: ReasiSpacing.s4) {
+                    Image(systemName: presentation.symbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.reasi.text)
+                        .frame(width: 40, height: 40)
+                        .background(Color.reasi.surfaceHigh, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(presentation.title)
+                            .font(ReasiTypography.bodyMedium)
+                            .foregroundStyle(Color.reasi.text)
+                        Text(presentation.detail)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                    }
+
+                    Spacer()
+
+                    if revenueCat.isLoading {
+                        ProgressView().tint(Color.reasi.textMuted)
+                    }
+                }
+
+                if revenueCat.isReasiProActive || revenueCat.serverAccess?.isPro == true {
+                    Link(destination: revenueCat.managementURLWithFallback) {
+                        Label("Manage subscription", systemImage: "arrow.up.right")
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.text)
+                    }
+                }
+            }
+            .padding(ReasiSpacing.s4)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
                     .stroke(Color.reasi.border, lineWidth: 1)
@@ -619,6 +668,36 @@ struct ProfileView: View {
             }
         } else {
             profileRow("Privacy policy", value: "Unavailable", symbol: "hand.raised")
+        }
+    }
+
+    @ViewBuilder
+    private var termsOfServiceRow: some View {
+        if let termsURL = supabase.config.termsOfServiceURL {
+            Link(destination: termsURL) {
+                profileRow("Terms of use", symbol: "doc.text", accessory: .externalLink)
+            }
+        } else {
+            profileRow("Terms of use", value: "Unavailable", symbol: "doc.text")
+        }
+    }
+
+    private var subscriptionPresentation: (title: String, detail: String, symbol: String) {
+        if revenueCat.serverAccess?.isPro == true {
+            return ("Reasi Pro", "Unlimited week planning is active.", "sparkles")
+        }
+        if revenueCat.isReasiProActive || revenueCat.accessRefreshPending {
+            return ("Reasi Pro", "Purchase found. Updating your plan access.", "arrow.triangle.2.circlepath")
+        }
+        switch revenueCat.serverAccess?.freePreviewStatus {
+        case .available:
+            return ("Free preview", "Your first complete week is ready when you are.", "calendar.badge.checkmark")
+        case .reserved:
+            return ("Planning preview", "Your included week is being prepared.", "clock")
+        case .completed:
+            return ("Free preview used", "Your saved plan and shopping list remain available.", "checkmark.circle")
+        case nil:
+            return ("Plan access", "Access status will refresh when you're connected.", "wifi.exclamationmark")
         }
     }
 
