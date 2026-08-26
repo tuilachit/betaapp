@@ -135,6 +135,7 @@ enum AnalyticsEvent: String, CaseIterable {
     case shoppingAssistantFailed = "shopping_assistant_failed"
     case subscriptionPaywallViewed = "subscription_paywall_viewed"
     case reasiProEntitlementRefreshed = "reasi_pro_entitlement_refreshed"
+    case settingsUpdated = "settings_updated"
 }
 
 enum AnalyticsProperty: Hashable {

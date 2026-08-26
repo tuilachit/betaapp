@@ -51,6 +51,8 @@
 		B00000000000000000000046 /* BrandLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* BrandLaunchView.swift */; };
 		B00000000000000000000047 /* ProductSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* ProductSearchView.swift */; };
 		B00000000000000000000048 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* PrivacyInfo.xcprivacy */; };
+		B00000000000000000000049 /* UserSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* UserSettingsStore.swift */; };
+		B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* ProfileSettingsViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -99,6 +101,8 @@
 		A00000000000000000000043 /* BrandLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandLaunchView.swift; sourceTree = "<group>"; };
 		A00000000000000000000044 /* ProductSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductSearchView.swift; sourceTree = "<group>"; };
 		A00000000000000000000045 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A00000000000000000000046 /* UserSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSettingsStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000047 /* ProfileSettingsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -209,6 +213,7 @@
 				A00000000000000000000023 /* AnalyticsService.swift */,
 				A00000000000000000000024 /* RevenueCatService.swift */,
 				A00000000000000000000042 /* OnboardingStore.swift */,
+				A00000000000000000000046 /* UserSettingsStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -262,6 +267,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000028 /* ProfileView.swift */,
+				A00000000000000000000047 /* ProfileSettingsViews.swift */,
 			);
 			path = Profile;
 			sourceTree = "<group>";
@@ -423,6 +429,8 @@
 				B00000000000000000000044 /* OnboardingPreferences.swift in Sources */,
 				B00000000000000000000045 /* OnboardingStore.swift in Sources */,
 				B00000000000000000000046 /* BrandLaunchView.swift in Sources */,
+				B00000000000000000000049 /* UserSettingsStore.swift in Sources */,
+				B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -485,6 +493,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};

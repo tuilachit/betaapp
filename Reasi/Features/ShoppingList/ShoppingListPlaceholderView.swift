@@ -10,6 +10,7 @@ struct ShoppingListPlaceholderView: View {
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
+    @Environment(UserSettingsStore.self) private var userSettings
 
     @State private var didTrackView = false
     @State private var showAddDialog = false
@@ -81,6 +82,12 @@ struct ShoppingListPlaceholderView: View {
             }
         }
         .background(Color.reasi.background)
+        .onAppear(perform: updateIdleTimer)
+        .onChange(of: userSettings.keepScreenAwake) { _, _ in updateIdleTimer() }
+        .onChange(of: coreLoop.hasPlan) { _, _ in updateIdleTimer() }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         .toolbar(.hidden, for: .navigationBar)
         .confirmationDialog("Add item", isPresented: $showAddDialog, titleVisibility: .visible) {
             Button("Search or paste product link") {
@@ -215,6 +222,10 @@ struct ShoppingListPlaceholderView: View {
             didTrackView = true
             coreLoop.markShoppingListViewed(analytics: analytics)
         }
+    }
+
+    private func updateIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = userSettings.keepScreenAwake && coreLoop.hasPlan
     }
 
     private var header: some View {
@@ -489,7 +500,34 @@ struct ShoppingListPlaceholderView: View {
 
     private var sections: some View {
         VStack(spacing: ReasiSpacing.s4) {
-            ForEach(coreLoop.plan.shoppingList.sections) { section in
+            if userSettings.hideCompletedItems, coreLoop.checkedCount > 0 {
+                Button {
+                    userSettings.setHideCompletedItems(false)
+                    ReasiHaptics.selection()
+                    analytics.capture(.settingsUpdated, properties: [
+                        "setting": .string("hide_completed_items"),
+                        "enabled": .bool(false),
+                        "source": .string("shopping_list")
+                    ])
+                } label: {
+                    HStack(spacing: ReasiSpacing.s3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.reasi.success)
+                        Text("\(coreLoop.checkedCount) bought item\(coreLoop.checkedCount == 1 ? "" : "s") hidden")
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.textMuted)
+                        Spacer()
+                        Text("Show")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.text)
+                    }
+                    .padding(ReasiSpacing.s4)
+                    .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                }
+                .buttonStyle(ReasiPressStyle())
+            }
+
+            ForEach(visibleShoppingSections) { section in
                 ShoppingSectionCard(
                     section: section,
                     checkedItemIDs: coreLoop.checkedItemIDs,
@@ -513,6 +551,23 @@ struct ShoppingListPlaceholderView: View {
                     }
                 )
             }
+        }
+    }
+
+    private var visibleShoppingSections: [ShoppingListSection] {
+        guard userSettings.hideCompletedItems else {
+            return coreLoop.plan.shoppingList.sections
+        }
+
+        return coreLoop.plan.shoppingList.sections.compactMap { section in
+            let visibleItems = section.items.filter { !coreLoop.checkedItemIDs.contains($0.id) }
+            guard !visibleItems.isEmpty else { return nil }
+            return ShoppingListSection(
+                label: section.label,
+                sortKey: section.sortKey,
+                type: section.type,
+                items: visibleItems
+            )
         }
     }
 
@@ -2071,5 +2126,6 @@ private struct ShoppingItemRow: View {
         .environment(SupabaseService())
         .environment(AnalyticsService())
         .environment(NetworkMonitor())
+        .environment(UserSettingsStore())
         .preferredColorScheme(.dark)
 }

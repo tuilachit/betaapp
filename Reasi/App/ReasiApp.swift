@@ -14,6 +14,7 @@ struct ReasiApp: App {
     @State private var analytics = AnalyticsService()
     @State private var revenueCat = RevenueCatService()
     @State private var network = NetworkMonitor()
+    @State private var userSettings = UserSettingsStore()
     @State private var showsBrandIntro = true
 
     var body: some Scene {
@@ -35,6 +36,7 @@ struct ReasiApp: App {
                 .environment(analytics)
                 .environment(revenueCat)
                 .environment(network)
+                .environment(userSettings)
                 .preferredColorScheme(.dark)
                 .tint(Color.reasi.text)
                 .task {

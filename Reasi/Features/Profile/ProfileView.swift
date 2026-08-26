@@ -14,17 +14,18 @@ struct ProfileView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(RevenueCatService.self) private var revenueCat
     @Environment(OnboardingStore.self) private var onboarding
+    @Environment(UserSettingsStore.self) private var userSettings
 
     @State private var email = ""
     @State private var password = ""
     @State private var authMessage: String?
     @State private var authIsBusy = false
     @State private var showDeleteConfirmation = false
-    @State private var showStorePicker = false
+    @State private var activeSettingsDestination: ProfileSettingsDestination?
     @State private var showDeveloperDiagnostics = false
     @State private var appleRawNonce: String?
     @State private var storeSyncTask: Task<Void, Never>?
-    @State private var storeSyncMessage: String?
+    @State private var preferenceSyncMessage: String?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -36,6 +37,7 @@ struct ProfileView: View {
                     authCard
                 }
                 planPreferencesSection
+                shoppingSettingsSection
                 supportSection
                 if supabase.isSignedIn {
                     accountActionsSection
@@ -61,15 +63,20 @@ struct ProfileView: View {
         } message: {
             Text("This permanently deletes your account, preferences, plans, shopping lists, product imports, assistant history, and uploaded photos.")
         }
-        .confirmationDialog("Choose store", isPresented: $showStorePicker, titleVisibility: .visible) {
-            ForEach(FixtureStores.launchStores) { store in
-                Button(store.name) {
-                    selectStore(store)
-                }
+        .sheet(item: $activeSettingsDestination) { destination in
+            switch destination {
+            case .planning:
+                PlanningPreferencesSettingsView(
+                    preferences: onboarding.preferences,
+                    onSave: savePlanningPreferences
+                )
+            case .store:
+                StoreSettingsView(selectedStore: appState.selectedStore, onSelect: selectStore)
+            case .shopping:
+                ShoppingPreferencesSettingsView()
+            case .reminders:
+                PlanningReminderSettingsView()
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Future plans and shopping lists will use this store.")
         }
         .onAppear {
             supabase.refreshAuthLabel()
@@ -329,37 +336,36 @@ struct ProfileView: View {
 
     private var planPreferencesSection: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Plan preferences")
+            sectionTitle("Personalization")
 
             VStack(spacing: 1) {
                 Button {
                     ReasiHaptics.light()
-                    showStorePicker = true
+                    activeSettingsDestination = .planning
                 } label: {
                     profileRow(
-                        "Shopping at",
-                        value: appState.selectedStore.name,
-                        symbol: "storefront",
+                        "Meal planning",
+                        value: planningProfileSummary,
+                        subtitle: "Goal, household and food preferences",
+                        symbol: "slider.horizontal.3",
                         accessory: .chevron
                     )
                 }
                 .buttonStyle(ReasiPressStyle())
 
-                profileRow(
-                    "Main goal",
-                    value: onboarding.preferences.purpose?.title ?? "Not set",
-                    symbol: onboarding.preferences.purpose?.symbol ?? "sparkles"
-                )
-                profileRow(
-                    "Cooking for",
-                    value: onboarding.preferences.household?.title ?? "Two (default)",
-                    symbol: "person.2"
-                )
-                profileRow(
-                    "Food styles",
-                    value: foodStylesSummary,
-                    symbol: "fork.knife"
-                )
+                Button {
+                    ReasiHaptics.light()
+                    activeSettingsDestination = .store
+                } label: {
+                    profileRow(
+                        "Preferred store",
+                        value: appState.selectedStore.name,
+                        subtitle: "Sets the aisle route for future lists",
+                        symbol: "storefront",
+                        accessory: .chevron
+                    )
+                }
+                .buttonStyle(ReasiPressStyle())
             }
             .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             .overlay {
@@ -367,12 +373,79 @@ struct ProfileView: View {
                     .stroke(Color.reasi.border, lineWidth: 1)
             }
 
-            if let storeSyncMessage {
-                Label(storeSyncMessage, systemImage: "icloud.slash")
+            if let preferenceSyncMessage {
+                Label(preferenceSyncMessage, systemImage: "icloud.slash")
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.warning)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private var shoppingSettingsSection: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            sectionTitle("Shopping & app")
+
+            VStack(spacing: 1) {
+                Button {
+                    ReasiHaptics.light()
+                    activeSettingsDestination = .shopping
+                } label: {
+                    profileRow(
+                        "List behavior",
+                        value: userSettings.shoppingBehaviorSummary,
+                        subtitle: "Bought items and screen behavior",
+                        symbol: "checklist",
+                        accessory: .chevron
+                    )
+                }
+                .buttonStyle(ReasiPressStyle())
+
+                Button {
+                    ReasiHaptics.light()
+                    activeSettingsDestination = .reminders
+                } label: {
+                    profileRow(
+                        "Weekly reminder",
+                        value: userSettings.reminderSummary,
+                        subtitle: "A gentle nudge to plan before the week",
+                        symbol: "bell",
+                        accessory: .chevron
+                    )
+                }
+                .buttonStyle(ReasiPressStyle())
+
+                Toggle(
+                    isOn: Binding(
+                        get: { userSettings.hapticsEnabled },
+                        set: { enabled in updateHaptics(enabled) }
+                    )
+                ) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Haptic feedback")
+                                .font(ReasiTypography.bodyMedium)
+                                .foregroundStyle(Color.reasi.text)
+                            Text("Tactile taps while planning and shopping")
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(Color.reasi.muted)
+                        }
+                    } icon: {
+                        Image(systemName: "hand.tap")
+                            .frame(width: 22)
+                            .foregroundStyle(Color.reasi.muted)
+                    }
+                }
+                .tint(Color.reasi.text)
+                .padding(ReasiSpacing.s4)
+                .frame(minHeight: 64)
+                .background(Color.reasi.surface)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
             }
         }
     }
@@ -474,6 +547,12 @@ struct ProfileView: View {
         return "\(titles.prefix(2).joined(separator: ", ")) +\(titles.count - 2)"
     }
 
+    private var planningProfileSummary: String {
+        let household = onboarding.preferences.household?.title ?? "Two"
+        let styleCount = onboarding.preferences.foodStyles.count
+        return styleCount == 0 ? household : "\(household) · \(styleCount) style\(styleCount == 1 ? "" : "s")"
+    }
+
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
@@ -505,7 +584,7 @@ struct ProfileView: View {
 
     private func selectStore(_ store: StoreSummary) {
         guard store.id != appState.selectedStore.id else { return }
-        storeSyncMessage = nil
+        preferenceSyncMessage = nil
         withAnimation(ReasiMotion.tactileSpring) {
             appState.selectStore(store)
             onboarding.selectStore(store)
@@ -527,13 +606,44 @@ struct ProfileView: View {
             do {
                 // This writes both user_preferences and profiles.selected_store_id.
                 try await supabase.saveOnboardingPreferences(preferences)
+                onboarding.markPreferencesSynced()
             } catch is CancellationError {
                 return
             } catch {
                 guard onboarding.preferences.selectedStoreId == store.id else { return }
-                storeSyncMessage = "Saved on this iPhone. Store sync will retry when you're online."
+                preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
             }
         }
+    }
+
+    private func savePlanningPreferences(_ preferences: OnboardingPreferences) async {
+        onboarding.updateProfilePreferences(preferences)
+        preferenceSyncMessage = nil
+        analytics.capture(.settingsUpdated, properties: [
+            "setting": .string("planning_preferences"),
+            "purpose": .string(preferences.purpose?.rawValue ?? "not_set"),
+            "household": .string(preferences.household?.rawValue ?? "not_set"),
+            "food_style_count": .int(preferences.foodStyles.count)
+        ])
+
+        guard supabase.isSignedIn else { return }
+        do {
+            try await supabase.saveOnboardingPreferences(preferences)
+            onboarding.markPreferencesSynced()
+            ReasiHaptics.success()
+        } catch {
+            preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
+            ReasiHaptics.warning()
+        }
+    }
+
+    private func updateHaptics(_ enabled: Bool) {
+        userSettings.setHapticsEnabled(enabled)
+        if enabled { ReasiHaptics.selection() }
+        analytics.capture(.settingsUpdated, properties: [
+            "setting": .string("haptics"),
+            "enabled": .bool(enabled)
+        ])
     }
 
     @ViewBuilder
@@ -666,6 +776,7 @@ struct ProfileView: View {
     private func profileRow(
         _ title: String,
         value: String? = nil,
+        subtitle: String? = nil,
         symbol: String,
         accessory: ProfileRowAccessory = .none
     ) -> some View {
@@ -673,9 +784,17 @@ struct ProfileView: View {
             Image(systemName: symbol)
                 .frame(width: 22)
                 .foregroundStyle(Color.reasi.muted)
-            Text(title)
-                .font(ReasiTypography.bodyMedium)
-                .foregroundStyle(Color.reasi.text)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                        .lineLimit(2)
+                }
+            }
             Spacer()
             if let value, !value.isEmpty {
                 Text(value)
@@ -692,7 +811,7 @@ struct ProfileView: View {
             }
         }
         .padding(ReasiSpacing.s4)
-        .frame(minHeight: 54)
+        .frame(minHeight: subtitle == nil ? 54 : 66)
         .background(Color.reasi.surface)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
@@ -1068,5 +1187,6 @@ private extension UIApplication {
         .environment(AnalyticsService())
         .environment(RevenueCatService())
         .environment(OnboardingStore())
+        .environment(UserSettingsStore())
         .preferredColorScheme(.dark)
 }
