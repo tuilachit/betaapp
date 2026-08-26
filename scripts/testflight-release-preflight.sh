@@ -101,15 +101,15 @@ if [[ -n "$APP_PATH" ]]; then
 
   privacy_url="$(plist_value "$BUILT_INFO" "REASI_PRIVACY_POLICY_URL")"
   terms_url="$(plist_value "$BUILT_INFO" "REASI_TERMS_OF_SERVICE_URL")"
-  [[ "$privacy_url" == "https://reasi.ai/privacy" ]] \
-    || fail "Built privacy URL must be https://reasi.ai/privacy"
-  [[ "$terms_url" == "https://reasi.ai/terms" ]] \
-    || fail "Built terms URL must be https://reasi.ai/terms"
+  [[ "$privacy_url" == "https://www.reasiai.com/privacy" ]] \
+    || fail "Built privacy URL must be https://www.reasiai.com/privacy"
+  [[ "$terms_url" == "https://www.reasiai.com/terms" ]] \
+    || fail "Built terms URL must be https://www.reasiai.com/terms"
   pass "Built legal links point to the production URLs"
 fi
 
 if [[ "${CHECK_LIVE_LEGAL_URLS:-0}" == "1" ]]; then
-  for url in https://reasi.ai/privacy https://reasi.ai/terms; do
+  for url in https://www.reasiai.com/privacy https://www.reasiai.com/terms; do
     status="$(curl --location --silent --output /dev/null --write-out '%{http_code}' --max-time 15 "$url")"
     [[ "$status" == "200" ]] || fail "$url returned HTTP $status"
   done

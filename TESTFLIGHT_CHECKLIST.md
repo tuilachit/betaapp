@@ -6,8 +6,8 @@ Current app metadata:
 - Version: `1.0.0`
 - Build: `1`
 - Deployment target: iOS 26.0
-- Privacy URL: `https://reasi.ai/privacy`
-- Terms URL: `https://reasi.ai/terms`
+- Privacy URL: `https://www.reasiai.com/privacy`
+- Terms URL: `https://www.reasiai.com/terms`
 - Sign-in: Apple, Google, and email after the Apple-auth PR is merged and configured
 - Subscription products: `ai.reasi.pro.monthly` and `ai.reasi.pro.annual`
 
@@ -18,7 +18,7 @@ Current app metadata:
 3. Create or approve the Reasi app record in App Store Connect using that exact bundle ID.
 4. Enable Sign in with Apple for `ai.reasi.ios`, regenerate signing assets, and finish the Supabase Apple provider setup.
 5. Confirm the opaque 1024 x 1024 Reasi icon still passes the release preflight.
-6. Publish both `https://reasi.ai/privacy` and `https://reasi.ai/terms` over HTTPS and verify they open without authentication.
+6. Publish both `https://www.reasiai.com/privacy` and `https://www.reasiai.com/terms` over HTTPS and verify they open without authentication.
 7. Confirm the Release configuration contains only public client values: Supabase URL/publishable key, PostHog public project key, RevenueCat public iOS SDK key, and Google client ID/scheme.
 8. Merge the backend generation, store/state, Reasi Pro, and release-security PRs in dependency order, then run the documented backend TestFlight release workflow.
 9. In Xcode, select the Reasi target, choose the registered team, and confirm automatic signing resolves an Apple Distribution profile.
