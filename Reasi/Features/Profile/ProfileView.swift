@@ -549,8 +549,7 @@ struct ProfileView: View {
 
     private var planningProfileSummary: String {
         let household = onboarding.preferences.household?.title ?? "Two"
-        let styleCount = onboarding.preferences.foodStyles.count
-        return styleCount == 0 ? household : "\(household) · \(styleCount) style\(styleCount == 1 ? "" : "s")"
+        return "\(onboarding.preferences.purposeSummary) · \(household)"
     }
 
     private var appVersion: String {
@@ -621,7 +620,9 @@ struct ProfileView: View {
         preferenceSyncMessage = nil
         analytics.capture(.settingsUpdated, properties: [
             "setting": .string("planning_preferences"),
-            "purpose": .string(preferences.purpose?.rawValue ?? "not_set"),
+            "purpose": .string(preferences.primaryPurpose?.rawValue ?? "not_set"),
+            "purpose_tags": .stringArray(preferences.selectedPurposes.map(\.rawValue)),
+            "purpose_count": .int(preferences.selectedPurposes.count),
             "household": .string(preferences.household?.rawValue ?? "not_set"),
             "food_style_count": .int(preferences.foodStyles.count)
         ])

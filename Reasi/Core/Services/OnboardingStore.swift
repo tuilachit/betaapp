@@ -26,6 +26,8 @@ enum OnboardingStep: Int, CaseIterable {
 @MainActor
 @Observable
 final class OnboardingStore {
+    private static let purposeSurveyVersion = "pain_priorities_v2"
+
     var currentStep: OnboardingStep = .value
     var preferences: OnboardingPreferences
     private(set) var isHydrating = true
@@ -125,7 +127,9 @@ final class OnboardingStore {
     func captureStartedIfNeeded(analytics: AnalyticsService) {
         guard !didCaptureStarted else { return }
         didCaptureStarted = true
-        analytics.capture(.onboardingStarted)
+        analytics.capture(.onboardingStarted, properties: [
+            "survey_version": .string(Self.purposeSurveyVersion)
+        ])
     }
 
     func advance() {
@@ -138,10 +142,9 @@ final class OnboardingStore {
     func submitPurpose(analytics: AnalyticsService, skipped: Bool = false) {
         if !didCapturePurpose {
             didCapturePurpose = true
-            analytics.capture(.onboardingPurposeSubmitted, properties: [
-                "purpose": .string(preferences.purpose?.rawValue ?? "skipped"),
-                "skipped": .bool(skipped)
-            ])
+            var properties = purposeAnalyticsProperties()
+            properties["skipped"] = .bool(skipped)
+            analytics.capture(.onboardingPurposeSubmitted, properties: properties)
         }
         advance()
     }
@@ -149,7 +152,7 @@ final class OnboardingStore {
     func skipCurrentSurvey(analytics: AnalyticsService) {
         switch currentStep {
         case .purpose:
-            preferences.purpose = nil
+            preferences.selectedPurposes = []
             submitPurpose(analytics: analytics, skipped: true)
         case .household:
             preferences.household = nil
@@ -173,6 +176,17 @@ final class OnboardingStore {
         }
         ReasiHaptics.selection()
         persistDraft()
+    }
+
+    func togglePurpose(_ purpose: OnboardingPurpose) {
+        let wasSelected = preferences.selectedPurposes.contains(purpose)
+        preferences.togglePurpose(purpose)
+        if wasSelected || preferences.selectedPurposes.contains(purpose) {
+            ReasiHaptics.selection()
+            persistDraft()
+        } else {
+            ReasiHaptics.warning()
+        }
     }
 
     func selectStore(_ store: StoreSummary) {
@@ -225,15 +239,16 @@ final class OnboardingStore {
         hasCompleted = true
         isSaving = false
 
-        analytics.capture(.onboardingCompleted, properties: [
-            "purpose": .string(preferences.purpose?.rawValue ?? "skipped"),
+        var completionProperties = purposeAnalyticsProperties()
+        completionProperties.merge([
             "household": .string(preferences.household?.rawValue ?? "skipped"),
             "household_size": .int(preferences.householdSize),
             "food_styles": .stringArray(preferences.sortedFoodStyleValues),
             "store_id": .string(preferences.resolvedStore.id.rawValue),
             "store_defaulted": .bool(preferences.selectedStoreId == nil),
             "signed_in": .bool(supabase.isSignedIn)
-        ])
+        ]) { _, latest in latest }
+        analytics.capture(.onboardingCompleted, properties: completionProperties)
         ReasiHaptics.success()
         return true
     }
@@ -278,6 +293,19 @@ final class OnboardingStore {
     private func markPreferencesPendingIfCompleted() {
         guard hasCompleted else { return }
         defaults.set(true, forKey: pendingPreferenceSyncKey)
+    }
+
+    private func purposeAnalyticsProperties() -> [String: AnalyticsProperty] {
+        let purposes = preferences.selectedPurposes
+        return [
+            "survey_version": .string(Self.purposeSurveyVersion),
+            "purpose": .string(preferences.primaryPurpose?.rawValue ?? "skipped"),
+            "primary_purpose": .string(preferences.primaryPurpose?.rawValue ?? "skipped"),
+            "secondary_purpose": .string(purposes.dropFirst().first?.rawValue ?? "not_selected"),
+            "tertiary_purpose": .string(purposes.dropFirst(2).first?.rawValue ?? "not_selected"),
+            "purpose_tags": .stringArray(purposes.map(\.rawValue)),
+            "selection_count": .int(purposes.count)
+        ]
     }
 
     private static func loadPreferences(defaults: UserDefaults, key: String) -> OnboardingPreferences? {
