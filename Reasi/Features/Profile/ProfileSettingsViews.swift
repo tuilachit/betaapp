@@ -70,24 +70,59 @@ struct PlanningPreferencesSettingsView: View {
     }
 
     private var goalSection: some View {
-        settingsSection("Main goal") {
+        settingsSection("Shopping priorities") {
             VStack(spacing: ReasiSpacing.s2) {
+                HStack {
+                    Text(priorityGuidance)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                    Spacer()
+                    Text("\(draft.selectedPurposes.count)/\(OnboardingPreferences.maximumPurposeSelections)")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.text)
+                }
+                .padding(.horizontal, ReasiSpacing.s1)
+
                 ForEach(OnboardingPurpose.allCases) { purpose in
+                    let selectedPurposes = draft.selectedPurposes
+                    let rank = selectedPurposes.firstIndex(of: purpose).map { $0 + 1 }
+                    let limitReached = selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections
                     Button {
-                        draft.purpose = purpose
-                        ReasiHaptics.selection()
+                        let wasSelected = draft.selectedPurposes.contains(purpose)
+                        draft.togglePurpose(purpose)
+                        if wasSelected || draft.selectedPurposes.contains(purpose) {
+                            ReasiHaptics.selection()
+                        } else {
+                            ReasiHaptics.warning()
+                        }
                     } label: {
                         selectionRow(
                             title: purpose.title,
                             detail: purpose.summary,
                             symbol: purpose.symbol,
-                            isSelected: draft.purpose == purpose
+                            isSelected: rank != nil,
+                            selectionOrder: rank,
+                            selectionLimitReached: limitReached
                         )
                     }
                     .buttonStyle(ReasiPressStyle())
+                    .accessibilityHint(
+                        rank != nil
+                            ? "Removes this priority so you can reorder your choices"
+                            : limitReached
+                                ? "Remove a selected priority before adding this one"
+                                : "Adds this as the next priority"
+                    )
                 }
             }
         }
+    }
+
+    private var priorityGuidance: String {
+        if draft.selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections {
+            return "3 selected. Tap one off to reorder."
+        }
+        return "Choose up to 3 in priority order."
     }
 
     private var householdSection: some View {
@@ -551,7 +586,9 @@ private func selectionRow(
     title: String,
     detail: String,
     symbol: String,
-    isSelected: Bool
+    isSelected: Bool,
+    selectionOrder: Int? = nil,
+    selectionLimitReached: Bool = false
 ) -> some View {
     HStack(spacing: ReasiSpacing.s4) {
         Image(systemName: symbol)
@@ -567,14 +604,21 @@ private func selectionRow(
             Text(detail)
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.muted)
-                .lineLimit(2)
         }
 
         Spacer()
 
-        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.system(size: 21, weight: .semibold))
-            .foregroundStyle(isSelected ? Color.reasi.success : Color.reasi.dim)
+        if let selectionOrder {
+            Text("\(selectionOrder)")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.reasi.background)
+                .frame(width: 24, height: 24)
+                .background(Color.reasi.text, in: Circle())
+        } else {
+            Image(systemName: "circle")
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(Color.reasi.dim)
+        }
     }
     .padding(ReasiSpacing.s4)
     .frame(minHeight: 72)
@@ -585,7 +629,11 @@ private func selectionRow(
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(title)
-    .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    .accessibilityValue(
+        selectionOrder.map { "Priority \($0)" }
+            ?? (selectionLimitReached ? "Not selected. 3 priorities selected" : "Not selected")
+    )
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
 }
 
 private func settingsToggleRow(

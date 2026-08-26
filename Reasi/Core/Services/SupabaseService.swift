@@ -670,8 +670,8 @@ final class SupabaseService {
 
         let row = OnboardingPreferencesUpsert(
             userId: userId,
-            purposeTags: preferences.purpose.map { [$0.rawValue] } ?? [],
-            primaryPurpose: preferences.purpose?.rawValue,
+            purposeTags: preferences.selectedPurposes.map(\.rawValue),
+            primaryPurpose: preferences.primaryPurpose?.rawValue,
             householdChoice: preferences.household?.rawValue,
             householdSize: preferences.householdSize,
             cuisines: preferences.cuisines,
@@ -1461,14 +1461,21 @@ private struct OnboardingPreferencesRow: Decodable {
     }
 
     var preferences: OnboardingPreferences {
-        let purposeValue = primaryPurpose ?? purposeTags.first
+        let decodedPurposeTags = purposeTags.prefix(OnboardingPreferences.maximumPurposeSelections)
+            .compactMap(OnboardingPurpose.init(rawValue:))
+        let decodedPrimaryPurpose = primaryPurpose.flatMap(OnboardingPurpose.init(rawValue:))
+            ?? decodedPurposeTags.first
+        let orderedPurposes = OnboardingPreferences.normalizedPurposeSelection(
+            [decodedPrimaryPurpose].compactMap { $0 } + decodedPurposeTags
+        )
         let combinedStyles = Set(
             (foodStyles + cuisines + dietaryConstraints)
                 .compactMap(FoodStyle.init(rawValue:))
         )
 
         return OnboardingPreferences(
-            purpose: purposeValue.flatMap(OnboardingPurpose.init(rawValue:)),
+            purpose: decodedPrimaryPurpose,
+            purposePriorities: orderedPurposes,
             household: householdChoice.flatMap(HouseholdChoice.init(rawValue:)),
             foodStyles: combinedStyles,
             selectedStoreId: preferredStore.flatMap(StoreID.init(rawValue:)),

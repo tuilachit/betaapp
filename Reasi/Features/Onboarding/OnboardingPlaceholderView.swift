@@ -8,6 +8,7 @@ import GoogleSignIn
 #endif
 
 struct OnboardingPlaceholderView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(OnboardingStore.self) private var onboarding
@@ -169,22 +170,41 @@ struct OnboardingPlaceholderView: View {
     }
 
     private var purposeScreen: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
             onboardingHeading(
-                eyebrow: "Make Reasi yours",
-                title: "What do you want Reasi to help with most?"
+                eyebrow: "Shape your week",
+                title: "What makes groceries hardest?"
             )
 
-            VStack(spacing: ReasiSpacing.s3) {
+            HStack {
+                Text(purposeSelectionGuidance)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+
+                Spacer(minLength: ReasiSpacing.s3)
+
+                Text("\(onboarding.preferences.selectedPurposes.count)/\(OnboardingPreferences.maximumPurposeSelections)")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.text)
+                    .padding(.horizontal, ReasiSpacing.s3)
+                    .padding(.vertical, ReasiSpacing.s1)
+                    .background(Color.reasi.surfaceHigh, in: Capsule())
+            }
+
+            VStack(spacing: ReasiSpacing.s2) {
                 ForEach(OnboardingPurpose.allCases) { purpose in
-                    selectionCard(
+                    let selectedPurposes = onboarding.preferences.selectedPurposes
+                    let rank = selectedPurposes.firstIndex(of: purpose).map { $0 + 1 }
+                    purposeSelectionCard(
                         title: purpose.title,
                         detail: purpose.summary,
                         symbol: purpose.symbol,
-                        isSelected: onboarding.preferences.purpose == purpose
+                        rank: rank,
+                        isAtSelectionLimit: selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections
                     ) {
-                        onboarding.preferences.purpose = purpose
-                        ReasiHaptics.selection()
+                        withAnimation(reduceMotion ? nil : ReasiMotion.tactileSpring) {
+                            onboarding.togglePurpose(purpose)
+                        }
                     }
                 }
             }
@@ -461,9 +481,9 @@ struct OnboardingPlaceholderView: View {
 
             VStack(spacing: 0) {
                 summaryRow(
-                    symbol: onboarding.preferences.purpose?.symbol ?? "sparkles",
-                    label: "Main goal",
-                    value: onboarding.preferences.purpose?.title ?? "Decide later"
+                    symbol: onboarding.preferences.primaryPurpose?.symbol ?? "sparkles",
+                    label: "Priorities",
+                    value: purposeSummary
                 )
                 Divider().overlay(Color.reasi.border)
                 summaryRow(
@@ -522,7 +542,7 @@ struct OnboardingPlaceholderView: View {
         case .value, .benefit:
             true
         case .purpose:
-            onboarding.preferences.purpose != nil
+            !onboarding.preferences.selectedPurposes.isEmpty
         case .household:
             onboarding.preferences.household != nil
         case .foodStyle:
@@ -621,6 +641,79 @@ struct OnboardingPlaceholderView: View {
         .buttonStyle(ReasiPressStyle())
     }
 
+    private func purposeSelectionCard(
+        title: String,
+        detail: String,
+        symbol: String,
+        rank: Int?,
+        isAtSelectionLimit: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isSelected = rank != nil
+        let isUnavailable = !isSelected && isAtSelectionLimit
+
+        return Button(action: action) {
+            HStack(spacing: ReasiSpacing.s3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.reasi.text)
+                    .frame(width: 38, height: 38)
+                    .background(Color.reasi.surfaceHigh, in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                        .multilineTextAlignment(.leading)
+                    Text(detail)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: ReasiSpacing.s2)
+
+                Circle()
+                    .fill(isSelected ? Color.reasi.text : Color.clear)
+                    .frame(width: 24, height: 24)
+                    .overlay {
+                        Circle().stroke(
+                            isSelected ? Color.reasi.text : Color.reasi.borderStrong,
+                            lineWidth: 1.5
+                        )
+                    }
+                    .overlay {
+                        if let rank {
+                            Text("\(rank)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.reasi.background)
+                        }
+                    }
+            }
+            .padding(.horizontal, ReasiSpacing.s4)
+            .padding(.vertical, ReasiSpacing.s3)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                    .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: 1)
+            }
+        }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityLabel("\(title). \(detail)")
+        .accessibilityValue(
+            rank.map { "Priority \($0)" }
+                ?? (isUnavailable ? "Not selected. 3 priorities selected" : "Not selected")
+        )
+        .accessibilityHint(
+            isSelected
+                ? "Removes this priority so you can reorder your choices"
+                : isUnavailable
+                    ? "Remove a selected priority before adding this one"
+                    : "Adds this as the next priority"
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private func selectionIndicator(isSelected: Bool) -> some View {
         Circle()
             .fill(isSelected ? Color.reasi.text : Color.clear)
@@ -690,6 +783,17 @@ struct OnboardingPlaceholderView: View {
             .filter { onboarding.preferences.foodStyles.contains($0) }
             .map(\.title)
         return labels.isEmpty ? "Surprise me" : labels.joined(separator: ", ")
+    }
+
+    private var purposeSummary: String {
+        onboarding.preferences.purposeSummary
+    }
+
+    private var purposeSelectionGuidance: String {
+        if onboarding.preferences.selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections {
+            return "3 selected. Tap one off to change your order."
+        }
+        return "Choose up to 3 in priority order."
     }
 
     private func completeOnboarding() {
