@@ -40,6 +40,7 @@ final class OnboardingStore {
 
     private let draftKey = "reasi.onboarding.preferences.v1"
     private let completedKey = "reasi.onboarding.completed.v1"
+    private let pendingPreferenceSyncKey = "reasi.preferences.pendingSync.v1"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -67,6 +68,20 @@ final class OnboardingStore {
         }
 
         if supabase.isSignedIn {
+            if defaults.bool(forKey: pendingPreferenceSyncKey), preferences.completedAt != nil {
+                do {
+                    try await supabase.saveOnboardingPreferences(preferences)
+                    markPreferencesSynced()
+                } catch {
+                    errorMessage = "Your latest preferences are saved on this iPhone and will sync when you're online."
+                }
+                applySelectedStore(to: appState)
+                persistLocal(completed: true)
+                hasCompleted = true
+                isHydrating = false
+                return
+            }
+
             do {
                 if let remote = try await supabase.fetchOnboardingPreferences(), remote.completedAt != nil {
                     preferences = remote
@@ -92,7 +107,12 @@ final class OnboardingStore {
         if hasCompleted {
             applySelectedStore(to: appState)
             if supabase.isSignedIn {
-                try? await supabase.saveOnboardingPreferences(preferences)
+                do {
+                    try await supabase.saveOnboardingPreferences(preferences)
+                    markPreferencesSynced()
+                } catch {
+                    defaults.set(true, forKey: pendingPreferenceSyncKey)
+                }
             }
         }
 
@@ -159,6 +179,17 @@ final class OnboardingStore {
         preferences.selectedStoreId = store.id
         ReasiHaptics.selection()
         persistDraft()
+        markPreferencesPendingIfCompleted()
+    }
+
+    func updateProfilePreferences(_ updated: OnboardingPreferences) {
+        preferences = updated
+        persistDraft()
+        markPreferencesPendingIfCompleted()
+    }
+
+    func markPreferencesSynced() {
+        defaults.set(false, forKey: pendingPreferenceSyncKey)
     }
 
     func complete(
@@ -181,6 +212,7 @@ final class OnboardingStore {
 
         do {
             try await supabase.saveOnboardingPreferences(preferences)
+            markPreferencesSynced()
         } catch {
             preferences.completedAt = nil
             isSaving = false
@@ -210,7 +242,12 @@ final class OnboardingStore {
         guard supabase.isSignedIn else { return }
 
         if hasCompleted {
-            try? await supabase.saveOnboardingPreferences(preferences)
+            do {
+                try await supabase.saveOnboardingPreferences(preferences)
+                markPreferencesSynced()
+            } catch {
+                defaults.set(true, forKey: pendingPreferenceSyncKey)
+            }
             return
         }
 
@@ -236,6 +273,11 @@ final class OnboardingStore {
     private func persistLocal(completed: Bool) {
         persistDraft()
         defaults.set(completed, forKey: completedKey)
+    }
+
+    private func markPreferencesPendingIfCompleted() {
+        guard hasCompleted else { return }
+        defaults.set(true, forKey: pendingPreferenceSyncKey)
     }
 
     private static func loadPreferences(defaults: UserDefaults, key: String) -> OnboardingPreferences? {

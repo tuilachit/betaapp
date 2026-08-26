@@ -140,5 +140,7 @@ private extension View {
         .environment(AnalyticsService())
         .environment(RevenueCatService())
         .environment(NetworkMonitor())
+        .environment(OnboardingStore())
+        .environment(UserSettingsStore())
         .preferredColorScheme(.dark)
 }
