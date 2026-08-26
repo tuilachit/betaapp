@@ -1417,7 +1417,7 @@ private extension SupabaseService {
         emailIsVerified = session.user.emailConfirmedAt != nil || session.user.confirmedAt != nil || currentAuthMethod != .email
         #if DEBUG
         if session.user.isAnonymous {
-            authLabel = "Signed in as test guest"
+            authLabel = "Testing account"
         } else if let email = session.user.email {
             authLabel = email
         } else {
@@ -1822,7 +1822,7 @@ enum AuthFlowError: LocalizedError {
         case .notSignedIn:
             "Sign in to continue."
         case .notConfigured:
-            "Reasi is not connected to its server yet."
+            "Reasi isn't available right now. Please try again shortly."
         case .emailNotVerified:
             "Check your inbox and verify your email before continuing."
         case .accountExistsWithDifferentMethod:
@@ -1858,7 +1858,7 @@ enum ReasiServiceError: LocalizedError {
         case .serviceUnavailable:
             "Reasi could not finish that request right now. Please try again."
         case .invalidResponse:
-            "Reasi received an incomplete response. Please try again."
+            "We couldn't finish that request. Please try again."
         case .accountDeletionFailed:
             "Your account could not be deleted yet. Nothing was removed; please try again."
         }

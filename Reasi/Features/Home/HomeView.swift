@@ -44,9 +44,6 @@ struct HomeView: View {
                         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                 }
                 storeCard
-                #if DEBUG
-                serviceStrip
-                #endif
             }
             .padding(.top, ReasiSpacing.s8)
             .padding(.bottom, 120)
@@ -435,20 +432,6 @@ private struct HomeMealMetric: View {
     }
 }
 
-private extension HomeView {
-
-    #if DEBUG
-    private var serviceStrip: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Text("Services")
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
-            ServiceStatusRow(status: supabase.status)
-        }
-    }
-    #endif
-}
-
 private struct PillMetric: View {
     let label: String
     let symbol: String
@@ -467,35 +450,6 @@ private struct PillMetric: View {
         .background(Color.reasi.surfaceHigh, in: Capsule())
     }
 }
-
-#if DEBUG
-private struct ServiceStatusRow: View {
-    let status: ServiceStatus
-
-    var body: some View {
-        HStack(spacing: ReasiSpacing.s3) {
-            Circle()
-                .fill(status.state == .configured ? Color.reasi.success : Color.reasi.dim)
-                .frame(width: 9, height: 9)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(status.name)
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.text)
-                Text(status.detail)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(2)
-            }
-            Spacer()
-            Text(status.state.rawValue)
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.textMuted)
-        }
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-    }
-}
-#endif
 
 #Preview {
     HomeView()

@@ -1406,7 +1406,7 @@ private struct CandidateReviewRow: View {
 
             HStack(spacing: ReasiSpacing.s2) {
                 ConfidenceBadge(confidence: row.candidate.confidence)
-                Text("\(row.candidate.sourceName) · \(row.candidate.freshnessLabel)")
+                Text("\(row.candidate.userFacingSourceName) · \(row.candidate.freshnessLabel)")
                     .lineLimit(1)
             }
             .font(ReasiTypography.caption)
@@ -1432,11 +1432,11 @@ private struct CandidateReviewRow: View {
                 if showsSourceDetails {
                     VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
                         if !row.candidate.confidenceReason.isEmpty {
-                            Text(row.candidate.confidenceReason)
+                            Text(row.candidate.confidenceReason.reasiUserFacingCopy)
                                 .foregroundStyle(Color.reasi.textMuted)
                         }
                         if !row.candidate.uncertaintyText.isEmpty {
-                            Text(row.candidate.uncertaintyText)
+                            Text(row.candidate.uncertaintyText.reasiUserFacingCopy)
                                 .foregroundStyle(Color.reasi.warning)
                         }
                     }
@@ -1568,10 +1568,10 @@ private struct ProductComparisonSheet: View {
                             }
                             .font(ReasiTypography.callout)
                             .foregroundStyle(Color.reasi.textMuted)
-                            Text("\(row.sourceName) · \(row.freshnessLabel)")
+                            Text("\(row.userFacingSourceName) · \(row.freshnessLabel)")
                                 .font(ReasiTypography.caption)
                                 .foregroundStyle(Color.reasi.muted)
-                            Text(row.caveat)
+                            Text(row.caveat.reasiUserFacingCopy)
                                 .font(ReasiTypography.caption)
                                 .foregroundStyle(Color.reasi.warning)
                         }
@@ -1580,7 +1580,7 @@ private struct ProductComparisonSheet: View {
                     }
 
                     ForEach(result.caveats, id: \.self) { caveat in
-                        Text(caveat)
+                        Text(caveat.reasiUserFacingCopy)
                             .font(ReasiTypography.caption)
                             .foregroundStyle(Color.reasi.muted)
                     }
@@ -1733,12 +1733,12 @@ private struct AssistantMessageBubble: View {
             if message.role == .user { Spacer(minLength: 52) }
 
             VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                Text(message.content)
+                Text(message.content.reasiUserFacingCopy)
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.text)
 
                 ForEach(message.caveats, id: \.self) { caveat in
-                    Text(caveat)
+                    Text(caveat.reasiUserFacingCopy)
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.warning)
                 }
@@ -2084,7 +2084,7 @@ private struct ShoppingItemRow: View {
                     .foregroundStyle(Color.reasi.muted)
                     .lineLimit(1)
                 if let imported = item.importedCandidate {
-                    Text("\(imported.confidence.label) · \(imported.sourceName) · \(imported.freshnessLabel)")
+                    Text("\(imported.confidence.label) · \(imported.userFacingSourceName) · \(imported.freshnessLabel)")
                         .font(ReasiTypography.caption)
                         .foregroundStyle(imported.confidence == .low ? Color.reasi.warning : Color.reasi.dim)
                         .lineLimit(2)
