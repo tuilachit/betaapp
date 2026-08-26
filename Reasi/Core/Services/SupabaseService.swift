@@ -27,6 +27,14 @@ final class SupabaseService {
     private var currentAccessToken: String?
     @ObservationIgnored private var authStateTask: Task<Void, Never>?
 
+    private static var ignoresPersistedSessionForUITests: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-ReasiUITestUnauthenticated")
+        #else
+        false
+        #endif
+    }
+
     #if canImport(Supabase)
     private(set) var client: SupabaseClient?
     #endif
@@ -54,8 +62,12 @@ final class SupabaseService {
                     )
                 )
             )
-            refreshAuthLabel()
-            observeAuthState()
+            if Self.ignoresPersistedSessionForUITests {
+                isRestoringSession = false
+            } else {
+                refreshAuthLabel()
+                observeAuthState()
+            }
             #endif
         } else {
             #if DEBUG
@@ -103,6 +115,11 @@ final class SupabaseService {
 
     func restoreSession() async {
         defer { isRestoringSession = false }
+
+        if Self.ignoresPersistedSessionForUITests {
+            clearSessionState()
+            return
+        }
 
         #if canImport(Supabase)
         guard let client else {
