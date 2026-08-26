@@ -32,9 +32,9 @@ Do not duplicate the backend. The Supabase schema, RLS, and `generate-week-plan`
 ## Phase 4 Status
 
 - Release configuration: `1.0.0 (1)`, bundle ID `ai.reasi.ios`.
-- Google and email auth use Supabase sessions stored in Keychain.
+- Apple, Google, and email auth use Supabase sessions stored in Keychain.
 - Debug anonymous auth and fixture fallbacks are compile-gated and forced off in Release.
 - Camera/photo usage descriptions, privacy URL plumbing, account deletion, offline/error states, and saved-plan restoration are wired.
 - The exact App Store Connect handoff is in `TESTFLIGHT_CHECKLIST.md`.
 
-The remaining packaging blocker is a final brand-approved 1024 x 1024 App Store icon. Do not ship the old Expo placeholder. Sign in with Apple is also required before a public App Store submission, though not for internal TestFlight testing.
+The remaining packaging blocker is a final brand-approved 1024 x 1024 App Store icon. Do not ship the old Expo placeholder. Sign in with Apple is implemented and enabled in the app; the Account Holder or Admin must still enable it for the `ai.reasi.ios` App ID and refresh signing assets before a device archive can use it.

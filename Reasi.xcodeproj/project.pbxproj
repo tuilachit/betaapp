@@ -469,6 +469,11 @@
 				TargetAttributes = {
 					E00000000000000000000002 = {
 						CreatedOnToolsVersion = 26.6;
+						SystemCapabilities = {
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -776,6 +781,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.reasi.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REASI_ENABLE_APPLE_AUTH = YES;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -805,6 +811,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.reasi.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REASI_ENABLE_APPLE_AUTH = YES;
 				REASI_ENABLE_DEBUG_FIXTURES = NO;
 				REASI_ENABLE_DEBUG_GUEST_AUTH = NO;
 				SDKROOT = iphoneos;
