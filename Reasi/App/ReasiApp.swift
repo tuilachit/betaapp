@@ -70,6 +70,10 @@ struct ReasiApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task {
+                            await revenueCat.refreshCustomerInfo()
+                            if supabase.isSignedIn {
+                                _ = try? await revenueCat.refreshServerAccess(using: supabase)
+                            }
                             await coreLoop.restorePendingGeneration(
                                 supabase: supabase,
                                 analytics: analytics,
@@ -117,11 +121,17 @@ struct ReasiApp: App {
     private func restoreUserData(expectedUserId: String?) async {
         guard (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
         coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)
+        await revenueCat.syncUser(userId: expectedUserId)
+        guard !Task.isCancelled,
+              (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
 
         guard let userId = expectedUserId else {
             analytics.resetIdentity()
             return
         }
+
+        _ = try? await revenueCat.refreshServerAccess(using: supabase)
+        guard !Task.isCancelled, supabase.currentUserId == userId else { return }
 
         analytics.identify(userId: userId, properties: [
             "auth_method": .string(supabase.currentAuthMethod?.rawValue ?? AuthMethod.unknown.rawValue),

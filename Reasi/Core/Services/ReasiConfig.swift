@@ -11,6 +11,7 @@ struct ReasiConfig: Equatable {
     let appleAuthEnabled: Bool
     let authRedirectURL: URL?
     let privacyPolicyURL: URL?
+    let termsOfServiceURL: URL?
     let debugGuestAuthEnabled: Bool
     let debugFixtureFallbackEnabled: Bool
 
@@ -36,7 +37,8 @@ struct ReasiConfig: Equatable {
         googleURLScheme: value("REASI_GOOGLE_URL_SCHEME") ?? "",
         appleAuthEnabled: boolValue("REASI_ENABLE_APPLE_AUTH"),
         authRedirectURL: valueURL("REASI_AUTH_REDIRECT_URL") ?? URL(string: "ai.reasi.ios://auth/callback"),
-        privacyPolicyURL: valueURL("REASI_PRIVACY_POLICY_URL"),
+        privacyPolicyURL: valueURL("REASI_PRIVACY_POLICY_URL") ?? URL(string: "https://reasi.ai/privacy"),
+        termsOfServiceURL: valueURL("REASI_TERMS_OF_SERVICE_URL") ?? URL(string: "https://reasi.ai/terms"),
         debugGuestAuthEnabled: debugBoolValue("REASI_ENABLE_DEBUG_GUEST_AUTH"),
         debugFixtureFallbackEnabled: debugBoolValue("REASI_ENABLE_DEBUG_FIXTURES")
     )
