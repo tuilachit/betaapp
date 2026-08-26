@@ -17,6 +17,7 @@ struct ReasiApp: App {
     @State private var userSettings = UserSettingsStore()
     @State private var showsBrandIntro = true
     @State private var didFinishStartup = false
+    @State private var authenticationRestoreTask: Task<Void, Never>?
 
     var body: some Scene {
         WindowGroup {
@@ -47,43 +48,38 @@ struct ReasiApp: App {
                         appState: appState,
                         analytics: analytics
                     )
-                    coreLoop.activateUser(supabase.currentUserId, selectedStore: appState.selectedStore)
-                    if supabase.hasActiveSession, let userId = supabase.currentUserId {
-                        analytics.identify(userId: userId, properties: [
-                            "auth_method": .string(supabase.currentAuthMethod?.rawValue ?? AuthMethod.unknown.rawValue),
-                            "email_verified": .bool(supabase.emailIsVerified)
-                        ])
-                        await coreLoop.restoreLatestPlan(
-                            supabase: supabase,
-                            selectedStore: appState.selectedStore
-                        )
-                    } else {
-                        analytics.resetIdentity()
-                    }
+                    let expectedUserId = supabase.hasActiveSession ? supabase.currentUserId : nil
+                    await restoreUserData(expectedUserId: expectedUserId)
                     analytics.capture(.appOpened)
                     didFinishStartup = true
                 }
                 .onChange(of: supabase.hasActiveSession) { _, hasActiveSession in
                     guard didFinishStartup else { return }
-                    Task {
+                    authenticationRestoreTask?.cancel()
+                    let expectedUserId = hasActiveSession ? supabase.currentUserId : nil
+                    authenticationRestoreTask = Task {
                         await onboarding.syncAfterAuthentication(
                             supabase: supabase,
                             appState: appState
                         )
-                        let userId = hasActiveSession ? supabase.currentUserId : nil
-                        coreLoop.activateUser(userId, selectedStore: appState.selectedStore)
-                        if let userId {
-                            analytics.identify(userId: userId, properties: [
-                                "auth_method": .string(supabase.currentAuthMethod?.rawValue ?? AuthMethod.unknown.rawValue),
-                                "email_verified": .bool(supabase.emailIsVerified)
-                            ])
-                            await coreLoop.restoreLatestPlan(
+                        guard !Task.isCancelled,
+                              (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
+                        await restoreUserData(expectedUserId: expectedUserId)
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task {
+                            await coreLoop.restorePendingGeneration(
                                 supabase: supabase,
-                                selectedStore: appState.selectedStore
+                                analytics: analytics,
+                                appState: appState,
+                                network: network
                             )
-                        } else {
-                            analytics.resetIdentity()
                         }
+                    } else {
+                        coreLoop.pauseGenerationPolling()
+                        analytics.flush()
                     }
                 }
                 .onOpenURL { url in
@@ -115,12 +111,33 @@ struct ReasiApp: App {
                         ])
                     }
                 }
-                .onChange(of: scenePhase) { _, phase in
-                    if phase != .active {
-                        analytics.flush()
-                    }
-                }
         }
+    }
+
+    private func restoreUserData(expectedUserId: String?) async {
+        guard (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
+        coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)
+
+        guard let userId = expectedUserId else {
+            analytics.resetIdentity()
+            return
+        }
+
+        analytics.identify(userId: userId, properties: [
+            "auth_method": .string(supabase.currentAuthMethod?.rawValue ?? AuthMethod.unknown.rawValue),
+            "email_verified": .bool(supabase.emailIsVerified)
+        ])
+        await coreLoop.restoreLatestPlan(
+            supabase: supabase,
+            selectedStore: appState.selectedStore
+        )
+        guard !Task.isCancelled, supabase.currentUserId == userId else { return }
+        await coreLoop.restorePendingGeneration(
+            supabase: supabase,
+            analytics: analytics,
+            appState: appState,
+            network: network
+        )
     }
 }
 

@@ -86,7 +86,7 @@ struct AppShellView: View {
         }
 
         Task {
-            await coreLoop.generateWeekPlan(
+            coreLoop.startWeekPlanGeneration(
                 store: appState.selectedStore,
                 supabase: supabase,
                 analytics: analytics,
