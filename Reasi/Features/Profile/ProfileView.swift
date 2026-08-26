@@ -12,7 +12,6 @@ struct ProfileView: View {
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
-    @Environment(RevenueCatService.self) private var revenueCat
     @Environment(OnboardingStore.self) private var onboarding
     @Environment(UserSettingsStore.self) private var userSettings
 
@@ -22,7 +21,6 @@ struct ProfileView: View {
     @State private var authIsBusy = false
     @State private var showDeleteConfirmation = false
     @State private var activeSettingsDestination: ProfileSettingsDestination?
-    @State private var showDeveloperDiagnostics = false
     @State private var appleRawNonce: String?
     @State private var storeSyncTask: Task<Void, Never>?
     @State private var preferenceSyncMessage: String?
@@ -42,9 +40,6 @@ struct ProfileView: View {
                 if supabase.isSignedIn {
                     accountActionsSection
                 }
-                #if DEBUG
-                developerDiagnosticsSection
-                #endif
             }
             .padding(.horizontal, ReasiSpacing.s5)
             .padding(.top, ReasiSpacing.s8)
@@ -228,7 +223,7 @@ struct ProfileView: View {
                 Button {
                     runAuthAction(mode: .guest)
                 } label: {
-                    Label("Debug guest session", systemImage: "ladybug")
+                    Label("Continue for testing", systemImage: "ladybug")
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.muted)
                         .frame(maxWidth: .infinity)
@@ -510,26 +505,6 @@ struct ProfileView: View {
         }
     }
 
-    #if DEBUG
-    private var developerDiagnosticsSection: some View {
-        DisclosureGroup(isExpanded: $showDeveloperDiagnostics) {
-            VStack(spacing: 1) {
-                developerStatusRow(supabase.status)
-                developerStatusRow(analytics.status)
-                developerStatusRow(revenueCat.status)
-            }
-            .padding(.top, ReasiSpacing.s3)
-        } label: {
-            Label("Developer diagnostics", systemImage: "wrench.and.screwdriver")
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
-        }
-        .tint(Color.reasi.muted)
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-    }
-    #endif
-
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
             .font(ReasiTypography.caption)
@@ -697,30 +672,6 @@ struct ProfileView: View {
         }
     }
 
-    #if DEBUG
-    private func developerStatusRow(_ status: ServiceStatus) -> some View {
-        HStack(alignment: .center, spacing: ReasiSpacing.s3) {
-            Image(systemName: status.state == .configured ? "checkmark.seal.fill" : "circle.dashed")
-                .foregroundStyle(status.state == .configured ? Color.reasi.success : Color.reasi.muted)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(status.name)
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.text)
-                Text(status.detail)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(2)
-            }
-            Spacer()
-            Text(status.state.rawValue)
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
-        }
-        .padding(ReasiSpacing.s3)
-        .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
-    }
-    #endif
-
     private func authField(
         _ placeholder: String,
         text: Binding<String>,
@@ -870,13 +821,13 @@ struct ProfileView: View {
     private func runGoogleSignIn() {
         #if canImport(GoogleSignIn)
         guard !supabase.config.googleClientID.isEmpty else {
-            authMessage = "Google client ID is missing from ReasiConfig.xcconfig."
+            authMessage = "Google sign-in isn't available right now. Use email instead."
             ReasiHaptics.warning()
             return
         }
 
         guard let rootViewController = UIApplication.shared.reasiRootViewController else {
-            authMessage = "Could not find a presenting view controller for Google sign-in."
+            authMessage = "Google sign-in couldn't open. Please try again."
             ReasiHaptics.warning()
             return
         }
@@ -923,7 +874,7 @@ struct ProfileView: View {
             authIsBusy = false
         }
         #else
-        authMessage = "Google Sign-In SDK is not linked yet."
+        authMessage = "Google sign-in isn't available right now. Use email instead."
         ReasiHaptics.warning()
         #endif
     }
@@ -1043,7 +994,7 @@ struct ProfileView: View {
                     analytics.capture(.authSignInStarted, properties: ["method": .string(AuthMethod.anonymous.rawValue)])
                     try await supabase.signInAnonymously()
                     captureSuccessfulAuth(method: .anonymous, signedUp: false)
-                    authMessage = "Debug guest session is ready."
+                    authMessage = "Testing access is ready."
                     ReasiHaptics.success()
                 #endif
                 }
@@ -1159,7 +1110,7 @@ private enum ProfileAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingGoogleIDToken:
-            "Google did not return an ID token."
+            "Google sign-in couldn't finish. Please try again."
         case .missingEmail:
             "Enter your email first."
         case .nonceGenerationFailed:
@@ -1186,7 +1137,6 @@ private extension UIApplication {
         .environment(CoreLoopStore())
         .environment(SupabaseService())
         .environment(AnalyticsService())
-        .environment(RevenueCatService())
         .environment(OnboardingStore())
         .environment(UserSettingsStore())
         .preferredColorScheme(.dark)

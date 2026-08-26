@@ -706,11 +706,11 @@ private struct ProductCandidateDetailView: View {
                     }
 
                     detailRow("Location", value: candidate.aisleLabel ?? "Location not certain", symbol: "mappin.and.ellipse")
-                    detailRow("Source", value: candidate.sourceName, symbol: "checkmark.shield")
+                    detailRow("Source", value: candidate.userFacingSourceName, symbol: "checkmark.shield")
                     detailRow("Freshness", value: candidate.freshnessLabel, symbol: "clock")
 
                     if candidate.confidence != .high || candidate.priceAud == nil {
-                        Label(candidate.uncertaintyText, systemImage: "exclamationmark.triangle")
+                        Label(candidate.uncertaintyText.reasiUserFacingCopy, systemImage: "exclamationmark.triangle")
                             .font(ReasiTypography.callout)
                             .foregroundStyle(Color.reasi.warning)
                             .fixedSize(horizontal: false, vertical: true)

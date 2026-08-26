@@ -403,7 +403,7 @@ struct OnboardingPlaceholderView: View {
 
             #if DEBUG
             if supabase.config.debugGuestAuthEnabled {
-                authButton(title: "Debug guest session", symbol: "ladybug") {
+                authButton(title: "Continue for testing", symbol: "ladybug") {
                     runAuth(method: .anonymous) {
                         try await supabase.signInAnonymously()
                     }
@@ -898,7 +898,7 @@ struct OnboardingPlaceholderView: View {
     private func runGoogleSignIn() {
         #if canImport(GoogleSignIn)
         guard !supabase.config.googleClientID.isEmpty else {
-            authMessage = "Google sign-in is not configured yet."
+            authMessage = "Google sign-in isn't available right now. Use email instead."
             return
         }
         guard let presenter = presentingViewController else {
@@ -1122,9 +1122,9 @@ private enum OnboardingAuthError: LocalizedError {
         case .emailNotVerified:
             "Email is not verified."
         case .missingGoogleToken:
-            "Google did not return an ID token."
+            "Google sign-in couldn't finish. Please try again."
         case .nonceGenerationFailed:
-            "A secure sign-in nonce could not be created."
+            "Secure sign-in couldn't start. Please try again."
         }
     }
 }

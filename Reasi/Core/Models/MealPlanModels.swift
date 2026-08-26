@@ -1,5 +1,68 @@
 import Foundation
 
+enum ReasiUserFacingCopy {
+    private static let internalSourceMarkers = [
+        "supabase",
+        "posthog",
+        "revenuecat",
+        "edge function",
+        "edge-function",
+        "fixture fallback",
+    ]
+
+    private static let technicalReplacements = [
+        ("Supabase Edge Function", "Reasi"),
+        ("Edge Function", "Reasi"),
+        ("Fixture fallback", "Preview data"),
+        ("ChatGPT", "Reasi"),
+        ("OpenAI", "Reasi"),
+        ("Supabase", "Reasi"),
+        ("PostHog", "Reasi"),
+        ("RevenueCat", "Reasi"),
+    ]
+
+    static func text(_ value: String) -> String {
+        technicalReplacements.reduce(value) { result, replacement in
+            result.replacingOccurrences(
+                of: replacement.0,
+                with: replacement.1,
+                options: .caseInsensitive
+            )
+        }
+    }
+
+    static func sourceName(_ value: String, sourceURL: URL?) -> String {
+        let normalized = value.lowercased()
+
+        if normalized.contains("openai") || normalized.contains("chatgpt") || normalized.contains("gpt-") {
+            return publicHost(from: sourceURL) ?? "Web result"
+        }
+
+        if internalSourceMarkers.contains(where: normalized.contains) {
+            return "Reasi"
+        }
+
+        return text(value)
+    }
+
+    private static func publicHost(from url: URL?) -> String? {
+        guard var host = url?.host?.lowercased(), !host.isEmpty else { return nil }
+        guard !internalSourceMarkers.contains(where: host.contains),
+              !host.contains("openai") else { return nil }
+
+        if host.hasPrefix("www.") {
+            host.removeFirst(4)
+        }
+        return host
+    }
+}
+
+extension String {
+    var reasiUserFacingCopy: String {
+        ReasiUserFacingCopy.text(self)
+    }
+}
+
 struct RecipeIngredient: Identifiable, Codable, Hashable {
     var id: String { "\(name)-\(quantity)-\(category)" }
     let name: String
@@ -199,6 +262,10 @@ struct ProductCandidate: Identifiable, Codable, Hashable {
         }
         return name
     }
+
+    var userFacingSourceName: String {
+        ReasiUserFacingCopy.sourceName(sourceName, sourceURL: sourceUrl)
+    }
 }
 
 struct ProductImportResult: Codable, Hashable {
@@ -245,6 +312,10 @@ struct ProductComparisonRow: Identifiable, Codable, Hashable {
     let freshnessLabel: String
     let confidence: ProductConfidence
     let caveat: String
+
+    var userFacingSourceName: String {
+        ReasiUserFacingCopy.sourceName(sourceName, sourceURL: sourceUrl)
+    }
 }
 
 struct ProductComparisonResult: Codable, Hashable {
