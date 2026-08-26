@@ -7,12 +7,12 @@ Current app metadata:
 - Build: `1`
 - Deployment target: iOS 26.0
 - Privacy URL placeholder: `https://reasi.ai/privacy`
-- Sign-in for internal TestFlight: Google and email
+- Sign-in: Apple, Google, and email
 
 ## Before Archiving
 
 1. Join the paid Apple Developer Program. Internal TestFlight still requires an App Store Connect app and distribution signing.
-2. Register `ai.reasi.ios` as an explicit App ID in Certificates, Identifiers & Profiles.
+2. Register `ai.reasi.ios` as an explicit App ID in Certificates, Identifiers & Profiles, enable Sign in with Apple as the primary App ID, and refresh the Xcode-managed provisioning profile.
 3. Create or approve the Reasi app record in App Store Connect using that exact bundle ID.
 4. Supply a final, brand-approved, opaque 1024 x 1024 App Store icon. The current project intentionally does not use the Expo placeholder.
 5. Publish `https://reasi.ai/privacy` over HTTPS and verify it opens without authentication.
@@ -24,11 +24,15 @@ Current app metadata:
 
 ## Manual Auth Checks
 
-1. Create a new email account, open the verification link on the same iPhone, then sign in and generate a plan.
-2. Request a password reset, open the recovery link on the same iPhone, set a new password in Reasi, sign out, and sign back in with the new password.
-3. Cancel Google sign-in once, then complete it once; confirm cancellation is quiet and the completed session survives a cold launch.
-4. Sign out and sign back in; confirm the latest saved plan and shopping list return.
-5. Delete a disposable account from Profile, then confirm it cannot sign in again and its owned database rows/uploads are gone.
+1. In Supabase Auth > Providers > Apple, enable Apple and add `ai.reasi.ios` as the native client ID. A native-only flow does not require a Services ID or rotating OAuth secret.
+2. Authorize Apple once with Share My Email, confirm the first-login name is saved, then sign out and authorize again; the second login must succeed without Apple returning the name.
+3. Revoke the disposable Apple authorization, authorize again with Hide My Email, and confirm Reasi labels the private relay account without exposing a real address.
+4. Cancel Apple sign-in and confirm the app silently returns to the auth screen.
+5. Create a new email account, open the verification link on the same iPhone, then sign in and generate a plan.
+6. Request a password reset, open the recovery link on the same iPhone, set a new password in Reasi, sign out, and sign back in with the new password.
+7. Cancel Google sign-in once, then complete it once; confirm cancellation is quiet and the completed session survives a cold launch.
+8. Sign out and sign back in; confirm the latest saved plan and shopping list return.
+9. Delete disposable Apple, Google, and email accounts from Profile; confirm each can no longer sign in and its owned rows/uploads are gone.
 
 ## App Store Connect
 
@@ -52,6 +56,10 @@ The hosted policy must explain:
 - RevenueCat and Apple purchase processing before subscriptions are enabled.
 - Retention periods, security measures, user rights, contact details, and how account deletion removes the account, owned rows, and uploaded images.
 
-## Public App Store Follow-Up
+## Apple Account Setup
 
-Sign in with Apple must be implemented and enabled before public App Store submission because Reasi offers Google as a third-party sign-in method. It is intentionally absent from this internal TestFlight build.
+1. The Account Holder or Admin opens Certificates, Identifiers & Profiles > Identifiers > `ai.reasi.ios`.
+2. Enable Sign in with Apple, configure it as the primary App ID, and save. Leave the server-to-server notification URL empty for this native Supabase flow.
+3. In Xcode, open Signing & Capabilities for Reasi, confirm the team and Sign in with Apple capability, then let automatic signing regenerate the development and distribution profiles.
+4. In Supabase Auth > Providers > Apple, enable the provider and set Client IDs to `ai.reasi.ios`. Do not add a web Services ID, `.p8` key, or rotating secret unless Reasi later adds web-based Apple OAuth.
+5. Run all Apple checks above on a physical iPhone before uploading the TestFlight build.
