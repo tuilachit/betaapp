@@ -336,6 +336,14 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(annualProductId, "ai.reasi.pro.annual")
     }
 
+    func testRevenueCatKeyValidationRejectsUnsafeReleaseKeys() {
+        XCTAssertFalse(ReasiConfig.isValidRevenueCatPublicKey("", allowTestStore: false))
+        XCTAssertFalse(ReasiConfig.isValidRevenueCatPublicKey("test_example", allowTestStore: false))
+        XCTAssertFalse(ReasiConfig.isValidRevenueCatPublicKey("sk_example", allowTestStore: false))
+        XCTAssertTrue(ReasiConfig.isValidRevenueCatPublicKey("appl_example", allowTestStore: false))
+        XCTAssertTrue(ReasiConfig.isValidRevenueCatPublicKey("test_example", allowTestStore: true))
+    }
+
     private func fixtureProduct(name: String, price: Double?) -> ProductCandidate {
         ProductCandidate(
             observationId: UUID().uuidString,

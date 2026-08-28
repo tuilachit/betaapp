@@ -6,6 +6,7 @@ struct ReasiConfig: Equatable {
     let postHogKey: String
     let postHogHost: URL
     let revenueCatPublicKey: String
+    let revenueCatEnabled: Bool
     let googleClientID: String
     let googleURLScheme: String
     let appleAuthEnabled: Bool
@@ -24,7 +25,10 @@ struct ReasiConfig: Equatable {
     }
 
     var hasRevenueCat: Bool {
-        !revenueCatPublicKey.isEmpty
+        revenueCatEnabled && Self.isValidRevenueCatPublicKey(
+            revenueCatPublicKey,
+            allowTestStore: Self.allowsRevenueCatTestStore
+        )
     }
 
     static let current = ReasiConfig(
@@ -33,6 +37,7 @@ struct ReasiConfig: Equatable {
         postHogKey: value("REASI_POSTHOG_KEY") ?? "",
         postHogHost: valueURL("REASI_POSTHOG_HOST") ?? URL(string: "https://us.i.posthog.com")!,
         revenueCatPublicKey: value("REASI_REVENUECAT_PUBLIC_KEY") ?? "",
+        revenueCatEnabled: boolValue("REASI_ENABLE_REVENUECAT"),
         googleClientID: value("REASI_GOOGLE_CLIENT_ID") ?? "",
         googleURLScheme: value("REASI_GOOGLE_URL_SCHEME") ?? "",
         appleAuthEnabled: boolValue("REASI_ENABLE_APPLE_AUTH"),
@@ -66,6 +71,20 @@ struct ReasiConfig: Equatable {
     private static func debugBoolValue(_ key: String) -> Bool {
         #if DEBUG
         boolValue(key)
+        #else
+        false
+        #endif
+    }
+
+    static func isValidRevenueCatPublicKey(_ key: String, allowTestStore: Bool) -> Bool {
+        let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedKey.isEmpty, !normalizedKey.hasPrefix("sk_") else { return false }
+        return allowTestStore || !normalizedKey.hasPrefix("test_")
+    }
+
+    private static var allowsRevenueCatTestStore: Bool {
+        #if DEBUG
+        true
         #else
         false
         #endif
