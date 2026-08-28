@@ -351,6 +351,21 @@ struct AssistantCard: Identifiable, Codable, Hashable {
 struct AssistantResponse: Codable, Hashable {
     let threadId: String
     let message: AssistantMessage
+    let mutations: [AssistantListMutation]?
+
+    var appliedMutations: [AssistantListMutation] { mutations ?? [] }
+}
+
+struct AssistantListMutation: Codable, Hashable {
+    let operation: String
+    let itemId: String
+    let name: String
+    let quantity: String?
+    let checked: Bool?
+    let sectionLabel: String?
+    let sectionSortKey: Int?
+    let sectionType: ShoppingSectionType?
+    let aisleLabel: String?
 }
 
 enum ShoppingSectionType: String, Codable, Hashable {

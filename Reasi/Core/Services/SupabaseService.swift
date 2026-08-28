@@ -1290,7 +1290,8 @@ final class SupabaseService {
         shoppingList: ShoppingList,
         checkedItemIDs: Set<String>,
         threadId: String?,
-        message: String
+        message: String,
+        requestId: UUID
     ) async throws -> AssistantResponse {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
@@ -1305,7 +1306,8 @@ final class SupabaseService {
                         cards: [],
                         caveats: ["Explicit debug fixture response."],
                         createdAt: ISO8601DateFormatter().string(from: Date())
-                    )
+                    ),
+                    mutations: []
                 )
             }
             #endif
@@ -1335,6 +1337,7 @@ final class SupabaseService {
             options: FunctionInvokeOptions(
                 body: ShoppingAssistantInput(
                     shoppingListId: shoppingList.id,
+                    requestId: requestId,
                     expectedStoreId: shoppingList.storeId,
                     threadId: threadId,
                     message: message,
@@ -1486,6 +1489,24 @@ final class SupabaseService {
             .execute()
             .value
         guard updated.id == itemId else { throw ReasiServiceError.invalidResponse }
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func deleteShoppingListItem(itemId: String, shoppingListId: String) async throws {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        try await client
+            .from("shopping_list_items")
+            .delete()
+            .eq("id", value: itemId)
+            .eq("shopping_list_id", value: shoppingListId)
+            .eq("user_id", value: userId)
+            .execute()
         #else
         throw AuthFlowError.notConfigured
         #endif
@@ -1996,6 +2017,7 @@ private struct CompareProductsInput: Encodable {
 
 private struct ShoppingAssistantInput: Encodable {
     let shoppingListId: String
+    let requestId: UUID
     let expectedStoreId: StoreID
     let threadId: String?
     let message: String
