@@ -15,6 +15,7 @@ struct WeekPlanPlaceholderView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                 header
+                if !coreLoop.recentPlans.isEmpty { recentPlans }
 
                 if coreLoop.generationState.isGenerating {
                     generationLoading
@@ -57,16 +58,47 @@ struct WeekPlanPlaceholderView: View {
             didTrackView = true
             coreLoop.markWeekPlanViewed(analytics: analytics)
         }
+        .task(id: coreLoop.plan.id) {
+            await coreLoop.refreshRecentPlans(supabase: supabase)
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text("Your week")
+            Text(coreLoop.hasPlan ? coreLoop.plan.kind.planHeading : "Your plans")
                 .font(ReasiTypography.largeTitle)
                 .foregroundStyle(Color.reasi.text)
-            Text(coreLoop.hasPlan ? "\(coreLoop.plan.weekLabel) · \(coreLoop.plan.meals.count) dinners" : "No generated week yet")
+            Text(coreLoop.hasPlan ? planSubtitle : "No generated plan yet")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.muted)
+        }
+    }
+
+    private var planSubtitle: String {
+        let noun = coreLoop.plan.kind == .week ? "dinners" : "courses"
+        return "\(coreLoop.plan.weekLabel) · \(coreLoop.plan.meals.count) \(noun)"
+    }
+
+    private var recentPlans: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: ReasiSpacing.s2) {
+                ForEach(coreLoop.recentPlans) { summary in
+                    Button {
+                        Task { await coreLoop.selectRecentPlan(id: summary.id, supabase: supabase) }
+                    } label: {
+                        HStack(spacing: ReasiSpacing.s2) {
+                            Image(systemName: summary.kind == .week ? "calendar" : "sparkles")
+                            Text(summary.name).lineLimit(1)
+                        }
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(summary.id == coreLoop.plan.id ? Color.reasi.background : Color.reasi.textMuted)
+                        .padding(.horizontal, ReasiSpacing.s3)
+                        .frame(height: 36)
+                        .background(summary.id == coreLoop.plan.id ? Color.reasi.text : Color.reasi.surface, in: Capsule())
+                    }
+                    .buttonStyle(ReasiPressStyle())
+                }
+            }
         }
     }
 
@@ -124,7 +156,9 @@ struct WeekPlanPlaceholderView: View {
             }
 
             Button {
-                Task {
+                if let draft = appState.planBuilder.draft {
+                    appState.openPlanBuilder(entryMethod: draft.entryMethod)
+                } else {
                     coreLoop.startWeekPlanGeneration(
                         store: appState.selectedStore,
                         supabase: supabase,
@@ -156,25 +190,19 @@ struct WeekPlanPlaceholderView: View {
             Image(systemName: "fork.knife.circle")
                 .font(.system(size: 30, weight: .medium))
                 .foregroundStyle(Color.reasi.textMuted)
-            Text("No week planned")
+            Text("No plan yet")
                 .font(ReasiTypography.title2)
                 .foregroundStyle(Color.reasi.text)
-            Text("Generate a week when you're ready. Nothing has been lost.")
+            Text("Start with an idea, a product, or simply describe what you need.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
 
             Button {
                 Task {
-                    coreLoop.startWeekPlanGeneration(
-                        store: appState.selectedStore,
-                        supabase: supabase,
-                        analytics: analytics,
-                        appState: appState,
-                        network: network
-                    )
+                    appState.openPlanBuilder(entryMethod: .describe)
                 }
             } label: {
-                Label("Plan my week", systemImage: "sparkles")
+                Label("Create a plan", systemImage: "sparkles")
             }
             .buttonStyle(ReasiPrimaryButtonStyle())
         }
@@ -200,7 +228,7 @@ struct WeekPlanPlaceholderView: View {
 
             HStack(spacing: ReasiSpacing.s2) {
                 PlanMetric(
-                    label: "\(coreLoop.plan.meals.count) dinners",
+                    label: "\(coreLoop.plan.meals.count) \(coreLoop.plan.kind == .week ? "dinners" : "courses")",
                     symbol: "fork.knife"
                 )
                 PlanMetric(

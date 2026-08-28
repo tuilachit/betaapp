@@ -128,6 +128,7 @@ struct ReasiApp: App {
 
     private func restoreUserData(expectedUserId: String?) async {
         guard (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
+        appState.planBuilder.activate(userId: expectedUserId)
         coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)
         await revenueCat.syncUser(userId: expectedUserId)
         guard !Task.isCancelled,

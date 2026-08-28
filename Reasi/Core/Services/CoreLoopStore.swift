@@ -113,6 +113,8 @@ final class CoreLoopStore {
     var storeSwitchMessage: String?
     var failedStoreSwitch: StoreSummary?
     var paywallRequest: ReasiPaywallRequest?
+    var recentPlans: [RecentPlanSummary] = []
+    var isLoadingRecentPlans = false
 
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
@@ -290,6 +292,7 @@ final class CoreLoopStore {
         guard activeUserId != userId else { return }
         cancelOutstandingWork()
         activeUserId = userId
+        recentPlans = []
 
         guard let userId,
               let cached = localCache.loadPlan(userId: userId),
@@ -478,6 +481,24 @@ final class CoreLoopStore {
         appState: AppState,
         network: NetworkMonitor? = nil
     ) {
+        startPlanGeneration(
+            brief: nil,
+            store: store,
+            supabase: supabase,
+            analytics: analytics,
+            appState: appState,
+            network: network
+        )
+    }
+
+    func startPlanGeneration(
+        brief: PlanBrief?,
+        store: StoreSummary,
+        supabase: SupabaseService,
+        analytics: AnalyticsService,
+        appState: AppState,
+        network: NetworkMonitor? = nil
+    ) {
         guard generationTask == nil else { return }
 
         if pendingGeneration == nil {
@@ -490,13 +511,16 @@ final class CoreLoopStore {
                 startedAt: Date(),
                 stage: .preparing,
                 cancellationRequested: false,
-                opensWhenReady: !hasPlan
+                opensWhenReady: !hasPlan,
+                planBrief: brief
             )
             persistPendingGeneration()
             analytics.capture(.planGenerationStarted, properties: [
                 "store_id": .string(store.id.rawValue),
                 "week_start": .string(weekStart),
-                "source": .string(supabase.status.state == .configured ? "supabase" : "fixture")
+                "source": .string(supabase.status.state == .configured ? "supabase" : "fixture"),
+                "plan_kind": .string((brief?.kind ?? .week).rawValue),
+                "entry_method": .string((brief?.entryMethod ?? .describe).rawValue)
             ])
             ReasiHaptics.light()
         }
@@ -593,7 +617,8 @@ final class CoreLoopStore {
                     input: GenerateWeekPlanInput(
                         storeId: pending.storeId,
                         weekStart: pending.weekStart,
-                        idempotencyKey: pending.idempotencyKey
+                        idempotencyKey: pending.idempotencyKey,
+                        planBrief: pending.planBrief
                     )
                 )
                 switch result {
@@ -691,12 +716,19 @@ final class CoreLoopStore {
         analytics: AnalyticsService,
         appState: AppState
     ) {
+        let completedBrief = pendingGeneration?.planBrief
+        var resolvedPlan = generated
+        if let completedBrief {
+            resolvedPlan.kind = completedBrief.kind
+            resolvedPlan.entryMethod = completedBrief.entryMethod
+            resolvedPlan.occasionAt = completedBrief.occasionAt
+        }
         generationStage = .ready
         withAnimation(ReasiMotion.slow) {
-            plan = generated
+            plan = resolvedPlan
             hasPlan = true
-            checkedItemIDs = Self.checkedIDs(from: generated)
-            checkedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: generated).map {
+            checkedItemIDs = Self.checkedIDs(from: resolvedPlan)
+            checkedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: resolvedPlan).map {
                 ($0, checkedItemIDs.contains($0))
             })
             pendingCheckItemIDs = []
@@ -706,13 +738,18 @@ final class CoreLoopStore {
             generationState = .succeeded
         }
         clearPendingGeneration()
+        if completedBrief != nil {
+            appState.planBuilder.discard()
+        }
         persistPlanCache()
         persistCheckCache()
         analytics.capture(.shoppingListCreated, properties: [
-            "store_id": .string(generated.storeId.rawValue),
-            "source": .string(generated.source.rawValue),
+            "store_id": .string(resolvedPlan.storeId.rawValue),
+            "source": .string(resolvedPlan.source.rawValue),
             "item_count": .int(allShoppingItems.count),
-            "section_count": .int(generated.shoppingList.sections.count)
+            "section_count": .int(generated.shoppingList.sections.count),
+            "plan_kind": .string(resolvedPlan.kind.rawValue),
+            "entry_method": .string((resolvedPlan.entryMethod ?? .describe).rawValue)
         ])
         analytics.flush()
         ReasiHaptics.success()
@@ -923,16 +960,85 @@ final class CoreLoopStore {
 
     func markWeekPlanViewed(analytics: AnalyticsService) {
         guard hasPlan else { return }
-        analytics.capture(.weekPlanViewed, properties: [
+        var properties: [String: AnalyticsProperty] = [
             "store_id": .string(plan.storeId.rawValue),
             "source": .string(plan.source.rawValue),
-            "meal_count": .int(plan.meals.count)
-        ])
+            "meal_count": .int(plan.meals.count),
+            "plan_kind": .string(plan.kind.rawValue)
+        ]
+        if let entryMethod = plan.entryMethod {
+            properties["entry_method"] = .string(entryMethod.rawValue)
+        }
+        analytics.capture(.weekPlanViewed, properties: properties)
     }
 
     func markShoppingListViewed(analytics: AnalyticsService) {
         guard hasPlan else { return }
         analytics.capture(.shoppingListViewed, properties: shoppingListProperties)
+    }
+
+    func refreshRecentPlans(supabase: SupabaseService?) async {
+        guard let supabase, supabase.isSignedIn else { return }
+        isLoadingRecentPlans = true
+        defer { isLoadingRecentPlans = false }
+        do {
+            recentPlans = try await supabase.fetchRecentPlans()
+        } catch {
+            // The current plan remains usable when history cannot refresh.
+        }
+    }
+
+    func selectRecentPlan(id: String, supabase: SupabaseService) async {
+        guard id != plan.id else { return }
+        do {
+            await syncPendingChanges(supabase: supabase)
+            let outstandingCheckTasks = Array(itemSyncTasks.values)
+            for task in outstandingCheckTasks {
+                await task.value
+            }
+            guard pendingImports.isEmpty, pendingCheckItemIDs.isEmpty else {
+                planRestoreMessage = "Your latest list changes are still syncing. Stay online and try again in a moment."
+                return
+            }
+
+            guard var selected = try await supabase.fetchWeekPlan(id: id) else { return }
+            var selectedCheckedIDs = Self.checkedIDs(from: selected)
+            var selectedCheckedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: selected).map {
+                ($0, selectedCheckedIDs.contains($0))
+            })
+            var selectedPendingIDs: Set<String> = []
+            if let activeUserId,
+               let localChecks = localCache.loadChecks(userId: activeUserId),
+               localChecks.shoppingListId == selected.shoppingList.id {
+                selectedPendingIDs = Set(localChecks.pendingItemIDs)
+                    .intersection(Set(allItemIDs(in: selected)))
+                for itemID in selectedPendingIDs {
+                    let isChecked = localChecks.states[itemID] ?? false
+                    selectedCheckedStates[itemID] = isChecked
+                    if isChecked {
+                        selectedCheckedIDs.insert(itemID)
+                    } else {
+                        selectedCheckedIDs.remove(itemID)
+                    }
+                }
+                applyCheckedStates(selectedCheckedStates, to: &selected)
+            }
+            withAnimation(ReasiMotion.base) {
+                plan = selected
+                hasPlan = true
+                checkedItemIDs = selectedCheckedIDs
+            }
+            checkedStates = selectedCheckedStates
+            pendingCheckItemIDs = selectedPendingIDs
+            pendingImports = []
+            addedImportKeys = []
+            progressMilestones = []
+            persistPlanCache()
+            persistCheckCache()
+            ReasiHaptics.selection()
+        } catch {
+            planRestoreMessage = "That saved plan could not be opened yet. Please try again."
+        }
     }
 
     private var shoppingListProperties: [String: AnalyticsProperty] {
@@ -941,7 +1047,8 @@ final class CoreLoopStore {
             "source": .string(plan.source.rawValue),
             "shopping_list_id": .string(plan.shoppingList.id),
             "item_count": .int(allShoppingItems.count),
-            "section_count": .int(plan.shoppingList.sections.count)
+            "section_count": .int(plan.shoppingList.sections.count),
+            "plan_kind": .string(plan.kind.rawValue)
         ]
     }
 
@@ -1309,6 +1416,47 @@ private struct PendingGenerationRequest: Codable, Hashable {
     var stage: GenerationRequestStage
     var cancellationRequested: Bool
     let opensWhenReady: Bool
+    let planBrief: PlanBrief?
+
+    enum CodingKeys: String, CodingKey {
+        case idempotencyKey, requestId, storeId, weekStart, startedAt, stage
+        case cancellationRequested, opensWhenReady, planBrief
+    }
+
+    init(
+        idempotencyKey: String,
+        requestId: String?,
+        storeId: StoreID,
+        weekStart: String,
+        startedAt: Date,
+        stage: GenerationRequestStage,
+        cancellationRequested: Bool,
+        opensWhenReady: Bool,
+        planBrief: PlanBrief? = nil
+    ) {
+        self.idempotencyKey = idempotencyKey
+        self.requestId = requestId
+        self.storeId = storeId
+        self.weekStart = weekStart
+        self.startedAt = startedAt
+        self.stage = stage
+        self.cancellationRequested = cancellationRequested
+        self.opensWhenReady = opensWhenReady
+        self.planBrief = planBrief
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        idempotencyKey = try container.decode(String.self, forKey: .idempotencyKey)
+        requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
+        storeId = try container.decode(StoreID.self, forKey: .storeId)
+        weekStart = try container.decode(String.self, forKey: .weekStart)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        stage = try container.decode(GenerationRequestStage.self, forKey: .stage)
+        cancellationRequested = try container.decode(Bool.self, forKey: .cancellationRequested)
+        opensWhenReady = try container.decode(Bool.self, forKey: .opensWhenReady)
+        planBrief = try container.decodeIfPresent(PlanBrief.self, forKey: .planBrief)
+    }
 }
 
 private final class GenerationRequestLocalCache {

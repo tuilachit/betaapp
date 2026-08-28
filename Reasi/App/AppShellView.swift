@@ -23,6 +23,12 @@ struct AppShellView: View {
             )
         }
         .background(Color.reasi.background.ignoresSafeArea())
+        .fullScreenCover(item: Binding(
+            get: { appState.planBuilderRequest },
+            set: { appState.planBuilderRequest = $0 }
+        )) { request in
+            PlanBuilderView(entryMethod: request.entryMethod)
+        }
         .sheet(
             item: Binding(
                 get: { coreLoop.paywallRequest },
@@ -92,7 +98,7 @@ struct AppShellView: View {
     private var primaryActionLabel: String {
         appState.selectedTab == .list && coreLoop.hasPlan
             ? "Add shopping item"
-            : "Create week plan"
+            : "Create a plan"
     }
 
     private func performPrimaryAction() {
@@ -107,7 +113,7 @@ struct AppShellView: View {
             }
         }
 
-        startGeneration()
+        appState.openPlanBuilder(entryMethod: .build)
     }
 
     private func startGeneration() {
