@@ -20,6 +20,9 @@ jobs:
       - name: Select Xcode 26.6
         run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
 
+      - name: Prepare public build configuration
+        run: cp Reasi/Config/ReasiConfig.example.xcconfig Reasi/Config/ReasiConfig.xcconfig
+
       - name: Build Release app
         run: |
           set -o pipefail
