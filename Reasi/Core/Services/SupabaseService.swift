@@ -765,6 +765,26 @@ final class SupabaseService {
         #endif
     }
 
+    func finishShopping(_ shoppingList: ShoppingList) async throws -> ShoppingTripSummary {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        return try await client.functions.invoke(
+            "finish-shopping",
+            options: FunctionInvokeOptions(
+                body: FinishShoppingInput(
+                    shoppingListId: shoppingList.id,
+                    expectedStoreId: shoppingList.storeId
+                )
+            )
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
     func fetchLatestWeekPlan() async throws -> WeekPlan? {
         try await fetchPersistedWeekPlan(planId: nil)
     }
@@ -818,7 +838,7 @@ final class SupabaseService {
 
         async let shoppingListRowsRequest: [PersistedShoppingListRow] = client
             .from("shopping_lists")
-            .select("id,store_id,store_name,name,created_at")
+            .select("id,store_id,store_name,name,status,completed_at,created_at")
             .eq("meal_plan_id", value: planRow.id)
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
@@ -835,7 +855,7 @@ final class SupabaseService {
         let itemRows: [PersistedShoppingItemRow] = try await client
             .from("shopping_list_items")
             .select(
-                "id,client_id,section_label,section_title,section_sort_key,section_type,item_name,product_name,quantity,quantity_label,checked,purchased,aisle_label,product_snapshot,sort_order,position"
+                "id,client_id,section_label,section_title,section_sort_key,section_type,item_name,product_name,quantity,quantity_label,checked,purchased,aisle_label,product_snapshot,actual_price_aud,price_cents,sort_order,position"
             )
             .eq("shopping_list_id", value: shoppingListRow.id)
             .order("section_sort_key")
@@ -903,7 +923,9 @@ final class SupabaseService {
                 id: shoppingListRow.id,
                 storeId: shoppingListRow.storeId.flatMap(StoreID.init(rawValue:)) ?? storeId,
                 storeName: shoppingListRow.storeName ?? store.name,
-                sections: sections
+                sections: sections,
+                status: ShoppingListStatus(rawValue: shoppingListRow.status ?? "") ?? .active,
+                completedAt: shoppingListRow.completedAt
             ),
             kind: planRow.planKind,
             entryMethod: planRow.generationMetadata?.planBrief?.entryMethod,
@@ -2040,6 +2062,11 @@ private struct ShoppingAssistantListItemSnapshot: Encodable {
     let product: ProductSnapshot?
 }
 
+private struct FinishShoppingInput: Encodable {
+    let shoppingListId: String
+    let expectedStoreId: StoreID
+}
+
 private struct ImportedShoppingListItemInsert: Encodable {
     let shoppingListId: String
     let userId: String
@@ -2429,6 +2456,8 @@ private struct PersistedShoppingListRow: Decodable {
     let storeId: String?
     let storeName: String?
     let name: String
+    let status: String?
+    let completedAt: String?
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -2436,6 +2465,8 @@ private struct PersistedShoppingListRow: Decodable {
         case storeId = "store_id"
         case storeName = "store_name"
         case name
+        case status
+        case completedAt = "completed_at"
         case createdAt = "created_at"
     }
 }
@@ -2455,6 +2486,8 @@ private struct PersistedShoppingItemRow: Decodable {
     let purchased: Bool
     let aisleLabel: String?
     let productSnapshot: ProductSnapshot?
+    let actualPriceAud: Double?
+    let priceCents: Int?
     let sortOrder: Int
     let position: Int
 
@@ -2473,6 +2506,8 @@ private struct PersistedShoppingItemRow: Decodable {
         case purchased
         case aisleLabel = "aisle_label"
         case productSnapshot = "product_snapshot"
+        case actualPriceAud = "actual_price_aud"
+        case priceCents = "price_cents"
         case sortOrder = "sort_order"
         case position
     }
@@ -2493,6 +2528,8 @@ private struct PersistedShoppingItemRow: Decodable {
         purchased = try container.decodeIfPresent(Bool.self, forKey: .purchased) ?? false
         aisleLabel = try container.decodeIfPresent(String.self, forKey: .aisleLabel)
         productSnapshot = try? container.decode(ProductSnapshot.self, forKey: .productSnapshot)
+        actualPriceAud = try container.decodeIfPresent(Double.self, forKey: .actualPriceAud)
+        priceCents = try container.decodeIfPresent(Int.self, forKey: .priceCents)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         position = try container.decodeIfPresent(Int.self, forKey: .position) ?? sortOrder
     }
@@ -2513,6 +2550,37 @@ private struct PersistedShoppingItemRow: Decodable {
             quantityText = "1"
         }
 
+        let resolvedProduct: ProductSnapshot?
+        if let productSnapshot {
+            let resolvedActualPrice = actualPriceAud ?? productSnapshot.actualPriceAud
+            resolvedProduct = ProductSnapshot(
+                sku: productSnapshot.sku,
+                productName: productSnapshot.productName,
+                brand: productSnapshot.brand,
+                size: productSnapshot.size,
+                priceAud: resolvedActualPrice ?? productSnapshot.priceAud ?? priceCents.map { Double($0) / 100 },
+                imageUrl: productSnapshot.imageUrl,
+                capturedAt: productSnapshot.capturedAt,
+                barcode: productSnapshot.barcode,
+                sourceName: productSnapshot.sourceName,
+                observationId: productSnapshot.observationId,
+                actualPriceAud: resolvedActualPrice
+            )
+        } else if let price = actualPriceAud ?? priceCents.map({ Double($0) / 100 }) {
+            resolvedProduct = ProductSnapshot(
+                sku: nil,
+                productName: productName,
+                brand: nil,
+                size: nil,
+                priceAud: price,
+                imageUrl: nil,
+                capturedAt: nil,
+                actualPriceAud: actualPriceAud
+            )
+        } else {
+            resolvedProduct = nil
+        }
+
         return ShoppingListItem(
             id: id,
             name: itemName ?? productName,
@@ -2520,7 +2588,7 @@ private struct PersistedShoppingItemRow: Decodable {
             checked: checked || purchased,
             aisleLabel: aisleLabel,
             sectionType: resolvedSectionType,
-            product: productSnapshot,
+            product: resolvedProduct,
             importedCandidate: nil,
             locationUncertaintyText: resolvedSectionType == .unknown ? "Location not certain" : nil,
             clientId: clientId

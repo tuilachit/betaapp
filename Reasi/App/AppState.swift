@@ -24,6 +24,11 @@ final class AppState {
         self.defaults = defaults
         let storedId = defaults.string(forKey: selectedStoreKey)
         selectedStore = FixtureStores.launchStores.first { $0.id.rawValue == storedId } ?? FixtureStores.topRyde
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ReasiOpenShoppingList") {
+            selectedTab = .list
+        }
+        #endif
     }
 
     func selectStore(_ store: StoreSummary) {

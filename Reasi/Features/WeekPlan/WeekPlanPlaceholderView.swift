@@ -59,6 +59,7 @@ struct WeekPlanPlaceholderView: View {
             coreLoop.markWeekPlanViewed(analytics: analytics)
         }
         .task(id: coreLoop.plan.id) {
+            coreLoop.refreshMealImagesIfNeeded(supabase: supabase)
             await coreLoop.refreshRecentPlans(supabase: supabase)
         }
     }
