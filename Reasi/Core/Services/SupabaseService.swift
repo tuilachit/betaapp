@@ -783,7 +783,7 @@ final class SupabaseService {
         if let planId {
             planRows = try await client
                 .from("meal_plans")
-                .select("id,name,store_id,week_start,planning_notes,created_at")
+                .select("id,name,store_id,week_start,planning_notes,plan_kind,occasion_at,generation_metadata,created_at")
                 .eq("user_id", value: userId)
                 .eq("id", value: planId)
                 .limit(1)
@@ -792,7 +792,7 @@ final class SupabaseService {
         } else {
             planRows = try await client
                 .from("meal_plans")
-                .select("id,name,store_id,week_start,planning_notes,created_at")
+                .select("id,name,store_id,week_start,planning_notes,plan_kind,occasion_at,generation_metadata,created_at")
                 .eq("user_id", value: userId)
                 .order("created_at", ascending: false)
                 .limit(1)
@@ -809,7 +809,7 @@ final class SupabaseService {
         async let mealRowsRequest: [PersistedMealRow] = client
             .from("meals")
             .select(
-                "id,day_label,dish,description,cuisine,cook_time_min,cost_aud,estimated_protein_g,estimated_calories,estimated_carbs_g,recipe_json,image_url,image_source_name,image_source_url,image_photographer_name,image_photographer_url,sort_order"
+                "id,day_label,course_role,dish,description,cuisine,cook_time_min,cost_aud,estimated_protein_g,estimated_calories,estimated_carbs_g,recipe_json,image_url,image_source_name,image_source_url,image_photographer_name,image_photographer_url,sort_order"
             )
             .eq("meal_plan_id", value: planRow.id)
             .order("sort_order")
@@ -872,7 +872,7 @@ final class SupabaseService {
         let meals = mealRows.enumerated().map { index, row in
             MealSummary(
                 id: row.id,
-                day: row.dayLabel,
+                day: planRow.planKind == .occasion ? (row.courseRole ?? row.dayLabel) : row.dayLabel,
                 dish: row.dish,
                 description: row.description,
                 cuisine: row.cuisine,
@@ -904,7 +904,10 @@ final class SupabaseService {
                 storeId: shoppingListRow.storeId.flatMap(StoreID.init(rawValue:)) ?? storeId,
                 storeName: shoppingListRow.storeName ?? store.name,
                 sections: sections
-            )
+            ),
+            kind: planRow.planKind,
+            entryMethod: planRow.generationMetadata?.planBrief?.entryMethod,
+            occasionAt: planRow.occasionAt.flatMap(Self.parseISODate)
         )
         #else
         throw AuthFlowError.notConfigured
@@ -934,7 +937,8 @@ final class SupabaseService {
         let edgeRequest = EdgeGenerateWeekPlanRequest(
             storeId: input.storeId,
             weekStart: input.weekStart,
-            idempotencyKey: input.idempotencyKey
+            idempotencyKey: input.idempotencyKey,
+            planBrief: input.planBrief
         )
 
         do {
@@ -1045,6 +1049,78 @@ final class SupabaseService {
         return rows.first?.generationRequest
         #else
         return nil
+        #endif
+    }
+
+    func interpretPlanBrief(_ brief: PlanBrief, storeId: StoreID) async throws -> PlanInterpretation {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else { throw AuthFlowError.notSignedIn }
+        return try await client.functions.invoke(
+            "interpret-plan-brief",
+            options: FunctionInvokeOptions(body: InterpretPlanBriefInput(planBrief: brief, storeId: storeId))
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func resolveMealIdea(
+        method: String,
+        storeId: StoreID,
+        text: String? = nil,
+        url: String? = nil,
+        uploadPath: String? = nil
+    ) async throws -> ResolvedMealIdea {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else { throw AuthFlowError.notSignedIn }
+        let edgeMethod: String
+        switch method {
+        case "link", "recipe_url":
+            edgeMethod = "recipe_url"
+        case "photo", "food_photo":
+            edgeMethod = "food_photo"
+        default:
+            throw ReasiServiceError.requestFailed("Choose a recipe link or food photo.")
+        }
+        let response: ResolveMealIdeaResponse = try await client.functions.invoke(
+            "resolve-meal-idea",
+            options: FunctionInvokeOptions(
+                body: ResolveMealIdeaInput(
+                    method: edgeMethod,
+                    storeId: storeId,
+                    text: text,
+                    url: url,
+                    uploadPath: uploadPath
+                )
+            )
+        )
+        guard let idea = response.idea else {
+            throw ReasiServiceError.requestFailed(
+                response.message ?? "That source could not be read reliably. Add a clearer screenshot instead."
+            )
+        }
+        return idea.resolved
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func fetchRecentPlans(limit: Int = 12) async throws -> [RecentPlanSummary] {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
+            throw AuthFlowError.notSignedIn
+        }
+        let rows: [PersistedRecentPlanRow] = try await client
+            .from("meal_plans")
+            .select("id,name,plan_kind,store_id,created_at")
+            .eq("user_id", value: userId)
+            .order("created_at", ascending: false)
+            .limit(limit)
+            .execute()
+            .value
+        return rows.map(\.summary)
+        #else
+        return []
         #endif
     }
 
@@ -1479,6 +1555,12 @@ final class SupabaseService {
         return token.flatMap(Double.init) ?? 1
     }
 
+    private static func parseISODate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
     #if DEBUG
     private static func fixtureCandidate(named name: String) -> ProductCandidate {
         ProductCandidate(
@@ -1572,6 +1654,102 @@ private struct EdgeGenerateWeekPlanRequest: Encodable {
     let storeId: StoreID
     let weekStart: String?
     let idempotencyKey: String?
+    let planBrief: PlanBrief?
+}
+
+private struct InterpretPlanBriefInput: Encodable {
+    let planBrief: PlanBrief
+    let storeId: StoreID
+}
+
+private struct ResolveMealIdeaInput: Encodable {
+    let method: String
+    let storeId: StoreID
+    let text: String?
+    let url: String?
+    let uploadPath: String?
+}
+
+struct ResolveMealIdeaResponse: Decodable {
+    let status: String
+    let message: String?
+    let idea: ResolveMealIdeaPayload?
+}
+
+struct ResolveMealIdeaPayload: Decodable {
+    let title: String
+    let description: String?
+    let imageURL: URL?
+    let sourceURL: URL?
+    let confidence: ProductConfidence
+    let confidenceReason: String
+    let recipe: ResolveMealRecipePayload?
+
+    enum CodingKeys: String, CodingKey {
+        case title, description, recipe, ingredients, method, prepTimeMin, cookTimeMin, serves
+        case imageURL = "imageUrl"
+        case sourceURL = "sourceUrl"
+        case confidence, confidenceReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        imageURL = try container.decodeIfPresent(URL.self, forKey: .imageURL)
+        sourceURL = try container.decodeIfPresent(URL.self, forKey: .sourceURL)
+        confidence = try container.decodeIfPresent(ProductConfidence.self, forKey: .confidence) ?? .low
+        confidenceReason = try container.decodeIfPresent(String.self, forKey: .confidenceReason)
+            ?? "The source did not provide a confidence explanation."
+        if let nested = try container.decodeIfPresent(ResolveMealRecipePayload.self, forKey: .recipe) {
+            recipe = nested
+        } else if container.contains(.ingredients) || container.contains(.method) {
+            recipe = ResolveMealRecipePayload(
+                ingredients: try container.decodeIfPresent([String].self, forKey: .ingredients) ?? [],
+                method: try container.decodeIfPresent([String].self, forKey: .method) ?? [],
+                prepTimeMin: try container.decodeIfPresent(Int.self, forKey: .prepTimeMin),
+                cookTimeMin: try container.decodeIfPresent(Int.self, forKey: .cookTimeMin),
+                serves: try container.decodeIfPresent(Int.self, forKey: .serves)
+            )
+        } else {
+            recipe = nil
+        }
+    }
+
+    var resolved: ResolvedMealIdea {
+        ResolvedMealIdea(
+            title: title,
+            description: description,
+            cuisine: nil,
+            sourceURL: sourceURL,
+            imageURL: imageURL,
+            confidence: confidence,
+            confidenceReason: confidenceReason,
+            recipe: recipe?.recipeInfo,
+            product: nil
+        )
+    }
+}
+
+struct ResolveMealRecipePayload: Decodable {
+    let ingredients: [String]
+    let method: [String]
+    let prepTimeMin: Int?
+    let cookTimeMin: Int?
+    let serves: Int?
+
+    var recipeInfo: RecipeInfo {
+        RecipeInfo(
+            ingredients: ingredients.map {
+                RecipeIngredient(name: $0, quantity: "", category: "Recipe")
+            },
+            instructionsBrief: method.joined(separator: " "),
+            prepTimeMin: prepTimeMin,
+            cookTimeMin: cookTimeMin,
+            method: method,
+            serves: serves
+        )
+    }
 }
 
 private struct GenerationRequestBody: Encodable {
@@ -2096,6 +2274,9 @@ private struct PersistedMealPlanSummaryRow: Decodable {
     let storeId: String?
     let weekStart: String?
     let planningNotes: String?
+    let planKind: PlanKind
+    let occasionAt: String?
+    let generationMetadata: PersistedPlanGenerationMetadata?
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -2104,13 +2285,63 @@ private struct PersistedMealPlanSummaryRow: Decodable {
         case storeId = "store_id"
         case weekStart = "week_start"
         case planningNotes = "planning_notes"
+        case planKind = "plan_kind"
+        case occasionAt = "occasion_at"
+        case generationMetadata = "generation_metadata"
         case createdAt = "created_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        storeId = try container.decodeIfPresent(String.self, forKey: .storeId)
+        weekStart = try container.decodeIfPresent(String.self, forKey: .weekStart)
+        planningNotes = try container.decodeIfPresent(String.self, forKey: .planningNotes)
+        planKind = try container.decodeIfPresent(PlanKind.self, forKey: .planKind) ?? .week
+        occasionAt = try container.decodeIfPresent(String.self, forKey: .occasionAt)
+        generationMetadata = try container.decodeIfPresent(PersistedPlanGenerationMetadata.self, forKey: .generationMetadata)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+    }
+}
+
+private struct PersistedPlanGenerationMetadata: Decodable {
+    let planBrief: PersistedPlanBriefMetadata?
+}
+
+private struct PersistedPlanBriefMetadata: Decodable {
+    let entryMethod: EntryMethod?
+}
+
+private struct PersistedRecentPlanRow: Decodable {
+    let id: String
+    let name: String
+    let planKind: PlanKind?
+    let storeId: StoreID?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case planKind = "plan_kind"
+        case storeId = "store_id"
+        case createdAt = "created_at"
+    }
+
+    var summary: RecentPlanSummary {
+        RecentPlanSummary(
+            id: id,
+            name: name,
+            kind: planKind ?? .week,
+            storeId: storeId,
+            createdAt: createdAt
+        )
     }
 }
 
 private struct PersistedMealRow: Decodable {
     let id: String
     let dayLabel: String
+    let courseRole: String?
     let dish: String
     let description: String
     let cuisine: String
@@ -2130,6 +2361,7 @@ private struct PersistedMealRow: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case dayLabel = "day_label"
+        case courseRole = "course_role"
         case dish
         case description
         case cuisine
@@ -2151,6 +2383,7 @@ private struct PersistedMealRow: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         dayLabel = try container.decode(String.self, forKey: .dayLabel)
+        courseRole = try container.decodeIfPresent(String.self, forKey: .courseRole)
         dish = try container.decode(String.self, forKey: .dish)
         description = try container.decode(String.self, forKey: .description)
         cuisine = try container.decode(String.self, forKey: .cuisine)
