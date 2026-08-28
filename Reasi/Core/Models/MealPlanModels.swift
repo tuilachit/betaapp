@@ -155,6 +155,28 @@ struct MealSummary: Identifiable, Codable, Hashable {
             imagePhotographerUrl: imagePhotographerUrl
         )
     }
+
+    func withImageMetadata(from refreshed: MealSummary) -> MealSummary {
+        MealSummary(
+            id: id,
+            day: day,
+            dish: dish,
+            description: description,
+            cuisine: cuisine,
+            cookTimeMin: cookTimeMin,
+            costAud: costAud,
+            estimatedProteinG: estimatedProteinG,
+            estimatedCalories: estimatedCalories,
+            estimatedCarbsG: estimatedCarbsG,
+            tone: tone,
+            recipe: recipe,
+            imageUrl: refreshed.imageUrl ?? imageUrl,
+            imageSourceName: refreshed.imageSourceName ?? imageSourceName,
+            imageSourceUrl: refreshed.imageSourceUrl ?? imageSourceUrl,
+            imagePhotographerName: refreshed.imagePhotographerName ?? imagePhotographerName,
+            imagePhotographerUrl: refreshed.imagePhotographerUrl ?? imagePhotographerUrl
+        )
+    }
 }
 
 struct ProductSnapshot: Codable, Hashable {
@@ -395,11 +417,101 @@ struct ShoppingListSection: Identifiable, Codable, Hashable {
     var items: [ShoppingListItem]
 }
 
+enum ShoppingListStatus: String, Codable, Hashable {
+    case active
+    case completed
+    case archived
+}
+
 struct ShoppingList: Identifiable, Codable, Hashable {
     let id: String
     let storeId: StoreID
     let storeName: String
     var sections: [ShoppingListSection]
+    var status: ShoppingListStatus = .active
+    var completedAt: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, storeId, storeName, sections, status, completedAt
+    }
+
+    init(
+        id: String,
+        storeId: StoreID,
+        storeName: String,
+        sections: [ShoppingListSection],
+        status: ShoppingListStatus = .active,
+        completedAt: String? = nil
+    ) {
+        self.id = id
+        self.storeId = storeId
+        self.storeName = storeName
+        self.sections = sections
+        self.status = status
+        self.completedAt = completedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        storeId = try container.decode(StoreID.self, forKey: .storeId)
+        storeName = try container.decode(String.self, forKey: .storeName)
+        sections = try container.decode([ShoppingListSection].self, forKey: .sections)
+        status = try container.decodeIfPresent(ShoppingListStatus.self, forKey: .status) ?? .active
+        completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
+    }
+}
+
+struct BasketPriceSummary: Equatable {
+    let inBasketTotalAud: Double
+    let plannedTotalAud: Double
+    let pricedItemCount: Int
+    let totalItemCount: Int
+    let pricedCheckedItemCount: Int
+    let checkedItemCount: Int
+
+    init(items: [ShoppingListItem]) {
+        totalItemCount = items.count
+        checkedItemCount = items.filter(\.checked).count
+
+        let priced = items.compactMap { item -> (ShoppingListItem, Double)? in
+            guard let price = item.product?.actualPriceAud ?? item.product?.priceAud,
+                  price.isFinite,
+                  price >= 0 else { return nil }
+            return (item, price)
+        }
+
+        pricedItemCount = priced.count
+        pricedCheckedItemCount = priced.filter { $0.0.checked }.count
+        plannedTotalAud = priced.reduce(0) { $0 + $1.1 }
+        inBasketTotalAud = priced.reduce(0) { total, entry in
+            entry.0.checked ? total + entry.1 : total
+        }
+    }
+
+    var unpricedCheckedItemCount: Int {
+        max(0, checkedItemCount - pricedCheckedItemCount)
+    }
+
+    var coverageFraction: Double {
+        guard totalItemCount > 0 else { return 0 }
+        return Double(pricedItemCount) / Double(totalItemCount)
+    }
+}
+
+struct ShoppingTripSummary: Codable, Hashable {
+    let tripId: String
+    let shoppingListId: String
+    let storeId: StoreID
+    let storeName: String
+    let totalItems: Int
+    let checkedItems: Int
+    let pricedItems: Int
+    let pricedCheckedItems: Int
+    let knownPlannedTotalAud: Double
+    let knownBasketTotalAud: Double
+    let completedAt: String
+    let alreadyCompleted: Bool
 }
 
 enum WeekPlanSource: String, Codable, Hashable {

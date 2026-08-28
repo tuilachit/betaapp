@@ -115,6 +115,9 @@ final class CoreLoopStore {
     var paywallRequest: ReasiPaywallRequest?
     var recentPlans: [RecentPlanSummary] = []
     var isLoadingRecentPlans = false
+    var isFinishingShopping = false
+    var shoppingCompletionError: String?
+    var lastShoppingTrip: ShoppingTripSummary?
 
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
@@ -132,6 +135,7 @@ final class CoreLoopStore {
     @ObservationIgnored private var generationRunID: UUID?
     @ObservationIgnored private var pendingGeneration: PendingGenerationRequest?
     @ObservationIgnored private var storeSwitchTask: Task<Void, Never>?
+    @ObservationIgnored private var mealImageRefreshTask: Task<Void, Never>?
 
     init(plan: WeekPlan? = nil) {
         let initialPlan = plan ?? FixtureWeekPlan.current
@@ -152,6 +156,14 @@ final class CoreLoopStore {
     var shoppingProgress: Double {
         guard !allShoppingItems.isEmpty else { return 0 }
         return Double(checkedCount) / Double(allShoppingItems.count)
+    }
+
+    var basketPriceSummary: BasketPriceSummary {
+        BasketPriceSummary(items: allShoppingItems)
+    }
+
+    var isShoppingCompleted: Bool {
+        hasPlan && plan.shoppingList.status == .completed
     }
 
     var hasPendingGeneration: Bool {
@@ -298,6 +310,9 @@ final class CoreLoopStore {
         cancelOutstandingWork()
         activeUserId = userId
         recentPlans = []
+        lastShoppingTrip = nil
+        shoppingCompletionError = nil
+        isFinishingShopping = false
         pendingDeletions = userId.map { Set(localCache.loadDeletions(userId: $0)) } ?? []
 
         guard let userId,
@@ -438,6 +453,9 @@ final class CoreLoopStore {
         failedStoreSwitch = nil
         pendingGeneration = nil
         paywallRequest = nil
+        isFinishingShopping = false
+        shoppingCompletionError = nil
+        lastShoppingTrip = nil
     }
 
     func restorePendingGeneration(
@@ -674,6 +692,7 @@ final class CoreLoopStore {
                         analytics: analytics,
                         appState: appState
                     )
+                    refreshMealImagesIfNeeded(supabase: supabase)
                     return
 
                 case .failed, .expired:
@@ -751,6 +770,8 @@ final class CoreLoopStore {
             addedImportKeys = []
             progressMilestones = []
             generationState = .succeeded
+            lastShoppingTrip = nil
+            shoppingCompletionError = nil
         }
         clearPendingGeneration()
         if completedBrief != nil {
@@ -799,7 +820,7 @@ final class CoreLoopStore {
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) {
-        guard hasPlan else { return }
+        guard hasPlan, plan.shoppingList.status == .active else { return }
         let willCheck = !checkedItemIDs.contains(item.id)
 
         withAnimation(ReasiMotion.tactileSpring) {
@@ -833,7 +854,9 @@ final class CoreLoopStore {
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) {
-        guard hasPlan, allShoppingItems.contains(where: { $0.id == item.id }) else { return }
+        guard hasPlan,
+              plan.shoppingList.status == .active,
+              allShoppingItems.contains(where: { $0.id == item.id }) else { return }
         let shoppingListId = plan.shoppingList.id
 
         itemSyncTasks[item.id]?.cancel()
@@ -877,7 +900,7 @@ final class CoreLoopStore {
     }
 
     func applyAssistantMutations(_ mutations: [AssistantListMutation]) {
-        guard hasPlan, !mutations.isEmpty else { return }
+        guard hasPlan, plan.shoppingList.status == .active, !mutations.isEmpty else { return }
 
         for mutation in mutations {
             switch mutation.operation {
@@ -930,7 +953,9 @@ final class CoreLoopStore {
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) async -> Bool {
-        guard hasPlan, let clientId = UUID(uuidString: idempotencyKey) else { return false }
+        guard hasPlan,
+              plan.shoppingList.status == .active,
+              let clientId = UUID(uuidString: idempotencyKey) else { return false }
         if addedImportKeys.contains(idempotencyKey) { return true }
         if allShoppingItems.contains(where: { item in
             if let sku = candidate.sku, item.product?.sku == sku { return true }
@@ -1005,6 +1030,7 @@ final class CoreLoopStore {
         analytics: AnalyticsService
     ) async throws {
         guard hasPlan,
+              plan.shoppingList.status == .active,
               !item.id.hasPrefix("local-import-"),
               let context = sectionContext(for: item.id, in: plan) else {
             throw ReasiServiceError.invalidResponse
@@ -1097,6 +1123,52 @@ final class CoreLoopStore {
         }
     }
 
+    func refreshMealImagesIfNeeded(supabase: SupabaseService) {
+        guard hasPlan,
+              plan.source == .supabase,
+              plan.meals.contains(where: { $0.imageUrl == nil }),
+              supabase.isSignedIn else { return }
+
+        let planID = plan.id
+        mealImageRefreshTask?.cancel()
+        mealImageRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.mealImageRefreshTask = nil }
+
+            for delay in [0, 2, 4, 8] {
+                if delay > 0 {
+                    do {
+                        try await Task.sleep(for: .seconds(delay))
+                    } catch {
+                        return
+                    }
+                }
+
+                guard !Task.isCancelled,
+                      self.hasPlan,
+                      self.plan.id == planID,
+                      self.plan.meals.contains(where: { $0.imageUrl == nil }) else { return }
+
+                do {
+                    guard let refreshed = try await supabase.fetchWeekPlan(id: planID),
+                          refreshed.id == planID else { continue }
+                    let refreshedByID = Dictionary(uniqueKeysWithValues: refreshed.meals.map { ($0.id, $0) })
+                    let mergedMeals = self.plan.meals.map { meal in
+                        guard let update = refreshedByID[meal.id] else { return meal }
+                        return meal.withImageMetadata(from: update)
+                    }
+                    guard mergedMeals != self.plan.meals else { continue }
+                    withAnimation(ReasiMotion.base) {
+                        self.plan = self.plan.withMeals(mergedMeals)
+                    }
+                    self.persistPlanCache()
+                } catch {
+                    // Images are optional; the existing plan remains fully usable while retrying.
+                }
+            }
+        }
+    }
+
     func selectRecentPlan(id: String, supabase: SupabaseService) async {
         guard id != plan.id else { return }
         do {
@@ -1140,6 +1212,8 @@ final class CoreLoopStore {
                 hasPlan = true
                 checkedItemIDs = selectedCheckedIDs
             }
+            lastShoppingTrip = nil
+            shoppingCompletionError = nil
             checkedStates = selectedCheckedStates
             pendingCheckItemIDs = selectedPendingIDs
             pendingImports = []
@@ -1237,11 +1311,13 @@ final class CoreLoopStore {
         storeSwitchTask?.cancel()
         itemSyncTasks.values.forEach { $0.cancel() }
         deleteSyncTasks.values.forEach { $0.cancel() }
+        mealImageRefreshTask?.cancel()
         generationTask = nil
         generationClockTask = nil
         storeSwitchTask = nil
         itemSyncTasks = [:]
         deleteSyncTasks = [:]
+        mealImageRefreshTask = nil
         generationRunID = nil
     }
 
@@ -1289,6 +1365,74 @@ final class CoreLoopStore {
     func flushPendingShoppingChanges(supabase: SupabaseService) async {
         guard supabase.isSignedIn else { return }
         await syncPendingChanges(supabase: supabase)
+        let outstandingTasks = Array(itemSyncTasks.values) + Array(deleteSyncTasks.values)
+        for task in outstandingTasks {
+            await task.value
+        }
+    }
+
+    func finishShopping(
+        supabase: SupabaseService,
+        analytics: AnalyticsService
+    ) async {
+        guard hasPlan,
+              plan.shoppingList.status == .active,
+              !isFinishingShopping else { return }
+
+        isFinishingShopping = true
+        shoppingCompletionError = nil
+        let summaryBeforeFinish = basketPriceSummary
+        analytics.capture(.shoppingFinishStarted, properties: [
+            "store_id": .string(plan.shoppingList.storeId.rawValue),
+            "shopping_list_id": .string(plan.shoppingList.id),
+            "checked_items": .int(summaryBeforeFinish.checkedItemCount),
+            "item_count": .int(summaryBeforeFinish.totalItemCount),
+            "priced_items": .int(summaryBeforeFinish.pricedItemCount)
+        ])
+        defer { isFinishingShopping = false }
+
+        do {
+            await flushPendingShoppingChanges(supabase: supabase)
+            guard pendingImports.isEmpty,
+                  pendingCheckItemIDs.isEmpty,
+                  pendingDeletions.isEmpty else {
+                throw ReasiServiceError.requestFailed(
+                    "A few list changes are still syncing. Stay online and try Finish shopping again in a moment."
+                )
+            }
+
+            let trip = try await supabase.finishShopping(plan.shoppingList)
+            withAnimation(ReasiMotion.slow) {
+                plan.shoppingList.status = .completed
+                plan.shoppingList.completedAt = trip.completedAt
+                lastShoppingTrip = trip
+            }
+            persistPlanCache()
+            analytics.capture(.shoppingFinished, properties: [
+                "store_id": .string(trip.storeId.rawValue),
+                "shopping_list_id": .string(trip.shoppingListId),
+                "item_count": .int(trip.totalItems),
+                "checked_items": .int(trip.checkedItems),
+                "priced_items": .int(trip.pricedItems),
+                "priced_checked_items": .int(trip.pricedCheckedItems),
+                "known_basket_total_aud": .double(trip.knownBasketTotalAud),
+                "known_planned_total_aud": .double(trip.knownPlannedTotalAud),
+                "already_completed": .bool(trip.alreadyCompleted)
+            ])
+            analytics.flush()
+            ReasiHaptics.success()
+        } catch {
+            let message = supabase.userFacingMessage(
+                for: error,
+                fallback: "Your list is still open. We couldn't save this shop yet; please try again."
+            )
+            shoppingCompletionError = message
+            analytics.capture(.shoppingFinishFailed, properties: [
+                "store_id": .string(plan.shoppingList.storeId.rawValue),
+                "shopping_list_id": .string(plan.shoppingList.id)
+            ])
+            ReasiHaptics.warning()
+        }
     }
 
     private func syncPendingImport(

@@ -196,6 +196,11 @@ final class ReasiCoreTests: XCTestCase {
         json.removeValue(forKey: "kind")
         json.removeValue(forKey: "entryMethod")
         json.removeValue(forKey: "occasionAt")
+        if var shoppingList = json["shoppingList"] as? [String: Any] {
+            shoppingList.removeValue(forKey: "status")
+            shoppingList.removeValue(forKey: "completedAt")
+            json["shoppingList"] = shoppingList
+        }
 
         let legacyData = try JSONSerialization.data(withJSONObject: json)
         let decoded = try JSONDecoder().decode(WeekPlan.self, from: legacyData)
@@ -387,6 +392,89 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertFalse(ReasiConfig.isValidRevenueCatPublicKey("sk_example", allowTestStore: false))
         XCTAssertTrue(ReasiConfig.isValidRevenueCatPublicKey("appl_example", allowTestStore: false))
         XCTAssertTrue(ReasiConfig.isValidRevenueCatPublicKey("test_example", allowTestStore: true))
+    }
+
+    func testBasketPriceSummarySeparatesCheckedBasketFromPlannedCoverage() {
+        let items = [
+            ShoppingListItem(
+                id: "actual",
+                name: "Pasta sauce",
+                quantity: "1 jar",
+                checked: true,
+                aisleLabel: "Aisle 10",
+                sectionType: .numbered,
+                product: ProductSnapshot(
+                    sku: "sauce",
+                    productName: "Pasta sauce",
+                    brand: nil,
+                    size: "500 g",
+                    priceAud: 5,
+                    imageUrl: nil,
+                    capturedAt: "2026-08-28",
+                    actualPriceAud: 4.50
+                )
+            ),
+            ShoppingListItem(
+                id: "catalog",
+                name: "Chocolate",
+                quantity: "1 block",
+                checked: false,
+                aisleLabel: "Aisle 6",
+                sectionType: .numbered,
+                product: ProductSnapshot(
+                    sku: "chocolate",
+                    productName: "Chocolate",
+                    brand: nil,
+                    size: "180 g",
+                    priceAud: 3.20,
+                    imageUrl: nil,
+                    capturedAt: "2026-08-27"
+                )
+            ),
+            ShoppingListItem(
+                id: "unknown",
+                name: "Fresh herbs",
+                quantity: "1 bunch",
+                checked: true,
+                aisleLabel: "Fresh Produce",
+                sectionType: .perimeter,
+                product: nil
+            ),
+        ]
+
+        let summary = BasketPriceSummary(items: items)
+        XCTAssertEqual(summary.inBasketTotalAud, 4.50, accuracy: 0.001)
+        XCTAssertEqual(summary.plannedTotalAud, 7.70, accuracy: 0.001)
+        XCTAssertEqual(summary.pricedItemCount, 2)
+        XCTAssertEqual(summary.pricedCheckedItemCount, 1)
+        XCTAssertEqual(summary.unpricedCheckedItemCount, 1)
+        XCTAssertEqual(summary.coverageFraction, 2.0 / 3.0, accuracy: 0.001)
+    }
+
+    func testMealImageRefreshOnlyAddsImageMetadata() {
+        let original = FixtureWeekPlan.current.meals[0]
+        let refreshed = MealSummary(
+            id: original.id,
+            day: original.day,
+            dish: original.dish,
+            description: "Changed remotely",
+            cuisine: original.cuisine,
+            cookTimeMin: original.cookTimeMin,
+            costAud: original.costAud,
+            estimatedProteinG: original.estimatedProteinG,
+            estimatedCalories: original.estimatedCalories,
+            estimatedCarbsG: original.estimatedCarbsG,
+            tone: original.tone,
+            recipe: nil,
+            imageUrl: URL(string: "https://images.example.com/meal.jpg"),
+            imageSourceName: "Photo source"
+        )
+
+        let merged = original.withImageMetadata(from: refreshed)
+        XCTAssertEqual(merged.imageUrl, refreshed.imageUrl)
+        XCTAssertEqual(merged.imageSourceName, "Photo source")
+        XCTAssertEqual(merged.description, original.description)
+        XCTAssertEqual(merged.recipe, original.recipe)
     }
 
     private func fixtureProduct(name: String, price: Double?) -> ProductCandidate {

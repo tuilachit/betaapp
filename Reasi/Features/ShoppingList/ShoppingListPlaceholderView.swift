@@ -25,6 +25,7 @@ struct ShoppingListPlaceholderView: View {
     @State private var productSearchContext: ProductSearchContext?
     @State private var inlineError: String?
     @State private var inputIsBusy = false
+    @State private var showFinishConfirmation = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -55,14 +56,19 @@ struct ShoppingListPlaceholderView: View {
                         if coreLoop.generationState.isGenerating {
                             generationProgressCard
                         }
-                        progressView
-                        addItemSurface
+                        if coreLoop.isShoppingCompleted {
+                            shoppingCompleteCard
+                        } else {
+                            progressView
+                            basketSummaryCard
+                            addItemSurface
+                        }
 
                         if coreLoop.isSwitchingStore {
                             storeSwitchLoading
                         }
 
-                        if inputIsBusy {
+                        if inputIsBusy && !coreLoop.isShoppingCompleted {
                             inputLoadingCard
                         }
 
@@ -116,7 +122,7 @@ struct ShoppingListPlaceholderView: View {
             }
             .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
 
-            if coreLoop.hasPlan {
+            if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
                 assistantButton
             }
         }
@@ -151,6 +157,20 @@ struct ShoppingListPlaceholderView: View {
                 showListPhotoPicker = true
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Finish this shop?",
+            isPresented: $showFinishConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Finish shopping") {
+                Task {
+                    await coreLoop.finishShopping(supabase: supabase, analytics: analytics)
+                }
+            }
+            Button("Keep shopping", role: .cancel) {}
+        } message: {
+            Text("Reasi will save what you bought and the prices currently known. Items without a reliable price stay unpriced.")
         }
         .fullScreenCover(isPresented: $showProductCamera) {
             CameraCaptureView { image in
@@ -307,6 +327,7 @@ struct ShoppingListPlaceholderView: View {
                 .foregroundStyle(Color.reasi.muted)
             }
             .accessibilityLabel("Choose shopping store")
+            .disabled(coreLoop.isShoppingCompleted)
         }
     }
 
@@ -337,6 +358,147 @@ struct ShoppingListPlaceholderView: View {
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
                 .stroke(Color.reasi.border, lineWidth: 1)
+        }
+    }
+
+    private var basketSummaryCard: some View {
+        let summary = coreLoop.basketPriceSummary
+
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s4) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("IN BASKET")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                    Text(summary.inBasketTotalAud, format: .currency(code: "AUD"))
+                        .font(ReasiTypography.title)
+                        .foregroundStyle(Color.reasi.text)
+                        .contentTransition(.numericText(value: summary.inBasketTotalAud))
+                        .animation(ReasiMotion.fast, value: summary.inBasketTotalAud)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("PLANNED")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
+                    Text(summary.plannedTotalAud, format: .currency(code: "AUD"))
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .contentTransition(.numericText(value: summary.plannedTotalAud))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.reasi.surfaceHigh)
+                        Capsule()
+                            .fill(Color.reasi.success)
+                            .frame(width: proxy.size.width * summary.coverageFraction)
+                            .animation(ReasiMotion.tactileSpring, value: summary.coverageFraction)
+                    }
+                }
+                .frame(height: 4)
+
+                HStack(alignment: .top) {
+                    Text("Known prices only · \(summary.pricedItemCount) of \(summary.totalItemCount) items priced")
+                    Spacer(minLength: ReasiSpacing.s3)
+                    if summary.unpricedCheckedItemCount > 0 {
+                        Text("\(summary.unpricedCheckedItemCount) not included")
+                            .foregroundStyle(Color.reasi.warning)
+                    }
+                }
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+            }
+
+            if let error = coreLoop.shoppingCompletionError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                ReasiHaptics.light()
+                showFinishConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "checkmark")
+                    Text(coreLoop.isFinishingShopping ? "Saving shop" : "Finish shopping")
+                    Spacer()
+                    if coreLoop.isFinishingShopping {
+                        ProgressView().tint(Color.reasi.background)
+                    } else {
+                        Image(systemName: "arrow.right")
+                    }
+                }
+                .font(ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.background)
+                .padding(.horizontal, ReasiSpacing.s4)
+                .frame(height: 54)
+                .background(Color.reasi.text, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+            }
+            .buttonStyle(ReasiPressStyle())
+            .disabled(coreLoop.checkedCount == 0 || coreLoop.isFinishingShopping)
+            .opacity(coreLoop.checkedCount == 0 ? 0.45 : 1)
+        }
+        .padding(ReasiSpacing.s5)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .stroke(Color.reasi.borderStrong, lineWidth: 1)
+        }
+    }
+
+    private var shoppingCompleteCard: some View {
+        let metrics = coreLoop.basketPriceSummary
+        let basketTotal = coreLoop.lastShoppingTrip?.knownBasketTotalAud ?? metrics.inBasketTotalAud
+        let checkedItems = coreLoop.lastShoppingTrip?.checkedItems ?? metrics.checkedItemCount
+        let pricedItems = coreLoop.lastShoppingTrip?.pricedCheckedItems ?? metrics.pricedCheckedItemCount
+
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+            HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.reasi.background)
+                    .frame(width: 38, height: 38)
+                    .background(Color.reasi.success, in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Shop saved")
+                        .font(ReasiTypography.title2)
+                        .foregroundStyle(Color.reasi.text)
+                    Text("This list is now a read-only record for your future spending insights.")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(basketTotal, format: .currency(code: "AUD"))
+                    .font(ReasiTypography.title)
+                    .foregroundStyle(Color.reasi.text)
+                Spacer()
+                Text("\(checkedItems) bought · \(pricedItems) priced")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+
+            if pricedItems < checkedItems {
+                Text("The total excludes \(checkedItems - pricedItems) item\(checkedItems - pricedItems == 1 ? "" : "s") without a reliable price.")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.warning)
+            }
+        }
+        .padding(ReasiSpacing.s5)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                .stroke(Color.reasi.success.opacity(0.45), lineWidth: 1)
         }
     }
 
@@ -599,6 +761,7 @@ struct ShoppingListPlaceholderView: View {
                 ShoppingSectionCard(
                     section: section,
                     checkedItemIDs: coreLoop.checkedItemIDs,
+                    isReadOnly: coreLoop.isShoppingCompleted,
                     toggle: { item in
                         coreLoop.toggleItem(item, supabase: supabase, analytics: analytics)
                     },
@@ -626,7 +789,7 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private var visibleShoppingSections: [ShoppingListSection] {
-        guard userSettings.hideCompletedItems else {
+        guard userSettings.hideCompletedItems && !coreLoop.isShoppingCompleted else {
             return coreLoop.plan.shoppingList.sections
         }
 
@@ -2075,6 +2238,7 @@ private struct CameraCaptureView: UIViewControllerRepresentable {
 private struct ShoppingSectionCard: View {
     let section: ShoppingListSection
     let checkedItemIDs: Set<String>
+    let isReadOnly: Bool
     let toggle: (ShoppingListItem) -> Void
     let chooseProduct: (ShoppingListItem) -> Void
     let scanBarcode: (ShoppingListItem) -> Void
@@ -2105,9 +2269,24 @@ private struct ShoppingSectionCard: View {
 
             VStack(spacing: ReasiSpacing.s2) {
                 ForEach(section.items) { item in
-                    SwipeToDeleteRow(itemName: item.name) {
-                        delete(item)
-                    } content: {
+                    if isReadOnly {
+                        HStack(spacing: ReasiSpacing.s3) {
+                            Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 23, weight: .semibold))
+                                .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
+                            ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .padding(.vertical, ReasiSpacing.s1)
+                        .padding(.horizontal, ReasiSpacing.s2)
+                        .background(
+                            Color.reasi.surfaceHigh.opacity(0.24),
+                            in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                        )
+                    } else {
+                        SwipeToDeleteRow(itemName: item.name) {
+                            delete(item)
+                        } content: {
                         HStack(spacing: ReasiSpacing.s3) {
                         Button {
                             toggle(item)
@@ -2166,6 +2345,7 @@ private struct ShoppingSectionCard: View {
                             checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.reasi.surface,
                             in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
                         )
+                    }
                     }
                 }
             }
