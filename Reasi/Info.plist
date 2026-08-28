@@ -51,6 +51,8 @@
 	<string>$(REASI_POSTHOG_KEY)</string>
 	<key>REASI_REVENUECAT_PUBLIC_KEY</key>
 	<string>$(REASI_REVENUECAT_PUBLIC_KEY)</string>
+	<key>REASI_ENABLE_REVENUECAT</key>
+	<string>$(REASI_ENABLE_REVENUECAT)</string>
 	<key>REASI_GOOGLE_CLIENT_ID</key>
 	<string>$(REASI_GOOGLE_CLIENT_ID)</string>
 	<key>REASI_GOOGLE_URL_SCHEME</key>
