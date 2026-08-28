@@ -88,10 +88,17 @@ struct ReasiApp: App {
                                 appState: appState,
                                 network: network
                             )
+                            await coreLoop.flushPendingShoppingChanges(supabase: supabase)
                         }
                     } else {
                         coreLoop.pauseGenerationPolling()
                         analytics.flush()
+                    }
+                }
+                .onChange(of: network.status) { _, status in
+                    guard status == .online else { return }
+                    Task {
+                        await coreLoop.flushPendingShoppingChanges(supabase: supabase)
                     }
                 }
                 .onOpenURL { url in

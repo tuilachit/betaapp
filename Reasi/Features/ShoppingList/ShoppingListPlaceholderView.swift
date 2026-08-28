@@ -250,7 +250,8 @@ struct ShoppingListPlaceholderView: View {
                     shoppingList: coreLoop.plan.shoppingList,
                     checkedItemIDs: coreLoop.checkedItemIDs,
                     supabase: supabase,
-                    analytics: analytics
+                    analytics: analytics,
+                    coreLoop: coreLoop
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -615,6 +616,9 @@ struct ShoppingListPlaceholderView: View {
                             initialQuery: "",
                             startsWithScanner: true
                         )
+                    },
+                    delete: { item in
+                        coreLoop.deleteItem(item, supabase: supabase, analytics: analytics)
                     }
                 )
             }
@@ -1666,6 +1670,7 @@ private struct ShoppingAssistantSheet: View {
     let checkedItemIDs: Set<String>
     let supabase: SupabaseService
     let analytics: AnalyticsService
+    let coreLoop: CoreLoopStore
     @State private var threadId: String?
     @State private var messages: [AssistantMessage] = [
         AssistantMessage(
@@ -1679,6 +1684,8 @@ private struct ShoppingAssistantSheet: View {
     ]
     @State private var draft = ""
     @State private var isSending = false
+    @State private var retryText: String?
+    @State private var retryRequestId: UUID?
 
     private var shoppingListId: String { shoppingList.id }
 
@@ -1706,24 +1713,34 @@ private struct ShoppingAssistantSheet: View {
                     .padding(ReasiSpacing.s5)
                 }
 
-                HStack(spacing: ReasiSpacing.s3) {
-                    TextField("Ask about your list", text: $draft, axis: .vertical)
-                        .font(ReasiTypography.body)
-                        .foregroundStyle(Color.reasi.text)
-                        .lineLimit(1...4)
-                        .padding(ReasiSpacing.s3)
-                        .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                VStack(spacing: ReasiSpacing.s2) {
+                    HStack(spacing: ReasiSpacing.s3) {
+                        TextField("Ask about your list", text: $draft, axis: .vertical)
+                            .font(ReasiTypography.body)
+                            .foregroundStyle(Color.reasi.text)
+                            .lineLimit(1...4)
+                            .padding(ReasiSpacing.s3)
+                            .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
 
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        Image(systemName: isSending ? "hourglass" : "arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 42, height: 42)
-                            .foregroundStyle(Color.reasi.background)
-                            .background(Color.reasi.text, in: Circle())
+                        Button {
+                            Task { await send() }
+                        } label: {
+                            Image(systemName: isSending ? "hourglass" : "arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(width: 42, height: 42)
+                                .foregroundStyle(Color.reasi.background)
+                                .background(Color.reasi.text, in: Circle())
+                        }
+                        .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if retryText != nil {
+                        Button("Try again") {
+                            Task { await retryLastMessage() }
+                        }
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.text)
+                        .disabled(isSending)
+                    }
                 }
                 .padding(ReasiSpacing.s4)
                 .background(Color.reasi.backgroundElevated)
@@ -1734,22 +1751,30 @@ private struct ShoppingAssistantSheet: View {
         }
     }
 
-    private func send() async {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func send(
+        text suppliedText: String? = nil,
+        requestId: UUID = UUID(),
+        appendUserMessage: Bool = true
+    ) async {
+        let text = (suppliedText ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         draft = ""
         isSending = true
-        messages.append(
-            AssistantMessage(
-                id: UUID().uuidString,
-                role: .user,
-                content: text,
-                cards: [],
-                caveats: [],
-                createdAt: ISO8601DateFormatter().string(from: Date())
+        retryText = nil
+        retryRequestId = nil
+        if appendUserMessage {
+            messages.append(
+                AssistantMessage(
+                    id: UUID().uuidString,
+                    role: .user,
+                    content: text,
+                    cards: [],
+                    caveats: [],
+                    createdAt: ISO8601DateFormatter().string(from: Date())
+                )
             )
-        )
+        }
         analytics.capture(.shoppingAssistantMessageSent, properties: ["shopping_list_id": .string(shoppingListId)])
 
         do {
@@ -1757,10 +1782,23 @@ private struct ShoppingAssistantSheet: View {
                 shoppingList: shoppingList,
                 checkedItemIDs: checkedItemIDs,
                 threadId: threadId,
-                message: text
+                message: text,
+                requestId: requestId
             )
             threadId = response.threadId
             messages.append(response.message)
+            if !response.appliedMutations.isEmpty {
+                coreLoop.applyAssistantMutations(response.appliedMutations)
+                let operations = Dictionary(grouping: response.appliedMutations, by: \.operation)
+                    .mapValues(\.count)
+                analytics.capture(.shoppingAssistantListChanged, properties: [
+                    "shopping_list_id": .string(shoppingListId),
+                    "mutation_count": .int(response.appliedMutations.count),
+                    "added_count": .int(operations["add"] ?? 0),
+                    "deleted_count": .int(operations["delete"] ?? 0),
+                    "updated_count": .int(operations["update"] ?? 0)
+                ])
+            }
             analytics.capture(.shoppingAssistantResponseReceived, properties: [
                 "shopping_list_id": .string(shoppingListId),
                 "has_cards": .bool(!response.message.cards.isEmpty)
@@ -1781,6 +1819,8 @@ private struct ShoppingAssistantSheet: View {
                     createdAt: ISO8601DateFormatter().string(from: Date())
                 )
             )
+            retryText = text
+            retryRequestId = requestId
             analytics.capture(.shoppingAssistantFailed, properties: [
                 "shopping_list_id": .string(shoppingListId),
                 "error": .string(error.localizedDescription)
@@ -1789,6 +1829,11 @@ private struct ShoppingAssistantSheet: View {
         }
 
         isSending = false
+    }
+
+    private func retryLastMessage() async {
+        guard let retryText, let retryRequestId else { return }
+        await send(text: retryText, requestId: retryRequestId, appendUserMessage: false)
     }
 }
 
@@ -2033,6 +2078,7 @@ private struct ShoppingSectionCard: View {
     let toggle: (ShoppingListItem) -> Void
     let chooseProduct: (ShoppingListItem) -> Void
     let scanBarcode: (ShoppingListItem) -> Void
+    let delete: (ShoppingListItem) -> Void
 
     var checkedCount: Int {
         section.items.filter { checkedItemIDs.contains($0.id) }.count
@@ -2059,7 +2105,10 @@ private struct ShoppingSectionCard: View {
 
             VStack(spacing: ReasiSpacing.s2) {
                 ForEach(section.items) { item in
-                    HStack(spacing: ReasiSpacing.s3) {
+                    SwipeToDeleteRow(itemName: item.name) {
+                        delete(item)
+                    } content: {
+                        HStack(spacing: ReasiSpacing.s3) {
                         Button {
                             toggle(item)
                         } label: {
@@ -2097,6 +2146,11 @@ private struct ShoppingSectionCard: View {
                                     systemImage: checkedItemIDs.contains(item.id) ? "arrow.uturn.backward" : "checkmark"
                                 )
                             }
+                            Button(role: .destructive) {
+                                delete(item)
+                            } label: {
+                                Label("Delete item", systemImage: "trash")
+                            }
                         } label: {
                             Image(systemName: item.product?.sku != nil || item.product?.barcode != nil ? "checkmark.seal.fill" : "barcode.viewfinder")
                                 .font(.system(size: 17, weight: .semibold))
@@ -2105,13 +2159,14 @@ private struct ShoppingSectionCard: View {
                                 .background(Color.reasi.surfaceHigh, in: Circle())
                         }
                         .accessibilityLabel("Product options for \(item.name)")
+                        }
+                        .padding(.vertical, ReasiSpacing.s1)
+                        .padding(.horizontal, ReasiSpacing.s2)
+                        .background(
+                            checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.reasi.surface,
+                            in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                        )
                     }
-                    .padding(.vertical, ReasiSpacing.s1)
-                    .padding(.horizontal, ReasiSpacing.s2)
-                    .background(
-                        checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                    )
                 }
             }
         }
@@ -2132,6 +2187,77 @@ private struct ShoppingSectionCard: View {
         case .unknown:
             "questionmark"
         }
+    }
+}
+
+private struct SwipeToDeleteRow<Content: View>: View {
+    let itemName: String
+    let onDelete: () -> Void
+    let content: Content
+    @State private var offset: CGFloat = 0
+    @State private var isDraggingHorizontally = false
+    @State private var dragStartOffset: CGFloat = 0
+
+    private let actionWidth: CGFloat = 76
+
+    init(
+        itemName: String,
+        onDelete: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.itemName = itemName
+        self.onDelete = onDelete
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(role: .destructive) {
+                delete()
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: actionWidth)
+                    .frame(maxHeight: .infinity)
+            }
+            .accessibilityLabel("Delete \(itemName)")
+
+            content
+                .offset(x: offset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            if !isDraggingHorizontally {
+                                isDraggingHorizontally = abs(value.translation.width) > abs(value.translation.height)
+                                if isDraggingHorizontally { dragStartOffset = offset }
+                            }
+                            guard isDraggingHorizontally else { return }
+                            offset = min(0, max(-140, dragStartOffset + value.translation.width))
+                        }
+                        .onEnded { value in
+                            defer { isDraggingHorizontally = false }
+                            let isHorizontal = abs(value.translation.width) > abs(value.translation.height)
+                            let proposedOffset = dragStartOffset + value.translation.width
+                            if isHorizontal, proposedOffset < -118 {
+                                delete()
+                            } else {
+                                withAnimation(ReasiMotion.tactileSpring) {
+                                    offset = isHorizontal && proposedOffset < -32 ? -actionWidth : 0
+                                }
+                                if isHorizontal, proposedOffset < -32 { ReasiHaptics.selection() }
+                            }
+                        }
+                )
+                .accessibilityAction(named: "Delete") { delete() }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+    }
+
+    private func delete() {
+        withAnimation(ReasiMotion.tactileSpring) { offset = -160 }
+        onDelete()
     }
 }
 

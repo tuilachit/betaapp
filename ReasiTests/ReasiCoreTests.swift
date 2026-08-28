@@ -82,6 +82,51 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(ReasiUserFacingCopy.sourceName("PostHog", sourceURL: nil), "Reasi")
     }
 
+    func testAssistantResponseDecodesAppliedListMutations() throws {
+        let data = Data(#"""
+        {
+          "threadId": "thread-1",
+          "message": {
+            "id": "message-1",
+            "role": "assistant",
+            "content": "Added bananas. Removed milk.",
+            "cards": [],
+            "caveats": [],
+            "createdAt": null
+          },
+          "mutations": [
+            {"operation":"add","itemId":"item-2","name":"Bananas","quantity":"6","checked":false,"sectionLabel":"Fresh Produce","sectionSortKey":10,"sectionType":"perimeter","aisleLabel":null},
+            {"operation":"delete","itemId":"item-1","name":"Milk","quantity":null,"checked":null}
+          ]
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(AssistantResponse.self, from: data)
+        XCTAssertEqual(response.appliedMutations.map(\.operation), ["add", "delete"])
+        XCTAssertEqual(response.appliedMutations.first?.quantity, "6")
+        XCTAssertEqual(response.appliedMutations.first?.sectionLabel, "Fresh Produce")
+        XCTAssertEqual(response.appliedMutations.first?.sectionType, .perimeter)
+    }
+
+    func testAssistantResponseWithoutMutationsRemainsBackwardsCompatible() throws {
+        let data = Data(#"""
+        {
+          "threadId": "thread-1",
+          "message": {
+            "id": "message-1",
+            "role": "assistant",
+            "content": "Aisle 4.",
+            "cards": [],
+            "caveats": [],
+            "createdAt": null
+          }
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(AssistantResponse.self, from: data)
+        XCTAssertTrue(response.appliedMutations.isEmpty)
+    }
+
     func testLaunchStoreRegistryContainsExactlyFiveUniqueSupportedStores() {
         let stores = FixtureStores.launchStores
         let expectedIDs: Set<StoreID> = [

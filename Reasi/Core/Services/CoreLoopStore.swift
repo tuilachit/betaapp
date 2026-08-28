@@ -123,8 +123,10 @@ final class CoreLoopStore {
     @ObservationIgnored private var checkedStates: [String: Bool] = [:]
     @ObservationIgnored private var pendingCheckItemIDs: Set<String> = []
     @ObservationIgnored private var pendingImports: [PendingImportedItem] = []
+    @ObservationIgnored private var pendingDeletions: Set<PendingShoppingListDeletion> = []
     @ObservationIgnored private var addedImportKeys: Set<String> = []
     @ObservationIgnored private var itemSyncTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var deleteSyncTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var generationClockTask: Task<Void, Never>?
     @ObservationIgnored private var generationRunID: UUID?
@@ -255,6 +257,9 @@ final class CoreLoopStore {
             }
 
             mergePendingImportedItems(from: existingPlan, into: &refreshed)
+            for deletion in pendingDeletions where deletion.shoppingListId == refreshed.shoppingList.id {
+                removeItem(deletion.itemId, from: &refreshed)
+            }
             for itemId in pendingCheckItemIDs {
                 setItemChecked(itemId, checked: checkedStates[itemId] ?? false, in: &refreshed)
             }
@@ -293,6 +298,7 @@ final class CoreLoopStore {
         cancelOutstandingWork()
         activeUserId = userId
         recentPlans = []
+        pendingDeletions = userId.map { Set(localCache.loadDeletions(userId: $0)) } ?? []
 
         guard let userId,
               let cached = localCache.loadPlan(userId: userId),
@@ -305,6 +311,12 @@ final class CoreLoopStore {
         plan = cached.plan
         hasPlan = true
         pendingImports = cached.pendingImports
+        if pendingDeletions.isEmpty, !cached.pendingDeletionItemIDs.isEmpty {
+            pendingDeletions = Set(cached.pendingDeletionItemIDs.map {
+                PendingShoppingListDeletion(shoppingListId: cached.plan.shoppingList.id, itemId: $0)
+            })
+            persistDeletionCache()
+        }
         addedImportKeys = Set(cached.pendingImports.map(\.idempotencyKey))
 
         let checkSnapshot = localCache.loadChecks(userId: userId)
@@ -360,6 +372,9 @@ final class CoreLoopStore {
             } else {
                 pendingImports = []
                 addedImportKeys = []
+            }
+            for deletion in pendingDeletions where deletion.shoppingListId == restored.shoppingList.id {
+                removeItem(deletion.itemId, from: &restored)
             }
 
             var restoredCheckedIDs = Self.checkedIDs(from: restored)
@@ -813,6 +828,100 @@ final class CoreLoopStore {
         captureProgressMilestones(analytics: analytics)
     }
 
+    func deleteItem(
+        _ item: ShoppingListItem,
+        supabase: SupabaseService,
+        analytics: AnalyticsService
+    ) {
+        guard hasPlan, allShoppingItems.contains(where: { $0.id == item.id }) else { return }
+        let shoppingListId = plan.shoppingList.id
+
+        itemSyncTasks[item.id]?.cancel()
+        itemSyncTasks[item.id] = nil
+        checkedItemIDs.remove(item.id)
+        checkedStates.removeValue(forKey: item.id)
+        pendingCheckItemIDs.remove(item.id)
+
+        if item.id.hasPrefix("local-import-") {
+            if let pending = pendingImports.first(where: { $0.localItemID == item.id }) {
+                pendingImports.removeAll { $0.localItemID == item.id }
+                addedImportKeys.remove(pending.idempotencyKey)
+            }
+        } else {
+            pendingDeletions.insert(PendingShoppingListDeletion(
+                shoppingListId: shoppingListId,
+                itemId: item.id
+            ))
+        }
+
+        withAnimation(ReasiMotion.tactileSpring) {
+            removeItem(item.id, from: &plan)
+        }
+        persistPlanCache()
+        persistCheckCache()
+        persistDeletionCache()
+        if !item.id.hasPrefix("local-import-") {
+            startDeleteSync(
+                deletion: PendingShoppingListDeletion(shoppingListId: shoppingListId, itemId: item.id),
+                supabase: supabase
+            )
+        }
+
+        ReasiHaptics.warning()
+        analytics.capture(.shoppingItemDeleted, properties: [
+            "store_id": .string(plan.storeId.rawValue),
+            "shopping_list_id": .string(shoppingListId),
+            "item_id": .string(item.id),
+            "source": .string("swipe")
+        ])
+    }
+
+    func applyAssistantMutations(_ mutations: [AssistantListMutation]) {
+        guard hasPlan, !mutations.isEmpty else { return }
+
+        for mutation in mutations {
+            switch mutation.operation {
+            case "add":
+                guard !allShoppingItems.contains(where: { $0.id == mutation.itemId }) else { continue }
+                let sectionType = mutation.sectionType ?? .unknown
+                let item = ShoppingListItem(
+                    id: mutation.itemId,
+                    name: mutation.name,
+                    quantity: mutation.quantity ?? "1",
+                    checked: mutation.checked ?? false,
+                    aisleLabel: mutation.aisleLabel,
+                    sectionType: sectionType,
+                    product: nil,
+                    locationUncertaintyText: sectionType == .unknown ? "Location not certain" : nil
+                )
+                insertItem(
+                    item,
+                    sectionLabel: mutation.sectionLabel ?? "Location not certain",
+                    sectionSortKey: mutation.sectionSortKey ?? 999,
+                    sectionType: sectionType,
+                    into: &plan
+                )
+                checkedStates[item.id] = item.checked
+                if item.checked { checkedItemIDs.insert(item.id) }
+
+            case "delete":
+                removeItem(mutation.itemId, from: &plan)
+                checkedItemIDs.remove(mutation.itemId)
+                checkedStates.removeValue(forKey: mutation.itemId)
+                pendingCheckItemIDs.remove(mutation.itemId)
+
+            case "update":
+                updateAssistantItem(mutation)
+
+            default:
+                continue
+            }
+        }
+
+        persistPlanCache()
+        persistCheckCache()
+    }
+
     func addImportedCandidate(
         _ candidate: ProductCandidate,
         quantity: String = "1",
@@ -992,16 +1101,19 @@ final class CoreLoopStore {
         guard id != plan.id else { return }
         do {
             await syncPendingChanges(supabase: supabase)
-            let outstandingCheckTasks = Array(itemSyncTasks.values)
-            for task in outstandingCheckTasks {
+            let outstandingSyncTasks = Array(itemSyncTasks.values) + Array(deleteSyncTasks.values)
+            for task in outstandingSyncTasks {
                 await task.value
             }
-            guard pendingImports.isEmpty, pendingCheckItemIDs.isEmpty else {
+            guard pendingImports.isEmpty, pendingCheckItemIDs.isEmpty, pendingDeletions.isEmpty else {
                 planRestoreMessage = "Your latest list changes are still syncing. Stay online and try again in a moment."
                 return
             }
 
             guard var selected = try await supabase.fetchWeekPlan(id: id) else { return }
+            for deletion in pendingDeletions where deletion.shoppingListId == selected.shoppingList.id {
+                removeItem(deletion.itemId, from: &selected)
+            }
             var selectedCheckedIDs = Self.checkedIDs(from: selected)
             var selectedCheckedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: selected).map {
                 ($0, selectedCheckedIDs.contains($0))
@@ -1124,10 +1236,12 @@ final class CoreLoopStore {
         generationClockTask?.cancel()
         storeSwitchTask?.cancel()
         itemSyncTasks.values.forEach { $0.cancel() }
+        deleteSyncTasks.values.forEach { $0.cancel() }
         generationTask = nil
         generationClockTask = nil
         storeSwitchTask = nil
         itemSyncTasks = [:]
+        deleteSyncTasks = [:]
         generationRunID = nil
     }
 
@@ -1158,6 +1272,10 @@ final class CoreLoopStore {
     }
 
     private func syncPendingChanges(supabase: SupabaseService) async {
+        for deletion in pendingDeletions {
+            startDeleteSync(deletion: deletion, supabase: supabase)
+        }
+
         for itemId in pendingCheckItemIDs {
             startItemSync(itemId: itemId, supabase: supabase)
         }
@@ -1166,6 +1284,11 @@ final class CoreLoopStore {
             guard let clientId = UUID(uuidString: pending.idempotencyKey) else { continue }
             await syncPendingImport(pending, clientId: clientId, supabase: supabase)
         }
+    }
+
+    func flushPendingShoppingChanges(supabase: SupabaseService) async {
+        guard supabase.isSignedIn else { return }
+        await syncPendingChanges(supabase: supabase)
     }
 
     private func syncPendingImport(
@@ -1185,6 +1308,17 @@ final class CoreLoopStore {
                 idempotencyKey: clientId
             ) else { return }
 
+            guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }) else {
+                let deletion = PendingShoppingListDeletion(
+                    shoppingListId: pending.shoppingListId,
+                    itemId: persistedID
+                )
+                pendingDeletions.insert(deletion)
+                persistDeletionCache()
+                startDeleteSync(deletion: deletion, supabase: supabase)
+                return
+            }
+
             replaceImportedItem(
                 localItemID: pending.localItemID,
                 persistedID: persistedID,
@@ -1195,6 +1329,27 @@ final class CoreLoopStore {
             persistCheckCache()
         } catch {
             // Keep the locally visible item and retry this idempotent write on restore.
+        }
+    }
+
+    private func startDeleteSync(deletion: PendingShoppingListDeletion, supabase: SupabaseService) {
+        let taskKey = deletion.cacheKey
+        guard deleteSyncTasks[taskKey] == nil else { return }
+
+        deleteSyncTasks[taskKey] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.deleteSyncTasks[taskKey] = nil }
+            guard self.pendingDeletions.contains(deletion) else { return }
+            do {
+                try await supabase.deleteShoppingListItem(
+                    itemId: deletion.itemId,
+                    shoppingListId: deletion.shoppingListId
+                )
+                self.pendingDeletions.remove(deletion)
+                self.persistDeletionCache()
+            } catch {
+                // Keep the tombstone and retry after reconnect or relaunch.
+            }
         }
     }
 
@@ -1260,7 +1415,11 @@ final class CoreLoopStore {
     private func persistPlanCache() {
         guard let activeUserId, hasPlan, plan.source == .supabase else { return }
         localCache.savePlan(
-            CachedPlanState(plan: plan, pendingImports: pendingImports),
+            CachedPlanState(
+                plan: plan,
+                pendingImports: pendingImports,
+                pendingDeletionItemIDs: []
+            ),
             userId: activeUserId
         )
     }
@@ -1277,12 +1436,46 @@ final class CoreLoopStore {
         )
     }
 
+    private func persistDeletionCache() {
+        guard let activeUserId else { return }
+        localCache.saveDeletions(Array(pendingDeletions), userId: activeUserId)
+    }
+
     private func setItemChecked(_ itemId: String, checked: Bool, in plan: inout WeekPlan) {
         for sectionIndex in plan.shoppingList.sections.indices {
             guard let itemIndex = plan.shoppingList.sections[sectionIndex].items.firstIndex(where: { $0.id == itemId }) else {
                 continue
             }
             plan.shoppingList.sections[sectionIndex].items[itemIndex].checked = checked
+            return
+        }
+    }
+
+    private func updateAssistantItem(_ mutation: AssistantListMutation) {
+        for sectionIndex in plan.shoppingList.sections.indices {
+            guard let itemIndex = plan.shoppingList.sections[sectionIndex].items.firstIndex(where: {
+                $0.id == mutation.itemId
+            }) else { continue }
+            let current = plan.shoppingList.sections[sectionIndex].items[itemIndex]
+            let checked = mutation.checked ?? current.checked
+            plan.shoppingList.sections[sectionIndex].items[itemIndex] = ShoppingListItem(
+                id: current.id,
+                name: current.name,
+                quantity: mutation.quantity ?? current.quantity,
+                checked: checked,
+                aisleLabel: current.aisleLabel,
+                sectionType: current.sectionType,
+                product: current.product,
+                importedCandidate: current.importedCandidate,
+                locationUncertaintyText: current.locationUncertaintyText,
+                clientId: current.clientId
+            )
+            checkedStates[current.id] = checked
+            if checked {
+                checkedItemIDs.insert(current.id)
+            } else {
+                checkedItemIDs.remove(current.id)
+            }
             return
         }
     }
@@ -1396,9 +1589,34 @@ private struct PendingImportedItem: Codable, Hashable {
     let sortOrder: Int
 }
 
+private struct PendingShoppingListDeletion: Codable, Hashable {
+    let shoppingListId: String
+    let itemId: String
+
+    var cacheKey: String { "\(shoppingListId):\(itemId)" }
+}
+
 private struct CachedPlanState: Codable {
     let plan: WeekPlan
     let pendingImports: [PendingImportedItem]
+    let pendingDeletionItemIDs: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case plan, pendingImports, pendingDeletionItemIDs
+    }
+
+    init(plan: WeekPlan, pendingImports: [PendingImportedItem], pendingDeletionItemIDs: [String]) {
+        self.plan = plan
+        self.pendingImports = pendingImports
+        self.pendingDeletionItemIDs = pendingDeletionItemIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        plan = try container.decode(WeekPlan.self, forKey: .plan)
+        pendingImports = try container.decodeIfPresent([PendingImportedItem].self, forKey: .pendingImports) ?? []
+        pendingDeletionItemIDs = try container.decodeIfPresent([String].self, forKey: .pendingDeletionItemIDs) ?? []
+    }
 }
 
 private struct CachedCheckState: Codable {
@@ -1534,6 +1752,14 @@ private final class ShoppingListLocalCache {
 
     func saveChecks(_ state: CachedCheckState, userId: String) {
         save(state, to: fileURL(kind: "checks", userId: userId))
+    }
+
+    func loadDeletions(userId: String) -> [PendingShoppingListDeletion] {
+        load([PendingShoppingListDeletion].self, from: fileURL(kind: "deletions", userId: userId)) ?? []
+    }
+
+    func saveDeletions(_ deletions: [PendingShoppingListDeletion], userId: String) {
+        save(deletions, to: fileURL(kind: "deletions", userId: userId))
     }
 
     func remove(userId: String) {

@@ -115,6 +115,8 @@ enum AnalyticsEvent: String, CaseIterable {
     case shoppingListCreated = "shopping_list_created"
     case shoppingListViewed = "shopping_list_viewed"
     case shoppingItemChecked = "shopping_item_checked"
+    case shoppingItemDeleted = "shopping_item_deleted"
+    case shoppingAssistantListChanged = "shopping_assistant_list_changed"
     case shoppingListProgress = "shopping_list_progress_25_50_75_100"
     case weeklyReturnDetected = "weekly_return_detected"
     case storeSelected = "store_selected"
