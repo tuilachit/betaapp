@@ -4,6 +4,16 @@ import UIKit
 import Vision
 import VisionKit
 
+private enum ShoppingDockMetrics {
+    static let tabBarClearance: CGFloat = 104
+    static let finishHeight: CGFloat = 58
+    static let controlGap: CGFloat = 16
+    static let assistantIdle: CGFloat = 92
+    static let assistantAboveFinish = tabBarClearance + finishHeight + controlGap
+    static let idleContentBottom: CGFloat = 132
+    static let activeContentBottom = assistantAboveFinish + 52
+}
+
 struct ShoppingListPlaceholderView: View {
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
@@ -25,7 +35,6 @@ struct ShoppingListPlaceholderView: View {
     @State private var productSearchContext: ProductSearchContext?
     @State private var inlineError: String?
     @State private var inputIsBusy = false
-    @State private var showFinishConfirmation = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -59,9 +68,7 @@ struct ShoppingListPlaceholderView: View {
                         if coreLoop.isShoppingCompleted {
                             shoppingCompleteCard
                         } else {
-                            progressView
-                            basketSummaryCard
-                            addItemSurface
+                            shoppingOverview
                         }
 
                         if coreLoop.isSwitchingStore {
@@ -118,12 +125,26 @@ struct ShoppingListPlaceholderView: View {
                     }
                 }
                 .padding(.top, ReasiSpacing.s8)
-                .padding(.bottom, 132)
+                .padding(
+                    .bottom,
+                    shouldShowFinishControl
+                        ? ShoppingDockMetrics.activeContentBottom
+                        : ShoppingDockMetrics.idleContentBottom
+                )
             }
             .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
 
+            if shouldShowFinishControl {
+                finishShoppingControl
+                    .padding(.horizontal, ReasiSpacing.s5)
+                    .padding(.bottom, ShoppingDockMetrics.tabBarClearance)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(2)
+            }
+
             if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
                 assistantButton
+                    .zIndex(3)
             }
         }
         .background(Color.reasi.background)
@@ -157,20 +178,6 @@ struct ShoppingListPlaceholderView: View {
                 showListPhotoPicker = true
             }
             Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(
-            "Finish this shop?",
-            isPresented: $showFinishConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Finish shopping") {
-                Task {
-                    await coreLoop.finishShopping(supabase: supabase, analytics: analytics)
-                }
-            }
-            Button("Keep shopping", role: .cancel) {}
-        } message: {
-            Text("Reasi will save what you bought and the prices currently known. Items without a reliable price stay unpriced.")
         }
         .fullScreenCover(isPresented: $showProductCamera) {
             CameraCaptureView { image in
@@ -275,6 +282,17 @@ struct ShoppingListPlaceholderView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+            case .itemDetails(let item):
+                ShoppingItemDetailsSheet(item: item)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            case .basketDetails:
+                BasketDetailsSheet(
+                    summary: coreLoop.basketPriceSummary,
+                    storeName: displayedStore.name
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
             }
         }
         .task {
@@ -331,47 +349,26 @@ struct ShoppingListPlaceholderView: View {
         }
     }
 
-    private var progressView: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            HStack {
-                Text("\(coreLoop.checkedCount) of \(coreLoop.allShoppingItems.count) checked")
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.textMuted)
-                Spacer()
-                Text("\(Int(coreLoop.shoppingProgress * 100))%")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-            }
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.reasi.surfaceHigh)
-                    Capsule()
-                        .fill(Color.reasi.text)
-                        .frame(width: proxy.size.width * coreLoop.shoppingProgress)
-                        .animation(ReasiMotion.tactileSpring, value: coreLoop.shoppingProgress)
-                }
-            }
-            .frame(height: 8)
-        }
-        .padding(ReasiSpacing.s5)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
-        }
-    }
-
-    private var basketSummaryCard: some View {
+    private var shoppingOverview: some View {
         let summary = coreLoop.basketPriceSummary
+        let progress = summary.totalItemCount > 0
+            ? Double(summary.checkedItemCount) / Double(summary.totalItemCount)
+            : 0
 
-        return VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s4) {
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            HStack(alignment: .center, spacing: ReasiSpacing.s4) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("IN BASKET")
+                    Text("KNOWN TOTAL")
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.muted)
-                    Text(summary.inBasketTotalAud, format: .currency(code: "AUD"))
-                        .font(ReasiTypography.title)
+                    Group {
+                        if summary.pricedCheckedItemCount > 0 {
+                            Text(summary.inBasketTotalAud, format: .currency(code: "AUD"))
+                        } else {
+                            Text("—")
+                        }
+                    }
+                        .font(ReasiTypography.title2)
                         .foregroundStyle(Color.reasi.text)
                         .contentTransition(.numericText(value: summary.inBasketTotalAud))
                         .animation(ReasiMotion.fast, value: summary.inBasketTotalAud)
@@ -379,40 +376,50 @@ struct ShoppingListPlaceholderView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("PLANNED")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    Text(summary.plannedTotalAud, format: .currency(code: "AUD"))
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.textMuted)
-                        .contentTransition(.numericText(value: summary.plannedTotalAud))
+                HStack(spacing: ReasiSpacing.s3) {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("\(summary.checkedItemCount) / \(summary.totalItemCount)")
+                            .font(ReasiTypography.headline)
+                            .foregroundStyle(Color.reasi.text)
+                            .contentTransition(.numericText())
+                        Text("ITEMS")
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.muted)
+                    }
+
+                    Button {
+                        ReasiHaptics.light()
+                        activeSheet = .basketDetails
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(Color.reasi.textMuted)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Basket price details")
                 }
             }
 
-            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.reasi.surfaceHigh)
-                        Capsule()
-                            .fill(Color.reasi.success)
-                            .frame(width: proxy.size.width * summary.coverageFraction)
-                            .animation(ReasiMotion.tactileSpring, value: summary.coverageFraction)
-                    }
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.reasi.surfaceHigh)
+                    Capsule()
+                        .fill(Color.reasi.text)
+                        .frame(width: proxy.size.width * progress)
+                        .animation(ReasiMotion.tactileSpring, value: progress)
                 }
-                .frame(height: 4)
-
-                HStack(alignment: .top) {
-                    Text("Known prices only · \(summary.pricedItemCount) of \(summary.totalItemCount) items priced")
-                    Spacer(minLength: ReasiSpacing.s3)
-                    if summary.unpricedCheckedItemCount > 0 {
-                        Text("\(summary.unpricedCheckedItemCount) not included")
-                            .foregroundStyle(Color.reasi.warning)
-                    }
-                }
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
             }
+            .frame(height: 5)
+
+            HStack {
+                Text("\(Int(progress * 100))% complete")
+                Spacer()
+                Text("\(summary.pricedCheckedItemCount) priced")
+            }
+            .font(ReasiTypography.caption)
+            .foregroundStyle(Color.reasi.muted)
 
             if let error = coreLoop.shoppingCompletionError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -421,36 +428,26 @@ struct ShoppingListPlaceholderView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Button {
-                ReasiHaptics.light()
-                showFinishConfirmation = true
-            } label: {
-                HStack {
-                    Image(systemName: "checkmark")
-                    Text(coreLoop.isFinishingShopping ? "Saving shop" : "Finish shopping")
-                    Spacer()
-                    if coreLoop.isFinishingShopping {
-                        ProgressView().tint(Color.reasi.background)
-                    } else {
-                        Image(systemName: "arrow.right")
-                    }
-                }
-                .font(ReasiTypography.headline)
-                .foregroundStyle(Color.reasi.background)
-                .padding(.horizontal, ReasiSpacing.s4)
-                .frame(height: 54)
-                .background(Color.reasi.text, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
-            }
-            .buttonStyle(ReasiPressStyle())
-            .disabled(coreLoop.checkedCount == 0 || coreLoop.isFinishingShopping)
-            .opacity(coreLoop.checkedCount == 0 ? 0.45 : 1)
         }
-        .padding(ReasiSpacing.s5)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        .padding(ReasiSpacing.s4)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.borderStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(Color.reasi.border, lineWidth: 1)
         }
+    }
+
+    private var finishShoppingControl: some View {
+        SwipeToFinishControl(isBusy: coreLoop.isFinishingShopping) {
+            await coreLoop.finishShopping(supabase: supabase, analytics: analytics)
+        }
+        .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
+    }
+
+    private var shouldShowFinishControl: Bool {
+        coreLoop.hasPlan
+            && coreLoop.plan.shoppingList.status == .active
+            && coreLoop.checkedCount > 0
     }
 
     private var shoppingCompleteCard: some View {
@@ -516,39 +513,6 @@ struct ShoppingListPlaceholderView: View {
             analytics: analytics,
             completion: syncConfirmedStore
         )
-    }
-
-    private var addItemSurface: some View {
-        Button {
-            ReasiHaptics.light()
-            showAddDialog = true
-        } label: {
-            HStack(spacing: ReasiSpacing.s3) {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .semibold))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Add item")
-                        .font(ReasiTypography.bodyMedium)
-                    Text("Search, scan, or photograph")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.reasi.dim)
-            }
-            .foregroundStyle(Color.reasi.text)
-            .padding(ReasiSpacing.s4)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
-        }
-        .buttonStyle(ReasiPressStyle())
-        .disabled(inputIsBusy)
-        .opacity(inputIsBusy ? 0.62 : 1)
     }
 
     private var inputLoadingCard: some View {
@@ -670,7 +634,7 @@ struct ShoppingListPlaceholderView: View {
             ])
             activeSheet = .assistant
         } label: {
-            Image(systemName: "sparkles")
+            Image(systemName: "bubble.left.fill")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color.reasi.text)
                 .frame(width: 58, height: 58)
@@ -682,8 +646,13 @@ struct ShoppingListPlaceholderView: View {
         }
         .buttonStyle(ReasiPressStyle())
         .padding(.trailing, ReasiSpacing.s5)
-        .padding(.bottom, 92)
-        .accessibilityLabel("Open shopping assistant")
+        .padding(
+            .bottom,
+            shouldShowFinishControl
+                ? ShoppingDockMetrics.assistantAboveFinish
+                : ShoppingDockMetrics.assistantIdle
+        )
+        .accessibilityLabel("Ask Reasi")
     }
 
     private var loadingSections: some View {
@@ -758,7 +727,7 @@ struct ShoppingListPlaceholderView: View {
             }
 
             ForEach(visibleShoppingSections) { section in
-                ShoppingSectionCard(
+                ShoppingSectionView(
                     section: section,
                     checkedItemIDs: coreLoop.checkedItemIDs,
                     isReadOnly: coreLoop.isShoppingCompleted,
@@ -780,8 +749,17 @@ struct ShoppingListPlaceholderView: View {
                             startsWithScanner: true
                         )
                     },
-                    delete: { item in
-                        coreLoop.deleteItem(item, supabase: supabase, analytics: analytics)
+                    showDetails: { item in
+                        ReasiHaptics.light()
+                        activeSheet = .itemDetails(item)
+                    },
+                    delete: { item, source in
+                        coreLoop.deleteItem(
+                            item,
+                            source: source,
+                            supabase: supabase,
+                            analytics: analytics
+                        )
                     }
                 )
             }
@@ -1316,6 +1294,8 @@ private enum ShoppingListSheet: Identifiable {
     case review(ReviewContext)
     case comparison(ProductComparisonResult)
     case assistant
+    case itemDetails(ShoppingListItem)
+    case basketDetails
 
     var id: String {
         switch self {
@@ -1327,6 +1307,10 @@ private enum ShoppingListSheet: Identifiable {
             "comparison"
         case .assistant:
             "assistant"
+        case .itemDetails(let item):
+            "item-details-\(item.id)"
+        case .basketDetails:
+            "basket-details"
         }
     }
 }
@@ -2235,138 +2219,573 @@ private struct CameraCaptureView: UIViewControllerRepresentable {
     }
 }
 
-private struct ShoppingSectionCard: View {
+private struct BasketDetailsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let summary: BasketPriceSummary
+    let storeName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+            HStack {
+                Text("Basket details")
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.text)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .frame(width: 44, height: 44)
+                        .background(Color.reasi.surfaceHigh, in: Circle())
+                }
+                .accessibilityLabel("Close")
+            }
+
+            VStack(spacing: ReasiSpacing.s4) {
+                BasketValueRow(
+                    label: "In basket",
+                    value: summary.inBasketTotalAud.formatted(.currency(code: "AUD")),
+                    emphasis: true
+                )
+                Divider().overlay(Color.reasi.border)
+                BasketValueRow(
+                    label: "Whole list",
+                    value: summary.plannedTotalAud.formatted(.currency(code: "AUD")),
+                    emphasis: false
+                )
+                Divider().overlay(Color.reasi.border)
+                BasketValueRow(
+                    label: "Prices found",
+                    value: "\(summary.pricedItemCount) of \(summary.totalItemCount)",
+                    emphasis: false
+                )
+            }
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text(storeName)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+                Text("Totals include known prices only. Unpriced items are left out rather than estimated.")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(ReasiSpacing.s5)
+        .background(Color.reasi.background.ignoresSafeArea())
+    }
+}
+
+private struct BasketValueRow: View {
+    let label: String
+    let value: String
+    let emphasis: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+            Spacer()
+            Text(value)
+                .font(emphasis ? ReasiTypography.title2 : ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.text)
+        }
+    }
+}
+
+private struct ShoppingItemDetailsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let item: ShoppingListItem
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+                HStack(alignment: .top, spacing: ReasiSpacing.s4) {
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                        Text(item.name)
+                            .font(ReasiTypography.title2)
+                            .foregroundStyle(Color.reasi.text)
+                        Text(presentation.compactDetail)
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.textMuted)
+                    }
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.reasi.textMuted)
+                            .frame(width: 44, height: 44)
+                            .background(Color.reasi.surfaceHigh, in: Circle())
+                    }
+                    .accessibilityLabel("Close")
+                }
+
+                if presentation.hasExactProduct {
+                    HStack(alignment: .top, spacing: ReasiSpacing.s4) {
+                        productArtwork
+
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                            if let productName = presentation.productName {
+                                Text(productName)
+                                    .font(ReasiTypography.headline)
+                                    .foregroundStyle(Color.reasi.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let size = presentation.size {
+                                Text(size)
+                                    .font(ReasiTypography.callout)
+                                    .foregroundStyle(Color.reasi.textMuted)
+                            }
+                            if let price = presentation.price {
+                                Text(price, format: .currency(code: "AUD"))
+                                    .font(ReasiTypography.title2)
+                                    .foregroundStyle(Color.reasi.text)
+                            }
+                        }
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Color.reasi.textMuted)
+                            .frame(width: 40, height: 40)
+                            .background(Color.reasi.surfaceHigh, in: Circle())
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No exact product yet")
+                                .font(ReasiTypography.headline)
+                                .foregroundStyle(Color.reasi.text)
+                            Text("Choose or scan one to track the item and its price.")
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(Color.reasi.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(presentation.detailFields.enumerated()), id: \.element.id) { index, field in
+                        if index > 0 {
+                            Divider().overlay(Color.reasi.border)
+                        }
+                        ItemDetailRow(label: field.label, value: field.value)
+                    }
+                }
+
+                if let note = presentation.note {
+                    Text(note)
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let sourceURL = presentation.sourceURL {
+                    Link(destination: sourceURL) {
+                        Label("View source", systemImage: "arrow.up.right")
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.text)
+                    }
+                }
+            }
+            .padding(ReasiSpacing.s5)
+        }
+        .background(Color.reasi.background.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private var productArtwork: some View {
+        if let imageURL = presentation.imageURL {
+            AsyncImage(url: imageURL) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Image(systemName: "basket")
+                        .foregroundStyle(Color.reasi.muted)
+                }
+            }
+            .frame(width: 76, height: 76)
+            .background(Color.reasi.surfaceHigh)
+            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+        }
+    }
+
+    private var presentation: ShoppingItemPresentation {
+        ShoppingItemPresentation(item: item)
+    }
+}
+
+private struct ItemDetailRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s4) {
+            Text(label)
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.muted)
+                .frame(width: 72, alignment: .leading)
+            Text(value)
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, ReasiSpacing.s3)
+    }
+}
+
+private struct ShoppingItemDetailField: Identifiable {
+    let label: String
+    let value: String
+
+    var id: String { label }
+}
+
+private struct ShoppingItemPresentation {
+    let item: ShoppingListItem
+
+    var hasExactProduct: Bool {
+        item.importedCandidate != nil || item.product != nil
+    }
+
+    var productName: String? {
+        item.importedCandidate?.displayName ?? item.product?.productName
+    }
+
+    var size: String? {
+        item.importedCandidate?.size ?? item.product?.size
+    }
+
+    var price: Double? {
+        item.product?.actualPriceAud
+            ?? item.importedCandidate?.priceAud
+            ?? item.product?.priceAud
+    }
+
+    var imageURL: URL? {
+        item.importedCandidate?.imageUrl ?? item.product?.imageUrl
+    }
+
+    var sourceName: String? {
+        if let candidate = item.importedCandidate {
+            return candidate.userFacingSourceName
+        }
+        guard let sourceName = item.product?.sourceName else { return nil }
+        return ReasiUserFacingCopy.sourceName(sourceName, sourceURL: nil)
+    }
+
+    var sourceURL: URL? {
+        item.importedCandidate?.productUrl ?? item.importedCandidate?.sourceUrl
+    }
+
+    var freshness: String? {
+        if let candidate = item.importedCandidate {
+            return ReasiUserFacingCopy.text(candidate.freshnessLabel)
+        }
+        return item.product?.capturedAt.flatMap(Self.formattedDate)
+    }
+
+    var confidence: String? {
+        item.importedCandidate?.confidence.label
+    }
+
+    var note: String? {
+        item.locationUncertaintyText ?? item.importedCandidate?.uncertaintyText
+    }
+
+    var locationLabel: String {
+        if let label = item.aisleLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !label.isEmpty {
+            return label
+        }
+        if let uncertainty = item.locationUncertaintyText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !uncertainty.isEmpty {
+            return uncertainty
+        }
+        return "Location not certain"
+    }
+
+    var compactDetail: String {
+        "\(item.quantity) · \(locationLabel)"
+    }
+
+    var accessibilityValue: String {
+        var values = [item.quantity, locationLabel]
+        if let price {
+            values.append(price.formatted(.currency(code: "AUD")))
+        }
+        return values.joined(separator: ", ")
+    }
+
+    var detailFields: [ShoppingItemDetailField] {
+        var fields: [ShoppingItemDetailField] = []
+        if let sourceName, !sourceName.isEmpty {
+            fields.append(ShoppingItemDetailField(label: "Source", value: sourceName))
+        }
+        if let freshness, !freshness.isEmpty {
+            fields.append(ShoppingItemDetailField(label: "Updated", value: freshness))
+        }
+        if let confidence, !confidence.isEmpty {
+            fields.append(ShoppingItemDetailField(label: "Match", value: confidence))
+        }
+        if let barcode = item.product?.barcode ?? item.importedCandidate?.barcode,
+           !barcode.isEmpty {
+            fields.append(ShoppingItemDetailField(label: "Barcode", value: barcode))
+        }
+        return fields
+    }
+
+    private static func formattedDate(_ value: String) -> String {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        return date?.formatted(date: .abbreviated, time: .omitted) ?? ReasiUserFacingCopy.text(value)
+    }
+}
+
+private struct SwipeToFinishControl: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let isBusy: Bool
+    let onComplete: () async -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var reachedThreshold = false
+    @State private var hasTriggered = false
+    @State private var didHapticThisDrag = false
+
+    private let height = ShoppingDockMetrics.finishHeight
+    private let inset: CGFloat = 5
+    private let threshold: CGFloat = 0.78
+
+    var body: some View {
+        GeometryReader { proxy in
+            let thumbSize = height - (inset * 2)
+            let maximumOffset = max(0, proxy.size.width - thumbSize - (inset * 2))
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                    .fill(Color.reasi.surfaceHigh)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                            .stroke(Color.reasi.borderStrong, lineWidth: 1)
+                    }
+
+                Text(isBusy ? "Saving…" : "Swipe to finish")
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .opacity(max(0.28, 1 - Double(dragOffset / max(maximumOffset, 1))))
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                        .fill(Color.reasi.text)
+
+                    if isBusy {
+                        ProgressView()
+                            .tint(Color.reasi.background)
+                    } else {
+                        Image(systemName: "chevron.right.2")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.reasi.background)
+                    }
+                }
+                .frame(width: thumbSize, height: thumbSize)
+                .offset(x: inset + dragOffset)
+                .gesture(
+                    DragGesture(minimumDistance: 4)
+                        .onChanged { value in
+                            guard !isBusy, !hasTriggered else { return }
+                            dragOffset = min(maximumOffset, max(0, value.translation.width))
+                            let isPastThreshold = dragOffset >= maximumOffset * threshold
+                            if isPastThreshold, !didHapticThisDrag {
+                                ReasiHaptics.selection()
+                                didHapticThisDrag = true
+                            }
+                            reachedThreshold = isPastThreshold
+                        }
+                        .onEnded { _ in
+                            guard !isBusy, !hasTriggered else { return }
+                            if reachedThreshold {
+                                withAnimation(reduceMotion ? nil : ReasiMotion.tactileSpring) {
+                                    dragOffset = maximumOffset
+                                }
+                                triggerCompletion()
+                            } else {
+                                reset()
+                            }
+                        }
+                )
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(isBusy ? "Saving shopping trip" : "Finish shopping")
+            .accessibilityHint(isBusy ? "Please wait" : "Double-tap to finish shopping")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { triggerCompletion() }
+            .onChange(of: isBusy) { wasBusy, isBusyNow in
+                if wasBusy, !isBusyNow {
+                    reset()
+                }
+            }
+        }
+        .frame(height: height)
+    }
+
+    private func reset() {
+        reachedThreshold = false
+        hasTriggered = false
+        didHapticThisDrag = false
+        withAnimation(reduceMotion ? nil : ReasiMotion.tactileSpring) {
+            dragOffset = 0
+        }
+    }
+
+    private func triggerCompletion() {
+        guard !isBusy, !hasTriggered else { return }
+        hasTriggered = true
+        Task {
+            await onComplete()
+            reset()
+        }
+    }
+}
+
+private struct ShoppingSectionView: View {
     let section: ShoppingListSection
     let checkedItemIDs: Set<String>
     let isReadOnly: Bool
     let toggle: (ShoppingListItem) -> Void
     let chooseProduct: (ShoppingListItem) -> Void
     let scanBarcode: (ShoppingListItem) -> Void
-    let delete: (ShoppingListItem) -> Void
+    let showDetails: (ShoppingListItem) -> Void
+    let delete: (ShoppingListItem, ShoppingItemDeletionSource) -> Void
 
     var checkedCount: Int {
         section.items.filter { checkedItemIDs.contains($0.id) }.count
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(section.label)
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                    Text("\(checkedCount) of \(section.items.count) items")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(section.label)
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
                 Spacer()
-                Image(systemName: sectionSymbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.reasi.dim)
-                    .frame(width: 34, height: 34)
-                    .background(Color.reasi.surfaceHigh, in: Circle())
+                Text("\(checkedCount) / \(section.items.count)")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
             }
+            .padding(.bottom, ReasiSpacing.s2)
 
-            VStack(spacing: ReasiSpacing.s2) {
-                ForEach(section.items) { item in
-                    if isReadOnly {
-                        HStack(spacing: ReasiSpacing.s3) {
-                            Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 23, weight: .semibold))
-                                .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
-                            ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                        .padding(.vertical, ReasiSpacing.s1)
-                        .padding(.horizontal, ReasiSpacing.s2)
-                        .background(
-                            Color.reasi.surfaceHigh.opacity(0.24),
-                            in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                        )
-                    } else {
-                        SwipeToDeleteRow(itemName: item.name) {
-                            delete(item)
-                        } content: {
-                        HStack(spacing: ReasiSpacing.s3) {
-                        Button {
-                            toggle(item)
-                        } label: {
-                            HStack(spacing: ReasiSpacing.s3) {
-                                Image(systemName: checkedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 23, weight: .semibold))
-                                    .foregroundStyle(checkedItemIDs.contains(item.id) ? Color.reasi.success : Color.reasi.dim)
-                                    .symbolEffect(.bounce, value: checkedItemIDs.contains(item.id))
-
-                                ShoppingItemRow(item: item, isChecked: checkedItemIDs.contains(item.id))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(checkedItemIDs.contains(item.id) ? "Uncheck \(item.name)" : "Check \(item.name)")
-                        .accessibilityHint("Double-tap anywhere on this item to update it")
-
-                        Menu {
-                            Button {
-                                chooseProduct(item)
-                            } label: {
-                                Label("Search exact product", systemImage: "magnifyingglass")
-                            }
-                            Button {
-                                scanBarcode(item)
-                            } label: {
-                                Label("Scan barcode", systemImage: "barcode.viewfinder")
-                            }
-                            Button {
-                                toggle(item)
-                            } label: {
-                                Label(
-                                    checkedItemIDs.contains(item.id) ? "Mark not bought" : "Mark bought without product",
-                                    systemImage: checkedItemIDs.contains(item.id) ? "arrow.uturn.backward" : "checkmark"
-                                )
-                            }
-                            Button(role: .destructive) {
-                                delete(item)
-                            } label: {
-                                Label("Delete item", systemImage: "trash")
-                            }
-                        } label: {
-                            Image(systemName: item.product?.sku != nil || item.product?.barcode != nil ? "checkmark.seal.fill" : "barcode.viewfinder")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(item.product?.sku != nil || item.product?.barcode != nil ? Color.reasi.success : Color.reasi.textMuted)
-                                .frame(width: 44, height: 44)
-                                .background(Color.reasi.surfaceHigh, in: Circle())
-                        }
-                        .accessibilityLabel("Product options for \(item.name)")
-                        }
-                        .padding(.vertical, ReasiSpacing.s1)
-                        .padding(.horizontal, ReasiSpacing.s2)
-                        .background(
-                            checkedItemIDs.contains(item.id) ? Color.reasi.surfaceHigh.opacity(0.36) : Color.reasi.surface,
-                            in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                        )
-                    }
-                    }
+            ForEach(section.items) { item in
+                itemRow(item)
+                if item.id != section.items.last?.id {
+                    Divider()
+                        .overlay(Color.reasi.border)
+                        .padding(.leading, 38)
                 }
             }
         }
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+        .padding(.vertical, ReasiSpacing.s2)
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: ShoppingListItem) -> some View {
+        let isChecked = checkedItemIDs.contains(item.id)
+
+        if isReadOnly {
+            HStack(spacing: ReasiSpacing.s3) {
+                statusIcon(isChecked: isChecked)
+                ShoppingItemRow(item: item, isChecked: isChecked)
+                itemMenu(item, isChecked: isChecked, allowsEditing: false)
+            }
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(.vertical, ReasiSpacing.s1)
+        } else {
+            SwipeToDeleteRow(itemName: item.name) {
+                delete(item, .swipe)
+            } content: {
+                HStack(spacing: ReasiSpacing.s3) {
+                    Button {
+                        toggle(item)
+                    } label: {
+                        HStack(spacing: ReasiSpacing.s3) {
+                            statusIcon(isChecked: isChecked)
+                            ShoppingItemRow(item: item, isChecked: isChecked)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isChecked ? "Uncheck \(item.name)" : "Check \(item.name)")
+                    .accessibilityValue(ShoppingItemPresentation(item: item).accessibilityValue)
+                    .accessibilityHint("Double-tap to update this item")
+
+                    itemMenu(item, isChecked: isChecked, allowsEditing: true)
+                }
+                .padding(.vertical, ReasiSpacing.s1)
+                .background(Color.reasi.background)
+            }
         }
     }
 
-    private var sectionSymbol: String {
-        switch section.type {
-        case .numbered:
-            "number"
-        case .perimeter:
-            "leaf"
-        case .unknown:
-            "questionmark"
+    private func statusIcon(isChecked: Bool) -> some View {
+        Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 23, weight: .semibold))
+            .foregroundStyle(isChecked ? Color.reasi.success : Color.reasi.dim)
+            .symbolEffect(.bounce, value: isChecked)
+    }
+
+    private func itemMenu(
+        _ item: ShoppingListItem,
+        isChecked: Bool,
+        allowsEditing: Bool
+    ) -> some View {
+        Menu {
+            Button {
+                showDetails(item)
+            } label: {
+                Label("Details", systemImage: "info.circle")
+            }
+
+            if allowsEditing {
+                Button {
+                    chooseProduct(item)
+                } label: {
+                    Label("Choose product", systemImage: "magnifyingglass")
+                }
+                Button {
+                    scanBarcode(item)
+                } label: {
+                    Label("Scan barcode", systemImage: "barcode.viewfinder")
+                }
+                Button {
+                    toggle(item)
+                } label: {
+                    Label(isChecked ? "Mark not bought" : "Mark bought", systemImage: isChecked ? "arrow.uturn.backward" : "checkmark")
+                }
+                Button(role: .destructive) {
+                    delete(item, .menu)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.reasi.textMuted)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
+        .accessibilityLabel("More options for \(item.name)")
     }
 }
 
@@ -2445,50 +2864,36 @@ private struct ShoppingItemRow: View {
     let item: ShoppingListItem
     let isChecked: Bool
 
+    private var presentation: ShoppingItemPresentation {
+        ShoppingItemPresentation(item: item)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-                Text(item.name)
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(isChecked ? Color.reasi.muted : Color.reasi.text)
-                    .strikethrough(isChecked, color: Color.reasi.muted)
-                    .lineLimit(2)
-                Text(detailText)
+            Text(item.name)
+                .font(ReasiTypography.bodyMedium)
+                .foregroundStyle(isChecked ? Color.reasi.muted : Color.reasi.text)
+                .strikethrough(isChecked, color: Color.reasi.muted)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                Text(presentation.compactDetail)
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.muted)
                     .lineLimit(1)
-                if let imported = item.importedCandidate {
-                    Text("\(imported.confidence.label) · \(imported.userFacingSourceName) · \(imported.freshnessLabel)")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(imported.confidence == .low ? Color.reasi.warning : Color.reasi.dim)
-                        .lineLimit(2)
-                }
-                if let productName = item.product?.productName,
-                   productName.localizedCaseInsensitiveCompare(item.name) != .orderedSame {
-                    Text(productName)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
-                        .lineLimit(1)
-                }
-                if let price = item.product?.actualPriceAud ?? item.product?.priceAud {
-                    Text("$\(price, specifier: "%.2f")\(item.product?.actualPriceAud == nil ? " catalog" : " paid")")
+
+                Spacer(minLength: ReasiSpacing.s2)
+
+                if let price = presentation.price {
+                    Text(price, format: .currency(code: "AUD"))
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.textMuted)
                 }
             }
+            .frame(maxWidth: .infinity)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(ReasiMotion.fast, value: isChecked)
-    }
-
-    private var detailText: String {
-        "\(item.quantity) · \(locationLabel)"
-    }
-
-    private var locationLabel: String {
-        guard let aisleLabel = item.aisleLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !aisleLabel.isEmpty else {
-            return "Location not certain"
-        }
-        return aisleLabel
     }
 }
 
