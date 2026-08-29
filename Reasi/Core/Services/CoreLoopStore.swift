@@ -51,6 +51,11 @@ struct ReasiPaywallRequest: Identifiable, Equatable {
     let message: String
 }
 
+enum ShoppingItemDeletionSource: String {
+    case swipe
+    case menu
+}
+
 enum WeekPlanGenerationStage: String, Equatable {
     case preparing
     case planningMeals
@@ -851,6 +856,7 @@ final class CoreLoopStore {
 
     func deleteItem(
         _ item: ShoppingListItem,
+        source: ShoppingItemDeletionSource = .swipe,
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) {
@@ -895,7 +901,7 @@ final class CoreLoopStore {
             "store_id": .string(plan.storeId.rawValue),
             "shopping_list_id": .string(shoppingListId),
             "item_id": .string(item.id),
-            "source": .string("swipe")
+            "source": .string(source.rawValue)
         ])
     }
 
