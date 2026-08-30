@@ -108,28 +108,13 @@ struct HomeView: View {
     }
 
     private var creationActions: some View {
-        VStack(spacing: ReasiSpacing.s3) {
-            Button {
-                analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
-                appState.openPlanBuilder(entryMethod: .describe)
-            } label: {
-                Label("Describe a plan", systemImage: "sparkles")
-            }
-            .buttonStyle(ReasiPrimaryButtonStyle())
-
-            Button {
-                analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.build.rawValue)])
-                appState.openPlanBuilder(entryMethod: .build)
-            } label: {
-                Label("Add ideas or products", systemImage: "square.grid.2x2")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .foregroundStyle(Color.reasi.text)
-                    .background(Color.reasi.surface, in: Capsule())
-                    .overlay { Capsule().stroke(Color.reasi.borderStrong, lineWidth: 1) }
-            }
-            .buttonStyle(ReasiPressStyle())
+        Button {
+            analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
+            appState.openPlanBuilder(entryMethod: .describe)
+        } label: {
+            Label("Create a plan", systemImage: "sparkles")
         }
+        .buttonStyle(ReasiPrimaryButtonStyle())
         .disabled(coreLoop.generationState.isGenerating)
         .opacity(coreLoop.generationState.isGenerating ? 0.72 : 1)
     }
@@ -489,9 +474,9 @@ struct PlanBuilderView: View {
     let entryMethod: EntryMethod
 
     @State private var brief: PlanBrief
-    @State private var newIdea = ""
     @State private var clarificationAnswer = ""
     @State private var interpretation: PlanInterpretation?
+    @State private var interpretedBrief: PlanBrief?
     @State private var isInterpreting = false
     @State private var isResolving = false
     @State private var errorMessage: String?
@@ -500,12 +485,14 @@ struct PlanBuilderView: View {
     @State private var isPhotoPickerPresented = false
     @State private var photoMode: BuilderPhotoMode = .meal
     @State private var showsDiscardConfirmation = false
-    @FocusState private var ideaFieldFocused: Bool
+    @State private var showsPlanDetails = false
+    @State private var showsAlternativeSuggestions = false
+    @FocusState private var briefFieldFocused: Bool
 
     init(entryMethod: EntryMethod) {
         self.entryMethod = entryMethod
         _brief = State(initialValue: PlanBrief(
-            kind: entryMethod == .describe ? .occasion : .week,
+            kind: .week,
             entryMethod: entryMethod
         ))
     }
@@ -515,11 +502,11 @@ struct PlanBuilderView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                     intro
-                    planControls
-                    ideaComposer
+                    planKindPicker
+                    briefComposer
+                    planDetails
                     if !brief.ideas.isEmpty { ideasSection }
                     if let interpretation { interpretationSection(interpretation) }
-                    budgetSection
                     submitButton
                 }
                 .padding(.horizontal, ReasiSpacing.s5)
@@ -547,10 +534,15 @@ struct PlanBuilderView: View {
             if let restored = appState.planBuilder.draft {
                 brief = restored
             }
-            if entryMethod == .describe { ideaFieldFocused = true }
+            if entryMethod == .describe { briefFieldFocused = true }
         }
         .onChange(of: brief) { _, updated in
             appState.planBuilder.update(updated)
+            if interpretedBrief != updated {
+                interpretation = nil
+                clarificationAnswer = ""
+                showsAlternativeSuggestions = false
+            }
         }
         .onChange(of: brief.kind) { oldKind, newKind in
             if newKind == .week {
@@ -620,88 +612,53 @@ struct PlanBuilderView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text(entryMethod == .describe ? "What are you planning?" : "Start with anything you have")
+            Text("What should Reasi plan?")
                 .font(ReasiTypography.title)
                 .foregroundStyle(Color.reasi.text)
-            Text("Meals, products and rough ideas can live together. You stay in control before Reasi plans.")
+            Text("Say what matters in your own words. Specific dishes, budget, timing and dislikes all count.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var planControls: some View {
-        VStack(spacing: ReasiSpacing.s4) {
-            Picker("Plan type", selection: $brief.kind) {
-                ForEach(PlanKind.allCases, id: \.self) { kind in Text(kind.title).tag(kind) }
-            }
-            .pickerStyle(.segmented)
-
-            HStack(spacing: ReasiSpacing.s3) {
-                Stepper("Serves \(brief.serves)", value: $brief.serves, in: 1...12)
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                if brief.kind == .occasion {
-                    DatePicker(
-                        "When",
-                        selection: Binding(
-                            get: { brief.occasionAt ?? Date() },
-                            set: { brief.occasionAt = $0 }
-                        ),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .labelsHidden()
-                }
-            }
-
-            if brief.kind == .week {
-                Label("7 dinners", systemImage: "calendar")
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Stepper(
-                    "\(brief.desiredCount) courses",
-                    value: $brief.desiredCount,
-                    in: 2...5
-                )
-                .font(ReasiTypography.bodyMedium)
-                .foregroundStyle(Color.reasi.text)
-            }
+    private var planKindPicker: some View {
+        Picker("Plan type", selection: $brief.kind) {
+            Text("My week").tag(PlanKind.week)
+            Text("One occasion").tag(PlanKind.occasion)
         }
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .pickerStyle(.segmented)
     }
 
-    private var ideaComposer: some View {
+    private var briefComposer: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            TextField(
-                brief.kind == .occasion ? "e.g. romantic dinner, salmon pasta..." : "e.g. quick dinners, tacos, chicken...",
-                text: $newIdea,
-                axis: .vertical
-            )
-            .font(ReasiTypography.body)
-            .foregroundStyle(Color.reasi.text)
-            .focused($ideaFieldFocused)
-            .lineLimit(2...5)
-            .padding(ReasiSpacing.s4)
-            .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-            .submitLabel(.done)
-
-            HStack(spacing: ReasiSpacing.s2) {
-                Button { Task { await addTypedInput() } } label: {
-                    Label(
-                        isResolving ? "Adding" : (entryMethod == .describe ? "Add to brief" : "Add idea"),
-                        systemImage: "plus"
-                    )
+            ZStack(alignment: .topLeading) {
+                if brief.briefText.isEmpty {
+                    Text(briefPlaceholder)
+                        .font(ReasiTypography.body)
+                        .foregroundStyle(Color.reasi.muted)
+                        .padding(.horizontal, ReasiSpacing.s4)
+                        .padding(.vertical, ReasiSpacing.s4 + 1)
+                        .allowsHitTesting(false)
                 }
-                .buttonStyle(ReasiPressStyle())
-                .disabled(newIdea.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isResolving)
 
-                Spacer()
+                TextEditor(text: $brief.briefText)
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.text)
+                    .focused($briefFieldFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(ReasiSpacing.s3)
+                    .frame(minHeight: 148)
+            }
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                    .stroke(briefFieldFocused ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
+            }
 
+            HStack {
                 Menu {
-                    Button("Search or scan product", systemImage: "barcode.viewfinder") {
+                    Button("Search product or link", systemImage: "magnifyingglass") {
                         productSearchContext = ProductSearchContext(
                             targetItemID: nil,
                             targetItemName: nil,
@@ -712,11 +669,19 @@ struct PlanBuilderView: View {
                     Button("Product photo", systemImage: "shippingbox") { pickPhoto(.product) }
                     Button("Handwritten list", systemImage: "text.viewfinder") { pickPhoto(.handwrittenList) }
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 28))
+                    Label("Add inspiration", systemImage: "plus")
+                        .font(ReasiTypography.bodyMedium)
                         .foregroundStyle(Color.reasi.text)
+                        .frame(minHeight: 44)
                 }
-                .accessibilityLabel("More ways to add")
+                .disabled(isResolving)
+
+                Spacer()
+
+                if isResolving {
+                    ProgressView()
+                        .tint(Color.reasi.textMuted)
+                }
             }
 
             if let errorMessage {
@@ -727,9 +692,82 @@ struct PlanBuilderView: View {
         }
     }
 
+    private var planDetails: some View {
+        DisclosureGroup(isExpanded: $showsPlanDetails) {
+            VStack(spacing: ReasiSpacing.s4) {
+                Stepper("Cooking for \(brief.serves)", value: $brief.serves, in: 1...12)
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+
+                if brief.kind == .occasion {
+                    Stepper("\(brief.desiredCount) courses", value: $brief.desiredCount, in: 2...5)
+                        .font(ReasiTypography.bodyMedium)
+                        .foregroundStyle(Color.reasi.text)
+
+                    DatePicker(
+                        "When",
+                        selection: Binding(
+                            get: { brief.occasionAt ?? Date() },
+                            set: { brief.occasionAt = $0 }
+                        ),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+                }
+
+                HStack {
+                    Text("Budget")
+                        .font(ReasiTypography.bodyMedium)
+                        .foregroundStyle(Color.reasi.text)
+                    Spacer()
+                    TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 124)
+                }
+
+                if let target = brief.budgetTargetAud {
+                    Text(budgetMessage(target: target))
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(budgetKnownSubtotal > target ? Color.reasi.warning : Color.reasi.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.top, ReasiSpacing.s4)
+        } label: {
+            HStack {
+                Label("Plan details", systemImage: "slider.horizontal.3")
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+                Spacer()
+                Text(planDetailsSummary)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(1)
+            }
+        }
+        .tint(Color.reasi.textMuted)
+        .padding(ReasiSpacing.s4)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+
+    private var briefPlaceholder: String {
+        if brief.kind == .occasion {
+            return "Romantic dinner for two. Keep salmon pasta and flan, suggest a light starter, and stay near $80."
+        }
+        return "Quick dinners for two. Use chicken twice, avoid mushrooms, keep prep under 30 minutes, and reuse ingredients."
+    }
+
+    private var planDetailsSummary: String {
+        let count = brief.kind == .week ? "7 dinners" : "\(brief.desiredCount) courses"
+        let people = brief.serves == 1 ? "1 person" : "\(brief.serves) people"
+        return "\(people) · \(count)"
+    }
+
     private var ideasSection: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Text("In this plan")
+            Text("Pinned to this plan")
                 .font(ReasiTypography.headline)
                 .foregroundStyle(Color.reasi.text)
             ForEach(brief.ideas) { idea in
@@ -775,23 +813,33 @@ struct PlanBuilderView: View {
                 }
             }
 
-            if let recommendation = value.recommendation {
+            if shouldShowGapRecommendation, let recommendation = value.recommendation {
                 Text("One thing to complete it")
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
                 recommendationButton(recommendation, recommended: true)
                 if !value.swaps.isEmpty {
-                    Text("Or swap it for")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    ForEach(value.swaps.prefix(2)) { swap in
-                        recommendationButton(swap, recommended: false)
+                    DisclosureGroup("Other ideas", isExpanded: $showsAlternativeSuggestions) {
+                        VStack(spacing: ReasiSpacing.s2) {
+                            ForEach(value.swaps.prefix(2)) { swap in
+                                recommendationButton(swap, recommended: false)
+                            }
+                        }
+                        .padding(.top, ReasiSpacing.s2)
                     }
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .tint(Color.reasi.textMuted)
                 }
             }
         }
         .padding(ReasiSpacing.s4)
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+
+    private var shouldShowGapRecommendation: Bool {
+        brief.kind == .occasion
+            && brief.ideas.filter { $0.type == .dish }.count < brief.desiredCount
     }
 
     private func recommendationButton(_ recommendation: PlanGapRecommendation, recommended: Bool) -> some View {
@@ -823,55 +871,35 @@ struct PlanBuilderView: View {
         .buttonStyle(ReasiPressStyle())
     }
 
-    private var budgetSection: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            HStack {
-                Text("Budget target").font(ReasiTypography.headline).foregroundStyle(Color.reasi.text)
-                Spacer()
-                TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 120)
-            }
-            if let target = brief.budgetTargetAud {
-                Text(budgetMessage(target: target))
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(budgetKnownSubtotal > target ? Color.reasi.warning : Color.reasi.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-                if budgetKnownSubtotal > target {
-                    Button("Use known subtotal as target") {
-                        brief.budgetTargetAud = budgetKnownSubtotal
-                        analytics.capture(.budgetRevisionRequested, properties: [
-                            "plan_kind": .string(brief.kind.rawValue),
-                            "priced_product_count": .int(budgetCoverage.pricedProductCount)
-                        ])
-                    }
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.text)
-                    .buttonStyle(ReasiPressStyle())
-                }
-            } else {
-                Text("A target guides choices. Reasi only compares it with prices we can source.")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-            }
-        }
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-    }
-
     private var submitButton: some View {
         Button {
             Task { await reviewOrGenerate() }
         } label: {
             if isInterpreting {
-                HStack { ProgressView().tint(Color.reasi.background); Text("Reviewing your plan") }
+                HStack { ProgressView().tint(Color.reasi.background); Text("Understanding your plan") }
+            } else if hasUnansweredClarification {
+                Label("Choose an answer", systemImage: "arrow.up")
             } else {
-                Label(interpretation == nil ? "Review plan" : "Create plan", systemImage: interpretation == nil ? "sparkles" : "arrow.right")
+                Label("Create plan", systemImage: "sparkles")
             }
         }
         .buttonStyle(ReasiPrimaryButtonStyle())
-        .disabled(isInterpreting || (brief.briefText.isEmpty && brief.ideas.isEmpty))
+        .disabled(!canSubmit)
+        .opacity(canSubmit ? 1 : 0.58)
+    }
+
+    private var hasUnansweredClarification: Bool {
+        interpretation?.clarification?.isEmpty == false
+            && clarificationAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSubmit: Bool {
+        guard !isInterpreting else { return false }
+        guard !brief.briefText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !brief.ideas.isEmpty else {
+            return false
+        }
+        if hasUnansweredClarification { return false }
+        return true
     }
 
     private var budgetCoverage: PlanBudgetCoverage { PlanBudgetCoverage(ideas: brief.ideas) }
@@ -883,33 +911,6 @@ struct PlanBuilderView: View {
         guard total > 0 else { return "No reliable product prices yet. The final list will show price coverage." }
         let subtotal = budgetKnownSubtotal.formatted(.currency(code: "AUD"))
         return "Known subtotal \(subtotal), based on \(priced) of \(total) priced products. This is guidance, not a checkout total."
-    }
-
-    private func addTypedInput() async {
-        let value = newIdea.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return }
-        errorMessage = nil
-        if let url = URL(string: value), url.scheme?.hasPrefix("http") == true {
-            isResolving = true
-            defer { isResolving = false }
-            do {
-                let resolved = try await supabase.resolveMealIdea(
-                    method: "link",
-                    storeId: appState.selectedStore.id,
-                    url: value
-                )
-                addResolvedIdea(resolved)
-                newIdea = ""
-            } catch {
-                errorMessage = supabase.userFacingMessage(for: error, fallback: "That link could not be read. Try a public recipe link or add a screenshot.")
-            }
-        } else {
-            brief.briefText = [brief.briefText, value].filter { !$0.isEmpty }.joined(separator: ". ")
-            if entryMethod == .build {
-                addIdea(title: value, type: .dish)
-            }
-            newIdea = ""
-        }
     }
 
     private func addIdea(
@@ -1040,43 +1041,56 @@ struct PlanBuilderView: View {
 
     private func reviewOrGenerate() async {
         errorMessage = nil
-        if interpretation == nil {
+        if interpretation == nil || interpretedBrief != brief {
             isInterpreting = true
             defer { isInterpreting = false }
             do {
                 let result = try await supabase.interpretPlanBrief(brief, storeId: appState.selectedStore.id)
-                if let normalized = result.normalizedBrief {
-                    brief = normalized.mergingClientMetadata(from: brief)
-                }
+                let normalized = result.normalizedBrief?.mergingClientMetadata(from: brief) ?? brief
+                interpretedBrief = normalized
+                brief = normalized
                 interpretation = result
                 analytics.capture(.planBriefInterpreted, properties: [
-                    "plan_kind": .string(brief.kind.rawValue),
-                    "entry_method": .string(brief.entryMethod.rawValue),
+                    "plan_kind": .string(normalized.kind.rawValue),
+                    "entry_method": .string(normalized.entryMethod.rawValue),
                     "has_clarification": .bool(result.clarification?.isEmpty == false)
                 ])
                 if result.recommendation != nil {
-                    analytics.capture(.planGapRecommendationViewed, properties: ["plan_kind": .string(brief.kind.rawValue)])
+                    analytics.capture(.planGapRecommendationViewed, properties: ["plan_kind": .string(normalized.kind.rawValue)])
                 }
-                if let target = brief.budgetTargetAud, budgetKnownSubtotal > target {
-                    analytics.capture(.budgetWarningViewed, properties: ["plan_kind": .string(brief.kind.rawValue)])
+                if let target = normalized.budgetTargetAud, budgetKnownSubtotal > target {
+                    analytics.capture(.budgetWarningViewed, properties: ["plan_kind": .string(normalized.kind.rawValue)])
                 }
                 ReasiHaptics.success()
+
+                let hasClarification = result.clarification?.isEmpty == false
+                let hasMissingOccasionCourse = normalized.kind == .occasion
+                    && normalized.ideas.filter { $0.type == .dish }.count < normalized.desiredCount
+                    && result.recommendation != nil
+                if !hasClarification && !hasMissingOccasionCourse {
+                    beginGeneration(with: normalized)
+                }
             } catch {
                 errorMessage = supabase.userFacingMessage(for: error, fallback: "We couldn't review this plan yet. Your draft is safe.")
             }
             return
         }
 
+        var finalBrief = brief
         if !clarificationAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            brief.briefText += ". Clarification: \(clarificationAnswer)"
+            finalBrief.briefText += ". Clarification: \(clarificationAnswer)"
         }
+        beginGeneration(with: finalBrief)
+    }
+
+    private func beginGeneration(with finalBrief: PlanBrief) {
         analytics.capture(.planConfirmed, properties: [
-            "plan_kind": .string(brief.kind.rawValue),
-            "entry_method": .string(brief.entryMethod.rawValue),
-            "idea_count": .int(brief.ideas.count)
+            "plan_kind": .string(finalBrief.kind.rawValue),
+            "entry_method": .string(finalBrief.entryMethod.rawValue),
+            "idea_count": .int(finalBrief.ideas.count)
         ])
         coreLoop.startPlanGeneration(
-            brief: brief,
+            brief: finalBrief,
             store: appState.selectedStore,
             supabase: supabase,
             analytics: analytics,
