@@ -2826,7 +2826,7 @@ private struct SwipeToDeleteRow<Content: View>: View {
                 .offset(x: offset)
                 .contentShape(Rectangle())
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 12)
+                    DragGesture(minimumDistance: 30)
                         .onChanged { value in
                             if !isDraggingHorizontally {
                                 isDraggingHorizontally = abs(value.translation.width) > abs(value.translation.height)
