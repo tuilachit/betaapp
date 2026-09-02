@@ -4,6 +4,7 @@ import UIKit
 enum ProfileSettingsDestination: String, Identifiable {
     case planning
     case store
+    case spending
     case shopping
     case reminders
 
@@ -197,6 +198,149 @@ struct PlanningPreferencesSettingsView: View {
         guard !isSaving else { return }
         isSaving = true
         Task {
+            await onSave(draft)
+            isSaving = false
+            dismiss()
+        }
+    }
+}
+
+struct SpendingPreferencesSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var draft: OnboardingPreferences
+    @State private var budgetText: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    let onSave: (OnboardingPreferences) async -> Void
+
+    init(
+        preferences: OnboardingPreferences,
+        onSave: @escaping (OnboardingPreferences) async -> Void
+    ) {
+        _draft = State(initialValue: preferences)
+        _budgetText = State(initialValue: preferences.weeklyGroceryBudgetAud.map {
+            String(format: "%.0f", $0)
+        } ?? "")
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s8) {
+                    settingsIntro(
+                        "Make insights feel useful",
+                        detail: "Tone changes the wording, not the facts behind your spending recap."
+                    )
+                    toneSection
+                    budgetSection
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.warning)
+                    }
+                }
+                .padding(.horizontal, ReasiSpacing.s5)
+                .padding(.top, ReasiSpacing.s4)
+                .padding(.bottom, 116)
+            }
+            .background(Color.reasi.background)
+            .navigationTitle("Spending")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { closeToolbarItem(dismiss: dismiss) }
+            .toolbarBackground(Color.reasi.background, for: .navigationBar)
+            .safeAreaInset(edge: .bottom) {
+                settingsBottomBar {
+                    Button {
+                        save()
+                    } label: {
+                        HStack(spacing: ReasiSpacing.s3) {
+                            if isSaving { ProgressView().tint(Color.reasi.background) }
+                            Text(isSaving ? "Saving" : "Save spending settings")
+                        }
+                    }
+                    .buttonStyle(ReasiPrimaryButtonStyle())
+                    .disabled(isSaving)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var toneSection: some View {
+        settingsSection("Coaching tone") {
+            VStack(spacing: ReasiSpacing.s2) {
+                ForEach(SpendingCoachTone.allCases) { tone in
+                    Button {
+                        draft.spendingCoachTone = tone
+                        ReasiHaptics.selection()
+                    } label: {
+                        HStack(spacing: ReasiSpacing.s4) {
+                            Image(systemName: tone.symbolName)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.reasi.textMuted)
+                                .frame(width: 40, height: 40)
+                                .background(Color.reasi.surfaceHigh, in: Circle())
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(tone.title)
+                                    .font(ReasiTypography.bodyMedium)
+                                    .foregroundStyle(Color.reasi.text)
+                                Text(tone.detail)
+                                    .font(ReasiTypography.caption)
+                                    .foregroundStyle(Color.reasi.muted)
+                            }
+                            Spacer()
+                            Image(systemName: draft.spendingCoachTone == tone ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 21, weight: .semibold))
+                                .foregroundStyle(draft.spendingCoachTone == tone ? Color.reasi.text : Color.reasi.dim)
+                        }
+                        .padding(ReasiSpacing.s4)
+                        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                    }
+                    .buttonStyle(ReasiPressStyle())
+                    .accessibilityAddTraits(draft.spendingCoachTone == tone ? .isSelected : [])
+                }
+            }
+        }
+    }
+
+    private var budgetSection: some View {
+        settingsSection("Weekly target") {
+            HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s2) {
+                Text("A$")
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.textMuted)
+                TextField("Optional", text: $budgetText)
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.text)
+                    .keyboardType(.decimalPad)
+            }
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+        }
+    }
+
+    private func save() {
+        let normalized = budgetText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        if normalized.isEmpty {
+            draft.weeklyGroceryBudgetAud = nil
+        } else if let value = Double(normalized), value > 0, value <= 10_000 {
+            draft.weeklyGroceryBudgetAud = value
+        } else {
+            errorMessage = "Enter a weekly amount between A$1 and A$10,000, or leave it blank."
+            return
+        }
+
+        Task {
+            isSaving = true
+            errorMessage = nil
             await onSave(draft)
             isSaving = false
             dismiss()

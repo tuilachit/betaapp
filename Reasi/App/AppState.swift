@@ -15,7 +15,7 @@ final class AppState {
     let homeRouter = RouterPath()
     let plansRouter = RouterPath()
     let listRouter = RouterPath()
-    let profileRouter = RouterPath()
+    let spendRouter = RouterPath()
 
     @ObservationIgnored private let defaults: UserDefaults
     private let selectedStoreKey = "reasi.selectedStoreId"
@@ -27,6 +27,8 @@ final class AppState {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ReasiOpenShoppingList") {
             selectedTab = .list
+        } else if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
+            selectedTab = .spend
         }
         #endif
     }
@@ -44,8 +46,8 @@ final class AppState {
             plansRouter
         case .list:
             listRouter
-        case .profile:
-            profileRouter
+        case .spend:
+            spendRouter
         }
     }
 
@@ -55,6 +57,19 @@ final class AppState {
 
     func showShoppingList() {
         selectedTab = .list
+    }
+
+    func showSpend() {
+        selectedTab = .spend
+    }
+
+    func openProfile() {
+        router(for: selectedTab).navigate(to: .profile)
+    }
+
+    func openSpendingTrip(_ tripId: String) {
+        selectedTab = .spend
+        spendRouter.path = [.spendingTrip(id: tripId)]
     }
 
     func requestShoppingListAdd() {

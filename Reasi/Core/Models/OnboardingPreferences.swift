@@ -139,6 +139,28 @@ struct OnboardingPreferences: Codable, Equatable {
     var foodStyles: Set<FoodStyle>
     var selectedStoreId: StoreID?
     var completedAt: Date?
+    var weeklyGroceryBudgetAud: Double?
+    var spendingCoachTone: SpendingCoachTone
+
+    init(
+        purpose: OnboardingPurpose?,
+        purposePriorities: [OnboardingPurpose]?,
+        household: HouseholdChoice?,
+        foodStyles: Set<FoodStyle>,
+        selectedStoreId: StoreID?,
+        completedAt: Date?,
+        weeklyGroceryBudgetAud: Double? = nil,
+        spendingCoachTone: SpendingCoachTone = .supportive
+    ) {
+        self.purpose = purpose
+        self.purposePriorities = purposePriorities
+        self.household = household
+        self.foodStyles = foodStyles
+        self.selectedStoreId = selectedStoreId
+        self.completedAt = completedAt
+        self.weeklyGroceryBudgetAud = weeklyGroceryBudgetAud
+        self.spendingCoachTone = spendingCoachTone
+    }
 
     static let empty = OnboardingPreferences(
         purpose: nil,
@@ -146,7 +168,9 @@ struct OnboardingPreferences: Codable, Equatable {
         household: nil,
         foodStyles: [],
         selectedStoreId: nil,
-        completedAt: nil
+        completedAt: nil,
+        weeklyGroceryBudgetAud: nil,
+        spendingCoachTone: .supportive
     )
 
     static let maximumPurposeSelections = 3
@@ -216,5 +240,41 @@ struct OnboardingPreferences: Codable, Equatable {
 
     var resolvedStore: StoreSummary {
         FixtureStores.store(id: selectedStoreId) ?? FixtureStores.topRyde
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case purpose
+        case purposePriorities
+        case household
+        case foodStyles
+        case selectedStoreId
+        case completedAt
+        case weeklyGroceryBudgetAud
+        case spendingCoachTone
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        purpose = try container.decodeIfPresent(OnboardingPurpose.self, forKey: .purpose)
+        purposePriorities = try container.decodeIfPresent([OnboardingPurpose].self, forKey: .purposePriorities)
+        household = try container.decodeIfPresent(HouseholdChoice.self, forKey: .household)
+        foodStyles = try container.decodeIfPresent(Set<FoodStyle>.self, forKey: .foodStyles) ?? []
+        selectedStoreId = try container.decodeIfPresent(StoreID.self, forKey: .selectedStoreId)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        weeklyGroceryBudgetAud = try container.decodeIfPresent(Double.self, forKey: .weeklyGroceryBudgetAud)
+        spendingCoachTone = try container.decodeIfPresent(SpendingCoachTone.self, forKey: .spendingCoachTone)
+            ?? .supportive
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(purpose, forKey: .purpose)
+        try container.encodeIfPresent(purposePriorities, forKey: .purposePriorities)
+        try container.encodeIfPresent(household, forKey: .household)
+        try container.encode(foodStyles, forKey: .foodStyles)
+        try container.encodeIfPresent(selectedStoreId, forKey: .selectedStoreId)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
+        try container.encodeIfPresent(weeklyGroceryBudgetAud, forKey: .weeklyGroceryBudgetAud)
+        try container.encode(spendingCoachTone, forKey: .spendingCoachTone)
     }
 }

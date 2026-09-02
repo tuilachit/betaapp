@@ -65,13 +65,17 @@ struct WeekPlanPlaceholderView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text(coreLoop.hasPlan ? coreLoop.plan.kind.planHeading : "Your plans")
-                .font(ReasiTypography.largeTitle)
-                .foregroundStyle(Color.reasi.text)
-            Text(coreLoop.hasPlan ? planSubtitle : "No generated plan yet")
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
+        HStack(alignment: .center, spacing: ReasiSpacing.s4) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text(coreLoop.hasPlan ? coreLoop.plan.kind.planHeading : "Your plans")
+                    .font(ReasiTypography.largeTitle)
+                    .foregroundStyle(Color.reasi.text)
+                Text(coreLoop.hasPlan ? planSubtitle : "No generated plan yet")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+            Spacer(minLength: ReasiSpacing.s3)
+            ReasiProfileButton { appState.openProfile() }
         }
     }
 

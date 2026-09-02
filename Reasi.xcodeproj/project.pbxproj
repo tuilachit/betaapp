@@ -56,6 +56,10 @@
 		B00000000000000000000049 /* UserSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* UserSettingsStore.swift */; };
 		B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* ProfileSettingsViews.swift */; };
 		B00000000000000000000051 /* ReasiProPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000048 /* ReasiProPaywallView.swift */; };
+		B00000000000000000000052 /* SpendingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000049 /* SpendingModels.swift */; };
+		B00000000000000000000053 /* SpendingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000050 /* SpendingStore.swift */; };
+		B00000000000000000000054 /* ReasiProfileButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000051 /* ReasiProfileButton.swift */; };
+		B00000000000000000000055 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000052 /* SpendView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,6 +130,10 @@
 		A00000000000000000000046 /* UserSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserSettingsStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000047 /* ProfileSettingsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsViews.swift; sourceTree = "<group>"; };
 		A00000000000000000000048 /* ReasiProPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiProPaywallView.swift; sourceTree = "<group>"; };
+		A00000000000000000000049 /* SpendingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingModels.swift; sourceTree = "<group>"; };
+		A00000000000000000000050 /* SpendingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000051 /* ReasiProfileButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiProfileButton.swift; sourceTree = "<group>"; };
+		A00000000000000000000052 /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
 		A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiCoreTests.swift; sourceTree = "<group>"; };
 		B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiOnboardingUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -245,6 +253,7 @@
 				A00000000000000000000013 /* ReasiPressStyle.swift */,
 				A00000000000000000000014 /* SkeletonView.swift */,
 				A00000000000000000000015 /* FloatingTabBar.swift */,
+				A00000000000000000000051 /* ReasiProfileButton.swift */,
 			);
 			path = DesignSystem;
 			sourceTree = "<group>";
@@ -265,6 +274,7 @@
 				A00000000000000000000016 /* Store.swift */,
 				A00000000000000000000017 /* MealPlanModels.swift */,
 				A00000000000000000000041 /* OnboardingPreferences.swift */,
+				A00000000000000000000049 /* SpendingModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -281,6 +291,7 @@
 				A00000000000000000000024 /* RevenueCatService.swift */,
 				A00000000000000000000042 /* OnboardingStore.swift */,
 				A00000000000000000000046 /* UserSettingsStore.swift */,
+				A00000000000000000000050 /* SpendingStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -302,6 +313,7 @@
 				C00000000000000000000064 /* Profile */,
 				C00000000000000000000065 /* Onboarding */,
 				C00000000000000000000066 /* Subscriptions */,
+				C00000000000000000000067 /* Spend */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -354,6 +366,14 @@
 				A00000000000000000000048 /* ReasiProPaywallView.swift */,
 			);
 			path = Subscriptions;
+			sourceTree = "<group>";
+		};
+		C00000000000000000000067 /* Spend */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000052 /* SpendView.swift */,
+			);
+			path = Spend;
 			sourceTree = "<group>";
 		};
 		C00000000000000000000080 /* Resources */ = {
@@ -591,6 +611,10 @@
 				B00000000000000000000049 /* UserSettingsStore.swift in Sources */,
 				B00000000000000000000050 /* ProfileSettingsViews.swift in Sources */,
 				B00000000000000000000051 /* ReasiProPaywallView.swift in Sources */,
+				B00000000000000000000052 /* SpendingModels.swift in Sources */,
+				B00000000000000000000053 /* SpendingStore.swift in Sources */,
+				B00000000000000000000054 /* ReasiProfileButton.swift in Sources */,
+				B00000000000000000000055 /* SpendView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

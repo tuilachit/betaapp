@@ -4,7 +4,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case home
     case plans
     case list
-    case profile
+    case spend
 
     var id: String { rawValue }
 
@@ -16,8 +16,8 @@ enum AppTab: String, CaseIterable, Identifiable {
             "Plans"
         case .list:
             "List"
-        case .profile:
-            "Profile"
+        case .spend:
+            "Spend"
         }
     }
 
@@ -29,9 +29,8 @@ enum AppTab: String, CaseIterable, Identifiable {
             "fork.knife"
         case .list:
             "checklist"
-        case .profile:
-            "person.crop.circle"
+        case .spend:
+            "chart.bar.fill"
         }
     }
 }
-

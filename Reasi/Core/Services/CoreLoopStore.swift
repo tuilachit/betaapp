@@ -996,7 +996,8 @@ final class CoreLoopStore {
             shoppingListId: plan.shoppingList.id,
             candidate: candidate,
             quantity: quantity,
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            origin: analyticsMethod
         )
         pendingImports.append(pending)
         addedImportKeys.insert(idempotencyKey)
@@ -1380,10 +1381,10 @@ final class CoreLoopStore {
     func finishShopping(
         supabase: SupabaseService,
         analytics: AnalyticsService
-    ) async {
+    ) async -> ShoppingTripSummary? {
         guard hasPlan,
               plan.shoppingList.status == .active,
-              !isFinishingShopping else { return }
+              !isFinishingShopping else { return nil }
 
         isFinishingShopping = true
         shoppingCompletionError = nil
@@ -1427,6 +1428,7 @@ final class CoreLoopStore {
             ])
             analytics.flush()
             ReasiHaptics.success()
+            return trip
         } catch {
             let message = supabase.userFacingMessage(
                 for: error,
@@ -1438,6 +1440,7 @@ final class CoreLoopStore {
                 "shopping_list_id": .string(plan.shoppingList.id)
             ])
             ReasiHaptics.warning()
+            return nil
         }
     }
 
@@ -1455,7 +1458,8 @@ final class CoreLoopStore {
                 candidate: pending.candidate,
                 quantity: pending.quantity,
                 sortOrder: pending.sortOrder,
-                idempotencyKey: clientId
+                idempotencyKey: clientId,
+                origin: pending.origin
             ) else { return }
 
             guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }) else {
@@ -1737,6 +1741,7 @@ private struct PendingImportedItem: Codable, Hashable {
     let candidate: ProductCandidate
     let quantity: String
     let sortOrder: Int
+    var origin: String? = nil
 }
 
 private struct PendingShoppingListDeletion: Codable, Hashable {
