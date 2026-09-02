@@ -87,6 +87,30 @@ final class ReasiOnboardingUITests: XCTestCase {
     }
 
     @MainActor
+    func testShoppingListScrollsPastDockControls() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowShoppingFixture",
+            "-ReasiSkipBrandIntro",
+            "-ReasiUITestUnauthenticated",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Swipe to finish"].exists)
+        XCTAssertTrue(app.buttons["Ask Reasi"].exists)
+
+        let finalItem = app.staticTexts["Pita bread"]
+        for _ in 0..<8 where !finalItem.isHittable {
+            app.swipeUp()
+        }
+
+        XCTAssertTrue(finalItem.isHittable)
+        XCTAssertTrue(app.buttons["Ask Reasi"].isHittable)
+    }
+
+    @MainActor
     func testPurposeSurveyAcceptsThreeOrderedPriorities() throws {
         continueAfterFailure = false
         let app = launchOnboarding()

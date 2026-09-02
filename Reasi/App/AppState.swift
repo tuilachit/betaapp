@@ -27,6 +27,9 @@ final class AppState {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ReasiOpenShoppingList") {
             selectedTab = .list
+        } else if ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture") {
+            selectedStore = FixtureStores.topRyde
+            selectedTab = .list
         } else if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
             selectedTab = .spend
         }

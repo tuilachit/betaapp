@@ -767,7 +767,10 @@ final class SupabaseService {
         #endif
     }
 
-    func finishShopping(_ shoppingList: ShoppingList) async throws -> ShoppingTripSummary {
+    func finishShopping(
+        _ shoppingList: ShoppingList,
+        checkedItemIDs: Set<String>
+    ) async throws -> ShoppingTripSummary {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
             throw AuthFlowError.notSignedIn
@@ -776,9 +779,9 @@ final class SupabaseService {
         return try await client.functions.invoke(
             "finish-shopping",
             options: FunctionInvokeOptions(
-                body: FinishShoppingInput(
-                    shoppingListId: shoppingList.id,
-                    expectedStoreId: shoppingList.storeId
+                body: ShoppingCompletionPayload(
+                    shoppingList: shoppingList,
+                    checkedItemIDs: checkedItemIDs
                 )
             )
         )
@@ -2189,9 +2192,20 @@ private struct ShoppingAssistantListItemSnapshot: Encodable {
     let product: ProductSnapshot?
 }
 
-private struct FinishShoppingInput: Encodable {
+struct ShoppingCompletionPayload: Encodable {
     let shoppingListId: String
     let expectedStoreId: StoreID
+    let checkedStates: [String: Bool]
+
+    init(shoppingList: ShoppingList, checkedItemIDs: Set<String>) {
+        shoppingListId = shoppingList.id
+        expectedStoreId = shoppingList.storeId
+        checkedStates = shoppingList.sections
+            .flatMap(\.items)
+            .reduce(into: [:]) { states, item in
+                states[item.id] = checkedItemIDs.contains(item.id)
+            }
+    }
 }
 
 private struct SpendingDashboardInput: Encodable {
