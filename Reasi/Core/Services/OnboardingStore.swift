@@ -71,7 +71,8 @@ final class OnboardingStore {
         }
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
+        if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture")
+            || ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture") {
             hasCompleted = true
             isHydrating = false
             return
