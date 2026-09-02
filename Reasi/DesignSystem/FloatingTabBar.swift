@@ -6,6 +6,7 @@ struct FloatingTabBar: View {
     var primaryActionLabel = "Create new"
     var primaryAction: () -> Void
     @Namespace private var activeNamespace
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         GeometryReader { proxy in
@@ -62,11 +63,18 @@ struct FloatingTabBar: View {
     private func tabItem(_ tab: AppTab) -> some View {
         let isSelected = selectedTab == tab
 
-        return VStack(spacing: 3) {
-            Image(systemName: tab.symbolName)
-                .font(.system(size: 19, weight: .semibold))
-            Text(tab.title)
-                .font(ReasiTypography.navLabel)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                Image(systemName: tab.symbolName)
+                    .font(.system(size: 21, weight: .semibold))
+            } else {
+                VStack(spacing: 3) {
+                    Image(systemName: tab.symbolName)
+                        .font(.system(size: 19, weight: .semibold))
+                    Text(tab.title)
+                        .font(ReasiTypography.navLabel)
+                }
+            }
         }
         .foregroundStyle(isSelected ? Color.reasi.text : Color.reasi.muted)
         .frame(maxWidth: .infinity)

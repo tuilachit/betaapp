@@ -60,7 +60,7 @@ struct OnboardingPlaceholderView: View {
         HStack(spacing: ReasiSpacing.s4) {
             if onboarding.currentStep.rawValue >= OnboardingStep.purpose.rawValue {
                 HStack(spacing: ReasiSpacing.s1) {
-                    ForEach(0..<6, id: \.self) { index in
+                    ForEach(0..<7, id: \.self) { index in
                         Capsule()
                             .fill(
                                 index <= onboarding.currentStep.progressIndex
@@ -106,6 +106,8 @@ struct OnboardingPlaceholderView: View {
                 householdScreen
             case .foodStyle:
                 foodStyleScreen
+            case .spendingTone:
+                spendingToneScreen
             case .store:
                 storeScreen
             case .signIn:
@@ -274,6 +276,29 @@ struct OnboardingPlaceholderView: View {
             Text("Pick a mix. Your plan can still vary from week to week.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.muted)
+        }
+    }
+
+    private var spendingToneScreen: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+            onboardingHeading(
+                eyebrow: "Your spending coach",
+                title: "How should Reasi talk about money?"
+            )
+
+            VStack(spacing: ReasiSpacing.s3) {
+                ForEach(SpendingCoachTone.allCases) { tone in
+                    selectionCard(
+                        title: tone.title,
+                        detail: tone.detail,
+                        symbol: tone.symbolName,
+                        isSelected: onboarding.preferences.spendingCoachTone == tone
+                    ) {
+                        onboarding.preferences.spendingCoachTone = tone
+                        ReasiHaptics.selection()
+                    }
+                }
+            }
         }
     }
 
@@ -499,6 +524,12 @@ struct OnboardingPlaceholderView: View {
                 )
                 Divider().overlay(Color.reasi.border)
                 summaryRow(
+                    symbol: onboarding.preferences.spendingCoachTone.symbolName,
+                    label: "Spending coach",
+                    value: onboarding.preferences.spendingCoachTone.title
+                )
+                Divider().overlay(Color.reasi.border)
+                summaryRow(
                     symbol: "storefront",
                     label: "Store",
                     value: onboarding.preferences.selectedStoreId == nil
@@ -528,7 +559,7 @@ struct OnboardingPlaceholderView: View {
         switch onboarding.currentStep {
         case .value:
             "Get started"
-        case .benefit, .purpose, .household, .foodStyle, .store:
+        case .benefit, .purpose, .household, .foodStyle, .spendingTone, .store:
             "Continue"
         case .signIn:
             supabase.isSignedIn ? "Continue" : "Sign in to continue"
@@ -547,6 +578,8 @@ struct OnboardingPlaceholderView: View {
             onboarding.preferences.household != nil
         case .foodStyle:
             !onboarding.preferences.foodStyles.isEmpty
+        case .spendingTone:
+            true
         case .store:
             onboarding.preferences.selectedStoreId != nil
         case .signIn:
@@ -558,7 +591,7 @@ struct OnboardingPlaceholderView: View {
 
     private func performBottomAction() {
         switch onboarding.currentStep {
-        case .value, .benefit, .household, .foodStyle, .store, .signIn:
+        case .value, .benefit, .household, .foodStyle, .spendingTone, .store, .signIn:
             onboarding.advance()
         case .purpose:
             onboarding.submitPurpose(analytics: analytics)

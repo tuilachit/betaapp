@@ -7,13 +7,14 @@ enum OnboardingStep: Int, CaseIterable {
     case purpose
     case household
     case foodStyle
+    case spendingTone
     case store
     case signIn
     case ready
 
     var isSurvey: Bool {
         switch self {
-        case .purpose, .household, .foodStyle, .store: true
+        case .purpose, .household, .foodStyle, .spendingTone, .store: true
         default: false
         }
     }
@@ -68,6 +69,14 @@ final class OnboardingStore {
             captureStartedIfNeeded(analytics: analytics)
             return
         }
+
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
+            hasCompleted = true
+            isHydrating = false
+            return
+        }
+        #endif
 
         if supabase.isSignedIn {
             do {
@@ -162,6 +171,9 @@ final class OnboardingStore {
         case .foodStyle:
             preferences.foodStyles = []
             advance()
+        case .spendingTone:
+            preferences.spendingCoachTone = .supportive
+            advance()
         case .store:
             preferences.selectedStoreId = nil
             advance()
@@ -254,6 +266,7 @@ final class OnboardingStore {
             "food_styles": .stringArray(preferences.sortedFoodStyleValues),
             "store_id": .string(preferences.resolvedStore.id.rawValue),
             "store_defaulted": .bool(preferences.selectedStoreId == nil),
+            "spending_coach_tone": .string(preferences.spendingCoachTone.rawValue),
             "signed_in": .bool(supabase.isSignedIn)
         ]) { _, latest in latest }
         analytics.capture(.onboardingCompleted, properties: completionProperties)

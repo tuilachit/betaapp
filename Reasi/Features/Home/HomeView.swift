@@ -89,21 +89,7 @@ struct HomeView: View {
 
             Spacer()
 
-            Button {
-                ReasiHaptics.light()
-                appState.selectedTab = .profile
-            } label: {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 25, weight: .medium))
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .frame(width: 54, height: 54)
-                    .background(Color.reasi.surface, in: Circle())
-                    .overlay {
-                        Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
-                    }
-            }
-            .buttonStyle(ReasiPressStyle())
-            .accessibilityLabel("Open profile")
+            ReasiProfileButton { appState.openProfile() }
         }
     }
 

@@ -8,6 +8,7 @@ import GoogleSignIn
 #endif
 
 struct ProfileView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
@@ -15,6 +16,7 @@ struct ProfileView: View {
     @Environment(RevenueCatService.self) private var revenueCat
     @Environment(OnboardingStore.self) private var onboarding
     @Environment(UserSettingsStore.self) private var userSettings
+    @Environment(SpendingStore.self) private var spending
 
     @State private var email = ""
     @State private var password = ""
@@ -68,6 +70,11 @@ struct ProfileView: View {
                 )
             case .store:
                 StoreSettingsView(selectedStore: appState.selectedStore, onSelect: selectStore)
+            case .spending:
+                SpendingPreferencesSettingsView(
+                    preferences: onboarding.preferences,
+                    onSave: saveSpendingPreferences
+                )
             case .shopping:
                 ShoppingPreferencesSettingsView()
             case .reminders:
@@ -80,7 +87,19 @@ struct ProfileView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: ReasiSpacing.s4) {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.reasi.text)
+                    .frame(width: 44, height: 44)
+                    .background(Color.reasi.surface, in: Circle())
+            }
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityLabel("Back")
+
             VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
                 Text("Profile")
                     .font(ReasiTypography.largeTitle)
@@ -89,18 +108,6 @@ struct ProfileView: View {
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.muted)
             }
-
-            Spacer()
-
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 30, weight: .medium))
-                .foregroundStyle(Color.reasi.textMuted)
-                .frame(width: 58, height: 58)
-                .background(Color.reasi.surfaceHigh, in: Circle())
-                .overlay {
-                    Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
-                }
-                .accessibilityHidden(true)
         }
     }
 
@@ -358,6 +365,20 @@ struct ProfileView: View {
                         value: appState.selectedStore.name,
                         subtitle: "Sets the aisle route for future lists",
                         symbol: "storefront",
+                        accessory: .chevron
+                    )
+                }
+                .buttonStyle(ReasiPressStyle())
+
+                Button {
+                    ReasiHaptics.light()
+                    activeSettingsDestination = .spending
+                } label: {
+                    profileRow(
+                        "Spending coach",
+                        value: onboarding.preferences.spendingCoachTone.title,
+                        subtitle: spendingPreferenceSummary,
+                        symbol: "chart.bar",
                         accessory: .chevron
                     )
                 }
@@ -649,6 +670,44 @@ struct ProfileView: View {
             preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
             ReasiHaptics.warning()
         }
+    }
+
+    private func saveSpendingPreferences(_ preferences: OnboardingPreferences) async {
+        let previousBudget = onboarding.preferences.weeklyGroceryBudgetAud
+        onboarding.updateProfilePreferences(preferences)
+        preferenceSyncMessage = nil
+
+        guard supabase.isSignedIn else { return }
+        do {
+            try await supabase.saveSpendingPreferences(
+                weeklyBudgetAud: preferences.weeklyGroceryBudgetAud,
+                coachTone: preferences.spendingCoachTone
+            )
+            onboarding.markPreferencesSynced()
+            analytics.capture(.settingsUpdated, properties: [
+                "setting": .string("spending_preferences"),
+                "coach_tone": .string(preferences.spendingCoachTone.rawValue),
+                "has_budget": .bool(preferences.weeklyGroceryBudgetAud != nil)
+            ])
+            if previousBudget != preferences.weeklyGroceryBudgetAud {
+                analytics.capture(.weeklyBudgetSet, properties: [
+                    "has_budget": .bool(preferences.weeklyGroceryBudgetAud != nil),
+                    "source": .string("profile")
+                ])
+            }
+            await spending.refresh(supabase: supabase)
+            ReasiHaptics.success()
+        } catch {
+            preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
+            ReasiHaptics.warning()
+        }
+    }
+
+    private var spendingPreferenceSummary: String {
+        guard let budget = onboarding.preferences.weeklyGroceryBudgetAud else {
+            return "Tone and optional weekly target"
+        }
+        return "\(budget.formatted(.currency(code: "AUD"))) weekly target"
     }
 
     private func updateHaptics(_ enabled: Bool) {

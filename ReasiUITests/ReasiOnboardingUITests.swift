@@ -33,6 +33,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         for expectedHeading in [
             "How many are you cooking for?",
             "What feels good to cook?",
+            "How should Reasi talk about money?",
             "Where do you usually shop?",
         ] {
             let skip = app.buttons["Skip"]
@@ -53,6 +54,36 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(hasEmail)
         XCTAssertTrue(requiresSignIn)
         XCTAssertFalse(hasMaybeLater)
+    }
+
+    @MainActor
+    func testSpendOverviewOpensProfileAndTripRecap() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowSpendFixture",
+            "-ReasiSkipBrandIntro",
+            "-ReasiUITestUnauthenticated",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Your spending"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Projected"].exists)
+
+        let profile = app.buttons["reasi-profile-button"]
+        XCTAssertTrue(profile.exists)
+        profile.tap()
+        XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 3))
+        app.buttons["Back"].tap()
+
+        let shop = app.buttons["spend-recent-trip-ui-test-trip"]
+        XCTAssertTrue(shop.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !shop.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(shop.isHittable)
+        shop.tap()
+        XCTAssertTrue(app.staticTexts["Shop recap"].waitForExistence(timeout: 3))
     }
 
     @MainActor

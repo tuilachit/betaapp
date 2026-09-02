@@ -80,12 +80,12 @@ struct AppShellView: View {
                 ShoppingListPlaceholderView()
                     .withReasiNavigationDestinations()
             }
-        case .profile:
+        case .spend:
             NavigationStack(path: Binding(
-                get: { appState.profileRouter.path },
-                set: { appState.profileRouter.path = $0 }
+                get: { appState.spendRouter.path },
+                set: { appState.spendRouter.path = $0 }
             )) {
-                ProfileView()
+                SpendView()
                     .withReasiNavigationDestinations()
             }
         }
@@ -105,12 +105,6 @@ struct AppShellView: View {
         if appState.selectedTab == .list && coreLoop.hasPlan {
             appState.requestShoppingListAdd()
             return
-        }
-
-        if appState.selectedTab == .profile {
-            withAnimation(ReasiMotion.tactileSpring) {
-                appState.selectedTab = .home
-            }
         }
 
         appState.openPlanBuilder(entryMethod: .build)
@@ -143,6 +137,12 @@ private extension View {
                     .foregroundStyle(Color.reasi.text)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.reasi.background)
+            case .profile:
+                ProfileView()
+            case .spendingTrip(let id):
+                SpendingTripDetailView(tripId: id)
+            case .spendingInsight(let card):
+                SpendingInsightDetailView(card: card)
             }
         }
     }
@@ -158,5 +158,6 @@ private extension View {
         .environment(NetworkMonitor())
         .environment(OnboardingStore())
         .environment(UserSettingsStore())
+        .environment(SpendingStore())
         .preferredColorScheme(.dark)
 }

@@ -22,6 +22,7 @@ struct ShoppingListPlaceholderView: View {
     @Environment(NetworkMonitor.self) private var network
     @Environment(UserSettingsStore.self) private var userSettings
     @Environment(OnboardingStore.self) private var onboarding
+    @Environment(SpendingStore.self) private var spending
 
     @State private var didTrackView = false
     @State private var showAddDialog = false
@@ -312,40 +313,44 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text("Shopping list")
-                .font(ReasiTypography.largeTitle)
-                .foregroundStyle(Color.reasi.text)
-            Menu {
-                ForEach(FixtureStores.launchStores) { store in
-                    Button {
-                        selectStore(store)
-                    } label: {
-                        if store.id == displayedStore.id {
-                            Label(store.name, systemImage: "checkmark")
-                        } else {
-                            Text(store.name)
+        HStack(alignment: .top, spacing: ReasiSpacing.s4) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text("Shopping list")
+                    .font(ReasiTypography.largeTitle)
+                    .foregroundStyle(Color.reasi.text)
+                Menu {
+                    ForEach(FixtureStores.launchStores) { store in
+                        Button {
+                            selectStore(store)
+                        } label: {
+                            if store.id == displayedStore.id {
+                                Label(store.name, systemImage: "checkmark")
+                            } else {
+                                Text(store.name)
+                            }
                         }
                     }
-                }
-            } label: {
-                HStack(spacing: ReasiSpacing.s2) {
-                    if coreLoop.isSwitchingStore {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.reasi.textMuted)
-                    } else {
-                        Image(systemName: "storefront")
+                } label: {
+                    HStack(spacing: ReasiSpacing.s2) {
+                        if coreLoop.isSwitchingStore {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Color.reasi.textMuted)
+                        } else {
+                            Image(systemName: "storefront")
+                        }
+                        Text(displayedStore.name)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
                     }
-                    Text(displayedStore.name)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
                 }
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
+                .accessibilityLabel("Choose shopping store")
+                .disabled(coreLoop.isShoppingCompleted)
             }
-            .accessibilityLabel("Choose shopping store")
-            .disabled(coreLoop.isShoppingCompleted)
+            Spacer(minLength: ReasiSpacing.s3)
+            ReasiProfileButton { appState.openProfile() }
         }
     }
 
@@ -439,7 +444,15 @@ struct ShoppingListPlaceholderView: View {
 
     private var finishShoppingControl: some View {
         SwipeToFinishControl(isBusy: coreLoop.isFinishingShopping) {
-            await coreLoop.finishShopping(supabase: supabase, analytics: analytics)
+            guard let trip = await coreLoop.finishShopping(
+                supabase: supabase,
+                analytics: analytics
+            ) else { return }
+            appState.openSpendingTrip(trip.tripId)
+            await spending.refreshAfterCompletedTrip(
+                tripId: trip.tripId,
+                supabase: supabase
+            )
         }
         .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
     }
@@ -1257,6 +1270,7 @@ struct ShoppingListPlaceholderView: View {
             row.candidate,
             quantity: row.quantity,
             idempotencyKey: row.id,
+            analyticsMethod: context.method,
             supabase: supabase,
             analytics: analytics
         )

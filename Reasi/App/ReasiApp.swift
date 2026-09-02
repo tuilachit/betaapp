@@ -15,6 +15,7 @@ struct ReasiApp: App {
     @State private var revenueCat = RevenueCatService()
     @State private var network = NetworkMonitor()
     @State private var userSettings = UserSettingsStore()
+    @State private var spending = SpendingStore()
     @State private var showsBrandIntro = Self.shouldShowBrandIntro
     @State private var didFinishStartup = false
     @State private var authenticationRestoreTask: Task<Void, Never>?
@@ -47,6 +48,7 @@ struct ReasiApp: App {
                 .environment(revenueCat)
                 .environment(network)
                 .environment(userSettings)
+                .environment(spending)
                 .preferredColorScheme(.dark)
                 .tint(Color.reasi.text)
                 .task {
@@ -89,6 +91,7 @@ struct ReasiApp: App {
                                 network: network
                             )
                             await coreLoop.flushPendingShoppingChanges(supabase: supabase)
+                            await spending.refresh(supabase: supabase)
                         }
                     } else {
                         coreLoop.pauseGenerationPolling()
@@ -99,6 +102,7 @@ struct ReasiApp: App {
                     guard status == .online else { return }
                     Task {
                         await coreLoop.flushPendingShoppingChanges(supabase: supabase)
+                        await spending.refresh(supabase: supabase)
                     }
                 }
                 .onOpenURL { url in
@@ -137,6 +141,7 @@ struct ReasiApp: App {
         guard (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
         appState.planBuilder.activate(userId: expectedUserId)
         coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)
+        spending.activate(userId: expectedUserId)
         await revenueCat.syncUser(userId: expectedUserId)
         guard !Task.isCancelled,
               (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
@@ -164,6 +169,8 @@ struct ReasiApp: App {
             appState: appState,
             network: network
         )
+        guard !Task.isCancelled, supabase.currentUserId == userId else { return }
+        await spending.refresh(supabase: supabase)
     }
 }
 

@@ -477,6 +477,127 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(merged.recipe, original.recipe)
     }
 
+    func testSpendingDashboardKeepsActiveBasketOutOfCompletedSpend() throws {
+        let data = Data(#"""
+        {
+          "period": "week",
+          "startDate": "2026-08-31",
+          "endDateExclusive": "2026-09-07",
+          "currency": "AUD",
+          "completedSpendAud": 67,
+          "trackedItemSpendAud": 65,
+          "checkoutDifferenceAud": 2,
+          "weeklyBudgetAud": 100,
+          "budgetRemainingAud": 33,
+          "priceCoverage": 0.8,
+          "checkedItems": 5,
+          "pricedCheckedItems": 4,
+          "plannedSpendAud": 55,
+          "addedSpendAud": 10,
+          "categories": [{"label":"Protein","amountAud":55}],
+          "trend": [{"weekStart":"2026-08-31","amountAud":67}],
+          "averageWeeklySpendAud": null,
+          "activeBasket": {
+            "shoppingListId": "active-list",
+            "projectedTotalAud": 24,
+            "pricedItems": 3,
+            "totalItems": 4
+          },
+          "recentTrips": [],
+          "insightStatus": "completed",
+          "insightCards": [],
+          "timezone": "Australia/Sydney",
+          "coachTone": "supportive"
+        }
+        """#.utf8)
+
+        let dashboard = try JSONDecoder().decode(SpendingDashboard.self, from: data)
+        XCTAssertEqual(dashboard.completedSpendAud, 67)
+        XCTAssertEqual(dashboard.activeBasket?.projectedTotalAud, 24)
+        XCTAssertEqual(dashboard.budgetRemainingAud, 33)
+        XCTAssertEqual(dashboard.period, .week)
+    }
+
+    func testSpendingTripDetailUsesConfirmedTotalAndKeepsCheckoutDifference() throws {
+        let data = Data(#"""
+        {
+          "trip": {
+            "id": "trip-1",
+            "shoppingListId": "list-1",
+            "storeId": "top_ryde",
+            "storeName": "Coles Top Ryde",
+            "completedAt": "2026-09-02T08:00:00.000Z",
+            "knownBasketTotalAud": 42,
+            "confirmedTotalAud": 45,
+            "checkedItems": 4,
+            "pricedCheckedItems": 3,
+            "trackedTotalAud": 42,
+            "effectiveTotalAud": 45,
+            "checkoutDifferenceAud": 3,
+            "priceCoverage": 0.75,
+            "weeklyBudgetAud": 100,
+            "weeklySpendAud": 45,
+            "weeklyBudgetRemainingAud": 55
+          },
+          "categories": [{"label":"Protein","amountAud":20}],
+          "plannedSpendAud": 30,
+          "addedSpendAud": 12,
+          "insightStatus": "pending",
+          "insightCards": [],
+          "items": []
+        }
+        """#.utf8)
+
+        let detail = try JSONDecoder().decode(SpendingTripDetail.self, from: data)
+        XCTAssertEqual(detail.trip.effectiveTotalAud, 45)
+        XCTAssertEqual(detail.trip.checkoutDifferenceAud, 3)
+        XCTAssertEqual(detail.trip.priceCoverage, 0.75)
+    }
+
+    func testLegacyOnboardingPreferencesDefaultToSupportiveSpendingCoach() throws {
+        let data = Data(#"""
+        {
+          "purpose": null,
+          "purposePriorities": [],
+          "household": "two",
+          "foodStyles": [],
+          "selectedStoreId": "top_ryde",
+          "completedAt": null
+        }
+        """#.utf8)
+
+        let preferences = try JSONDecoder().decode(OnboardingPreferences.self, from: data)
+        XCTAssertEqual(preferences.spendingCoachTone, .supportive)
+        XCTAssertNil(preferences.weeklyGroceryBudgetAud)
+    }
+
+    func testProductSnapshotPreservesCatalogCategoryForTripAnalytics() {
+        var candidate = fixtureProduct(name: "Greek yoghurt", price: 6.50)
+        candidate.categoryGroup = "Dairy, Eggs & Fridge"
+        candidate.category = "Yoghurt"
+        candidate.subCategory = "Greek yoghurt"
+
+        let snapshot = ProductSnapshot(candidate: candidate)
+        XCTAssertEqual(snapshot.categoryGroup, "Dairy, Eggs & Fridge")
+        XCTAssertEqual(snapshot.category, "Yoghurt")
+        XCTAssertEqual(snapshot.subCategory, "Greek yoghurt")
+    }
+
+    func testSpendingCacheRestoresPerUserWithoutCrossAccountLeakage() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("reasi-spending-cache-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let cache = SpendingLocalCache(directoryURL: directory)
+        cache.saveDashboard(.uiTestFixture, userId: "user-a")
+        cache.saveTrip(.uiTestFixture, userId: "user-a")
+
+        XCTAssertEqual(cache.loadDashboard(userId: "user-a", period: .week), .uiTestFixture)
+        XCTAssertEqual(cache.loadTrip(userId: "user-a", tripId: "ui-test-trip"), .uiTestFixture)
+        XCTAssertNil(cache.loadDashboard(userId: "user-b", period: .week))
+        XCTAssertNil(cache.loadTrip(userId: "user-b", tripId: "ui-test-trip"))
+    }
+
     private func fixtureProduct(name: String, price: Double?) -> ProductCandidate {
         ProductCandidate(
             observationId: UUID().uuidString,

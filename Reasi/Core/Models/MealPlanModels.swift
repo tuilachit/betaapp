@@ -191,6 +191,9 @@ struct ProductSnapshot: Codable, Hashable {
     var sourceName: String? = nil
     var observationId: String? = nil
     var actualPriceAud: Double? = nil
+    var categoryGroup: String? = nil
+    var category: String? = nil
+    var subCategory: String? = nil
 
     init(
         sku: String?,
@@ -203,7 +206,10 @@ struct ProductSnapshot: Codable, Hashable {
         barcode: String? = nil,
         sourceName: String? = nil,
         observationId: String? = nil,
-        actualPriceAud: Double? = nil
+        actualPriceAud: Double? = nil,
+        categoryGroup: String? = nil,
+        category: String? = nil,
+        subCategory: String? = nil
     ) {
         self.sku = sku
         self.productName = productName
@@ -216,6 +222,9 @@ struct ProductSnapshot: Codable, Hashable {
         self.sourceName = sourceName
         self.observationId = observationId
         self.actualPriceAud = actualPriceAud
+        self.categoryGroup = categoryGroup
+        self.category = category
+        self.subCategory = subCategory
     }
 
     init(candidate: ProductCandidate, actualPriceAud: Double? = nil) {
@@ -230,6 +239,9 @@ struct ProductSnapshot: Codable, Hashable {
         sourceName = candidate.sourceName
         observationId = candidate.observationId
         self.actualPriceAud = actualPriceAud
+        categoryGroup = candidate.categoryGroup
+        category = candidate.category
+        subCategory = candidate.subCategory
     }
 }
 
@@ -277,6 +289,9 @@ struct ProductCandidate: Identifiable, Codable, Hashable {
     var sectionLabel: String? = nil
     var sectionSortKey: Int? = nil
     var sectionType: ShoppingSectionType? = nil
+    var categoryGroup: String? = nil
+    var category: String? = nil
+    var subCategory: String? = nil
 
     var displayName: String {
         if let brand, !brand.isEmpty, !name.localizedCaseInsensitiveContains(brand) {

@@ -649,7 +649,7 @@ final class SupabaseService {
         let rows: [OnboardingPreferencesRow] = try await client
             .from("user_preferences")
             .select(
-                "primary_purpose,purpose_tags,household_choice,household_size,cuisines,food_styles,dietary_constraints,preferred_store,onboarding_completed_at"
+                "primary_purpose,purpose_tags,household_choice,household_size,cuisines,food_styles,dietary_constraints,preferred_store,onboarding_completed_at,weekly_grocery_budget_aud,spending_coach_tone"
             )
             .eq("user_id", value: userId)
             .limit(1)
@@ -698,6 +698,8 @@ final class SupabaseService {
             dietaryRestrictions: preferences.dietaryConstraints,
             preferredStore: preferences.resolvedStore.id.rawValue,
             onboardingCompletedAt: preferences.completedAt.map(Self.isoTimestamp),
+            weeklyGroceryBudgetAud: preferences.weeklyGroceryBudgetAud,
+            spendingCoachTone: preferences.spendingCoachTone.rawValue,
             updatedAt: Self.isoTimestamp(Date())
         )
 
@@ -780,6 +782,102 @@ final class SupabaseService {
                 )
             )
         )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func fetchSpendingDashboard(
+        period: SpendingPeriod,
+        anchorDate: String? = nil
+    ) async throws -> SpendingDashboard {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        return try await client.functions.invoke(
+            "spending-dashboard",
+            options: FunctionInvokeOptions(
+                body: SpendingDashboardInput(period: period.rawValue, anchorDate: anchorDate)
+            )
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func fetchSpendingTripDetail(tripId: String) async throws -> SpendingTripDetail {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        return try await client.functions.invoke(
+            "spending-trip-detail",
+            options: FunctionInvokeOptions(body: SpendingTripInput(tripId: tripId))
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func correctShoppingTotal(
+        tripId: String,
+        totalAud: Double
+    ) async throws -> SpendingTotalCorrection {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        return try await client.functions.invoke(
+            "correct-shopping-total",
+            options: FunctionInvokeOptions(
+                body: SpendingTotalCorrectionInput(tripId: tripId, totalAud: totalAud)
+            )
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func retrySpendingInsight(tripId: String) async throws {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        let _: SpendingInsightRetryResponse = try await client.functions.invoke(
+            "retry-spending-insight",
+            options: FunctionInvokeOptions(body: SpendingTripInput(tripId: tripId))
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func saveSpendingPreferences(
+        weeklyBudgetAud: Double?,
+        coachTone: SpendingCoachTone
+    ) async throws {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
+            throw AuthFlowError.notSignedIn
+        }
+
+        try await client
+            .from("user_preferences")
+            .upsert(
+                SpendingPreferencesUpsert(
+                    userId: userId,
+                    weeklyGroceryBudgetAud: weeklyBudgetAud,
+                    spendingCoachTone: coachTone.rawValue,
+                    updatedAt: Self.isoTimestamp(Date())
+                ),
+                onConflict: "user_id"
+            )
+            .execute()
         #else
         throw AuthFlowError.notConfigured
         #endif
@@ -1377,7 +1475,8 @@ final class SupabaseService {
         candidate: ProductCandidate,
         quantity: String,
         sortOrder: Int,
-        idempotencyKey: UUID
+        idempotencyKey: UUID,
+        origin: String?
     ) async throws -> String? {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
@@ -1409,7 +1508,11 @@ final class SupabaseService {
             productSnapshot: productSnapshot,
             productSelectedAt: Self.isoTimestamp(Date()),
             sortOrder: sortOrder,
-            clientId: idempotencyKey
+            clientId: idempotencyKey,
+            metadata: [
+                "origin": origin ?? "unknown",
+                "source": origin ?? "unknown"
+            ]
         )
 
         let inserted: ImportedShoppingListItemResponse = try await client
@@ -1886,6 +1989,8 @@ private struct OnboardingPreferencesRow: Decodable {
     let dietaryConstraints: [String]
     let preferredStore: String?
     let onboardingCompletedAt: String?
+    let weeklyGroceryBudgetAud: Double?
+    let spendingCoachTone: String?
 
     enum CodingKeys: String, CodingKey {
         case primaryPurpose = "primary_purpose"
@@ -1897,6 +2002,8 @@ private struct OnboardingPreferencesRow: Decodable {
         case dietaryConstraints = "dietary_constraints"
         case preferredStore = "preferred_store"
         case onboardingCompletedAt = "onboarding_completed_at"
+        case weeklyGroceryBudgetAud = "weekly_grocery_budget_aud"
+        case spendingCoachTone = "spending_coach_tone"
     }
 
     var preferences: OnboardingPreferences {
@@ -1918,7 +2025,9 @@ private struct OnboardingPreferencesRow: Decodable {
             household: householdChoice.flatMap(HouseholdChoice.init(rawValue:)),
             foodStyles: combinedStyles,
             selectedStoreId: preferredStore.flatMap(StoreID.init(rawValue:)),
-            completedAt: onboardingCompletedAt.flatMap(Self.date(from:))
+            completedAt: onboardingCompletedAt.flatMap(Self.date(from:)),
+            weeklyGroceryBudgetAud: weeklyGroceryBudgetAud,
+            spendingCoachTone: spendingCoachTone.flatMap(SpendingCoachTone.init(rawValue:)) ?? .supportive
         )
     }
 
@@ -1942,6 +2051,8 @@ private struct OnboardingPreferencesUpsert: Encodable {
     let dietaryRestrictions: [String]
     let preferredStore: String
     let onboardingCompletedAt: String?
+    let weeklyGroceryBudgetAud: Double?
+    let spendingCoachTone: String
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -1957,6 +2068,22 @@ private struct OnboardingPreferencesUpsert: Encodable {
         case dietaryRestrictions = "dietary_restrictions"
         case preferredStore = "preferred_store"
         case onboardingCompletedAt = "onboarding_completed_at"
+        case weeklyGroceryBudgetAud = "weekly_grocery_budget_aud"
+        case spendingCoachTone = "spending_coach_tone"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct SpendingPreferencesUpsert: Encodable {
+    let userId: String
+    let weeklyGroceryBudgetAud: Double?
+    let spendingCoachTone: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case weeklyGroceryBudgetAud = "weekly_grocery_budget_aud"
+        case spendingCoachTone = "spending_coach_tone"
         case updatedAt = "updated_at"
     }
 }
@@ -2067,6 +2194,25 @@ private struct FinishShoppingInput: Encodable {
     let expectedStoreId: StoreID
 }
 
+private struct SpendingDashboardInput: Encodable {
+    let period: String
+    let anchorDate: String?
+}
+
+private struct SpendingTripInput: Encodable {
+    let tripId: String
+}
+
+private struct SpendingTotalCorrectionInput: Encodable {
+    let tripId: String
+    let totalAud: Double
+}
+
+private struct SpendingInsightRetryResponse: Decodable {
+    let tripId: String
+    let status: String
+}
+
 private struct ImportedShoppingListItemInsert: Encodable {
     let shoppingListId: String
     let userId: String
@@ -2088,6 +2234,7 @@ private struct ImportedShoppingListItemInsert: Encodable {
     let productSelectedAt: String
     let sortOrder: Int
     let clientId: UUID
+    let metadata: [String: String]
 
     enum CodingKeys: String, CodingKey {
         case shoppingListId = "shopping_list_id"
@@ -2110,6 +2257,7 @@ private struct ImportedShoppingListItemInsert: Encodable {
         case productSelectedAt = "product_selected_at"
         case sortOrder = "sort_order"
         case clientId = "client_id"
+        case metadata
     }
 }
 

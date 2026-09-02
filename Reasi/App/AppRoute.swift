@@ -5,6 +5,9 @@ import SwiftUI
 enum AppRoute: Hashable {
     case meal(id: String)
     case section(label: String)
+    case profile
+    case spendingTrip(id: String)
+    case spendingInsight(card: SpendingInsightCard)
 }
 
 @MainActor
@@ -20,4 +23,3 @@ final class RouterPath {
         path = []
     }
 }
-
