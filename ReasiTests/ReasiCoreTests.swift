@@ -518,6 +518,115 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(dashboard.period, .week)
     }
 
+    func testSpendCategoryBreakdownKeepsTopFourAndCombinesTheRest() {
+        let breakdown = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Frozen", amountAud: 5),
+            SpendingCategoryAmount(label: "Protein", amountAud: 40),
+            SpendingCategoryAmount(label: "Drinks", amountAud: 3),
+            SpendingCategoryAmount(label: "Produce", amountAud: 30),
+            SpendingCategoryAmount(label: "Dairy & eggs", amountAud: 10),
+            SpendingCategoryAmount(label: "Pantry", amountAud: 20),
+        ])
+
+        XCTAssertEqual(breakdown.slices.map(\.label), [
+            "Protein",
+            "Produce",
+            "Pantry",
+            "Dairy & eggs",
+            "Other",
+        ])
+        XCTAssertEqual(breakdown.slices.map(\.amountAud), [40, 30, 20, 10, 8])
+        XCTAssertEqual(breakdown.totalAud, 108, accuracy: 0.001)
+    }
+
+    func testSpendCategoryBreakdownKeepsCombinedOtherInDescendingOrder() {
+        let breakdown = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Protein", amountAud: 40),
+            SpendingCategoryAmount(label: "Produce", amountAud: 30),
+            SpendingCategoryAmount(label: "Pantry", amountAud: 20),
+            SpendingCategoryAmount(label: "Dairy & eggs", amountAud: 10),
+            SpendingCategoryAmount(label: "Frozen", amountAud: 9),
+            SpendingCategoryAmount(label: "Drinks", amountAud: 8),
+        ])
+
+        XCTAssertEqual(
+            breakdown.slices.map(\.label),
+            ["Protein", "Produce", "Pantry", "Other", "Dairy & eggs"]
+        )
+        XCTAssertEqual(breakdown.slices.map(\.amountAud), [40, 30, 20, 17, 10])
+    }
+
+    func testSpendCategoryBreakdownPreservesTotalOrderAndPercentages() {
+        let breakdown = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Produce", amountAud: 25),
+            SpendingCategoryAmount(label: "Protein", amountAud: 50),
+            SpendingCategoryAmount(label: "Pantry", amountAud: 25),
+        ])
+
+        XCTAssertEqual(breakdown.slices.map(\.label), ["Protein", "Pantry", "Produce"])
+        XCTAssertEqual(breakdown.totalAud, 100, accuracy: 0.001)
+        XCTAssertEqual(breakdown.slices.reduce(0) { $0 + $1.fraction }, 1, accuracy: 0.001)
+        XCTAssertEqual(breakdown.slices[0].fraction, 0.5, accuracy: 0.001)
+        XCTAssertEqual(breakdown.slices[0].angleRange.lowerBound, 0, accuracy: 0.001)
+        XCTAssertEqual(breakdown.slices[0].angleRange.upperBound, 180, accuracy: 0.001)
+        XCTAssertEqual(breakdown.slices.last?.angleRange.upperBound ?? 0, 360, accuracy: 0.001)
+    }
+
+    func testSpendCategoryBreakdownDropsUnavailableAmounts() {
+        let breakdown = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Produce", amountAud: 0),
+            SpendingCategoryAmount(label: "Protein", amountAud: -4),
+        ])
+
+        XCTAssertTrue(breakdown.slices.isEmpty)
+        XCTAssertEqual(breakdown.totalAud, 0)
+        XCTAssertNil(breakdown.slice(atCumulativeValue: 1))
+    }
+
+    func testSpendCategoryBreakdownUsesStableCategoryColours() {
+        let first = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Produce", amountAud: 10),
+            SpendingCategoryAmount(label: "Protein", amountAud: 20),
+        ])
+        let second = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Protein", amountAud: 5),
+            SpendingCategoryAmount(label: "Produce", amountAud: 50),
+        ])
+
+        XCTAssertEqual(first.slices.first(where: { $0.label == "Produce" })?.colorRole, .produce)
+        XCTAssertEqual(second.slices.first(where: { $0.label == "Produce" })?.colorRole, .produce)
+        XCTAssertEqual(first.slices.first(where: { $0.label == "Protein" })?.colorRole, .protein)
+        XCTAssertEqual(second.slices.first(where: { $0.label == "Protein" })?.colorRole, .protein)
+    }
+
+    func testSpendCategoryBreakdownResolvesChartSelection() {
+        let breakdown = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Protein", amountAud: 60),
+            SpendingCategoryAmount(label: "Produce", amountAud: 40),
+        ])
+
+        XCTAssertEqual(breakdown.slice(atCumulativeValue: 30)?.label, "Protein")
+        XCTAssertEqual(breakdown.slice(atCumulativeValue: 80)?.label, "Produce")
+        XCTAssertNil(breakdown.slice(atCumulativeValue: nil))
+        XCTAssertNil(breakdown.slice(atCumulativeValue: 101))
+    }
+
+    func testSpendCategorySelectionStaysWithStableCategoryAfterReordering() {
+        let original = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Protein", amountAud: 60),
+            SpendingCategoryAmount(label: "Produce", amountAud: 40),
+        ])
+        let selectedID = original.slices.first(where: { $0.label == "Produce" })?.id
+
+        let refreshed = SpendCategoryBreakdown(categories: [
+            SpendingCategoryAmount(label: "Protein", amountAud: 35),
+            SpendingCategoryAmount(label: "Produce", amountAud: 65),
+        ])
+
+        XCTAssertEqual(refreshed.slice(id: selectedID)?.label, "Produce")
+        XCTAssertEqual(refreshed.slice(id: selectedID)?.amountAud ?? 0, 65, accuracy: 0.001)
+    }
+
     func testSpendingTripDetailUsesConfirmedTotalAndKeepsCheckoutDifference() throws {
         let data = Data(#"""
         {

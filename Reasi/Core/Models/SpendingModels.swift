@@ -229,10 +229,13 @@ extension SpendingDashboard {
         plannedSpendAud: 62,
         addedSpendAud: 20.40,
         categories: [
-            SpendingCategoryAmount(label: "Protein", amountAud: 36.50),
-            SpendingCategoryAmount(label: "Produce", amountAud: 24.20),
-            SpendingCategoryAmount(label: "Pantry", amountAud: 14.70),
+            SpendingCategoryAmount(label: "Protein", amountAud: 28.50),
+            SpendingCategoryAmount(label: "Produce", amountAud: 20.20),
+            SpendingCategoryAmount(label: "Pantry", amountAud: 13.70),
             SpendingCategoryAmount(label: "Dairy & eggs", amountAud: 7),
+            SpendingCategoryAmount(label: "Bakery", amountAud: 5),
+            SpendingCategoryAmount(label: "Frozen", amountAud: 4.50),
+            SpendingCategoryAmount(label: "Drinks", amountAud: 3.50),
         ],
         trend: [],
         averageWeeklySpendAud: nil,
@@ -260,6 +263,49 @@ extension SpendingDashboard {
         timezone: "Australia/Sydney",
         coachTone: .supportive
     )
+
+    static func uiTestFixture(for period: SpendingPeriod) -> SpendingDashboard {
+        guard period == .month else { return uiTestFixture }
+
+        return SpendingDashboard(
+            period: .month,
+            startDate: "2026-08-01",
+            endDateExclusive: "2026-09-01",
+            currency: uiTestFixture.currency,
+            completedSpendAud: 286.40,
+            trackedItemSpendAud: 275.20,
+            checkoutDifferenceAud: 11.20,
+            weeklyBudgetAud: uiTestFixture.weeklyBudgetAud,
+            budgetRemainingAud: nil,
+            priceCoverage: 0.82,
+            checkedItems: 34,
+            pricedCheckedItems: 28,
+            plannedSpendAud: 214,
+            addedSpendAud: 61.20,
+            categories: [
+                SpendingCategoryAmount(label: "Protein", amountAud: 94.50),
+                SpendingCategoryAmount(label: "Produce", amountAud: 68.20),
+                SpendingCategoryAmount(label: "Pantry", amountAud: 47.50),
+                SpendingCategoryAmount(label: "Dairy & eggs", amountAud: 25),
+                SpendingCategoryAmount(label: "Bakery", amountAud: 16),
+                SpendingCategoryAmount(label: "Frozen", amountAud: 13),
+                SpendingCategoryAmount(label: "Drinks", amountAud: 11),
+            ],
+            trend: [
+                SpendingTrendPoint(weekStart: "2026-08-03", amountAud: 62),
+                SpendingTrendPoint(weekStart: "2026-08-10", amountAud: 74),
+                SpendingTrendPoint(weekStart: "2026-08-17", amountAud: 63),
+                SpendingTrendPoint(weekStart: "2026-08-24", amountAud: 87.40),
+            ],
+            averageWeeklySpendAud: 71.60,
+            activeBasket: uiTestFixture.activeBasket,
+            recentTrips: uiTestFixture.recentTrips,
+            insightStatus: uiTestFixture.insightStatus,
+            insightCards: uiTestFixture.insightCards,
+            timezone: uiTestFixture.timezone,
+            coachTone: uiTestFixture.coachTone
+        )
+    }
 }
 
 extension SpendingTripDetail {

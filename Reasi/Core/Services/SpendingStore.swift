@@ -21,7 +21,7 @@ final class SpendingStore {
         if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
             activeUserId = "spend-ui-test-user"
             period = .week
-            dashboard = .uiTestFixture
+            dashboard = .uiTestFixture(for: .week)
             selectedTrip = .uiTestFixture
             dashboardMessage = nil
             tripMessage = nil
@@ -60,7 +60,7 @@ final class SpendingStore {
     func refresh(supabase: SupabaseService) async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
-            dashboard = .uiTestFixture
+            dashboard = .uiTestFixture(for: period)
             dashboardMessage = nil
             return
         }

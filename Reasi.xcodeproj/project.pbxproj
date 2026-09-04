@@ -60,6 +60,7 @@
 		B00000000000000000000053 /* SpendingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000050 /* SpendingStore.swift */; };
 		B00000000000000000000054 /* ReasiProfileButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000051 /* ReasiProfileButton.swift */; };
 		B00000000000000000000055 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000052 /* SpendView.swift */; };
+		B00000000000000000000056 /* SpendCategoryBreakdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000053 /* SpendCategoryBreakdown.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -134,6 +135,7 @@
 		A00000000000000000000050 /* SpendingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000051 /* ReasiProfileButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiProfileButton.swift; sourceTree = "<group>"; };
 		A00000000000000000000052 /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
+		A00000000000000000000053 /* SpendCategoryBreakdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendCategoryBreakdown.swift; sourceTree = "<group>"; };
 		A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiCoreTests.swift; sourceTree = "<group>"; };
 		B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiOnboardingUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -371,6 +373,7 @@
 		C00000000000000000000067 /* Spend */ = {
 			isa = PBXGroup;
 			children = (
+				A00000000000000000000053 /* SpendCategoryBreakdown.swift */,
 				A00000000000000000000052 /* SpendView.swift */,
 			);
 			path = Spend;
@@ -614,6 +617,7 @@
 				B00000000000000000000052 /* SpendingModels.swift in Sources */,
 				B00000000000000000000053 /* SpendingStore.swift in Sources */,
 				B00000000000000000000054 /* ReasiProfileButton.swift in Sources */,
+				B00000000000000000000056 /* SpendCategoryBreakdown.swift in Sources */,
 				B00000000000000000000055 /* SpendView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
