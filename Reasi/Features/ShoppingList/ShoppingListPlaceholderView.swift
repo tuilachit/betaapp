@@ -5,13 +5,9 @@ import Vision
 import VisionKit
 
 private enum ShoppingDockMetrics {
-    static let tabBarClearance: CGFloat = 104
+    static let tabBarClearance: CGFloat = 96
     static let finishHeight: CGFloat = 58
-    static let controlGap: CGFloat = 16
-    static let assistantIdle: CGFloat = 92
-    static let assistantAboveFinish = tabBarClearance + finishHeight + controlGap
-    static let idleContentBottom: CGFloat = 132
-    static let activeContentBottom = assistantAboveFinish + 52
+    static let controlGap: CGFloat = 12
 }
 
 struct ShoppingListPlaceholderView: View {
@@ -38,7 +34,7 @@ struct ShoppingListPlaceholderView: View {
     @State private var inputIsBusy = false
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                     header
@@ -126,29 +122,14 @@ struct ShoppingListPlaceholderView: View {
                     }
                 }
                 .padding(.top, ReasiSpacing.s8)
-                .padding(
-                    .bottom,
-                    shouldShowFinishControl
-                        ? ShoppingDockMetrics.activeContentBottom
-                        : ShoppingDockMetrics.idleContentBottom
-                )
+                .padding(.bottom, ReasiSpacing.s3)
             }
             .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
-
-            if shouldShowFinishControl {
-                finishShoppingControl
-                    .padding(.horizontal, ReasiSpacing.s5)
-                    .padding(.bottom, ShoppingDockMetrics.tabBarClearance)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(2)
-            }
-
-            if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
-                assistantButton
-                    .zIndex(3)
-            }
         }
         .background(Color.reasi.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            shoppingDock
+        }
         .onAppear(perform: updateIdleTimer)
         .onChange(of: userSettings.keepScreenAwake) { _, _ in updateIdleTimer() }
         .onChange(of: coreLoop.hasPlan) { _, _ in updateIdleTimer() }
@@ -457,6 +438,32 @@ struct ShoppingListPlaceholderView: View {
         .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
     }
 
+    @ViewBuilder
+    private var shoppingDock: some View {
+        if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
+            VStack(spacing: 0) {
+                HStack(spacing: ShoppingDockMetrics.controlGap) {
+                    if shouldShowFinishControl {
+                        finishShoppingControl
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        Spacer(minLength: 0)
+                    }
+                    assistantButton
+                }
+                .padding(.horizontal, ReasiSpacing.s5)
+
+                Color.clear
+                    .frame(height: ShoppingDockMetrics.tabBarClearance)
+            }
+            .padding(.top, ReasiSpacing.s3)
+            .background(Color.reasi.background)
+        } else {
+            Color.clear
+                .frame(height: ShoppingDockMetrics.tabBarClearance)
+        }
+    }
+
     private var shouldShowFinishControl: Bool {
         coreLoop.hasPlan
             && coreLoop.plan.shoppingList.status == .active
@@ -658,13 +665,6 @@ struct ShoppingListPlaceholderView: View {
                 .shadow(color: .black.opacity(0.35), radius: 22, y: 12)
         }
         .buttonStyle(ReasiPressStyle())
-        .padding(.trailing, ReasiSpacing.s5)
-        .padding(
-            .bottom,
-            shouldShowFinishControl
-                ? ShoppingDockMetrics.assistantAboveFinish
-                : ShoppingDockMetrics.assistantIdle
-        )
         .accessibilityLabel("Ask Reasi")
     }
 

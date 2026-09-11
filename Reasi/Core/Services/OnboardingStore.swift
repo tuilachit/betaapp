@@ -10,6 +10,7 @@ enum OnboardingStep: Int, CaseIterable {
     case spendingTone
     case store
     case signIn
+    case storeGuide
     case ready
 
     var isSurvey: Bool {
@@ -71,7 +72,8 @@ final class OnboardingStore {
         }
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
+        if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture")
+            || ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture") {
             hasCompleted = true
             isHydrating = false
             return

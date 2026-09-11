@@ -8,7 +8,7 @@ import GoogleSignIn
 struct ReasiApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appState = AppState()
-    @State private var coreLoop = CoreLoopStore()
+    @State private var coreLoop = CoreLoopStore(plan: Self.initialPlan)
     @State private var onboarding = OnboardingStore()
     @State private var supabase = SupabaseService()
     @State private var analytics = AnalyticsService()
@@ -25,6 +25,16 @@ struct ReasiApp: App {
         !ProcessInfo.processInfo.arguments.contains("-ReasiSkipBrandIntro")
         #else
         true
+        #endif
+    }
+
+    private static var initialPlan: WeekPlan? {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture")
+            ? FixtureWeekPlan.current
+            : nil
+        #else
+        nil
         #endif
     }
 
@@ -138,6 +148,14 @@ struct ReasiApp: App {
     }
 
     private func restoreUserData(expectedUserId: String?) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture") {
+            appState.planBuilder.activate(userId: nil)
+            spending.activate(userId: nil)
+            return
+        }
+        #endif
+
         guard (supabase.hasActiveSession ? supabase.currentUserId : nil) == expectedUserId else { return }
         appState.planBuilder.activate(userId: expectedUserId)
         coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)

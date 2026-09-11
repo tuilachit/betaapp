@@ -56,6 +56,20 @@ enum ShoppingItemDeletionSource: String {
     case menu
 }
 
+struct ShoppingCheckStateReconciliation: Equatable {
+    let pendingItemIDs: Set<String>
+    let states: [String: Bool]
+
+    init(
+        visibleItemIDs: Set<String>,
+        pendingItemIDs: Set<String>,
+        states: [String: Bool]
+    ) {
+        self.pendingItemIDs = pendingItemIDs.intersection(visibleItemIDs)
+        self.states = states.filter { visibleItemIDs.contains($0.key) }
+    }
+}
+
 enum WeekPlanGenerationStage: String, Equatable {
     case preparing
     case planningMeals
@@ -1355,6 +1369,8 @@ final class CoreLoopStore {
     }
 
     private func syncPendingChanges(supabase: SupabaseService) async {
+        reconcilePendingCheckState()
+
         for deletion in pendingDeletions {
             startDeleteSync(deletion: deletion, supabase: supabase)
         }
@@ -1376,6 +1392,7 @@ final class CoreLoopStore {
         for task in outstandingTasks {
             await task.value
         }
+        reconcilePendingCheckState()
     }
 
     func finishShopping(
@@ -1401,14 +1418,20 @@ final class CoreLoopStore {
         do {
             await flushPendingShoppingChanges(supabase: supabase)
             guard pendingImports.isEmpty,
-                  pendingCheckItemIDs.isEmpty,
                   pendingDeletions.isEmpty else {
                 throw ReasiServiceError.requestFailed(
-                    "A few list changes are still syncing. Stay online and try Finish shopping again in a moment."
+                    "An added or removed item is still syncing. Stay online and try again."
                 )
             }
 
-            let trip = try await supabase.finishShopping(plan.shoppingList)
+            let trip = try await supabase.finishShopping(
+                plan.shoppingList,
+                checkedItemIDs: checkedItemIDs
+            )
+            itemSyncTasks.values.forEach { $0.cancel() }
+            itemSyncTasks = [:]
+            pendingCheckItemIDs = []
+            persistCheckCache()
             withAnimation(ReasiMotion.slow) {
                 plan.shoppingList.status = .completed
                 plan.shoppingList.completedAt = trip.completedAt
@@ -1593,6 +1616,25 @@ final class CoreLoopStore {
     private func persistDeletionCache() {
         guard let activeUserId else { return }
         localCache.saveDeletions(Array(pendingDeletions), userId: activeUserId)
+    }
+
+    private func reconcilePendingCheckState() {
+        let visibleItemIDs = Set(allItemIDs(in: plan))
+        let reconciliation = ShoppingCheckStateReconciliation(
+            visibleItemIDs: visibleItemIDs,
+            pendingItemIDs: pendingCheckItemIDs,
+            states: checkedStates
+        )
+        let removedItemIDs = pendingCheckItemIDs.subtracting(reconciliation.pendingItemIDs)
+        removedItemIDs.forEach {
+            itemSyncTasks[$0]?.cancel()
+            itemSyncTasks[$0] = nil
+        }
+        guard reconciliation.pendingItemIDs != pendingCheckItemIDs
+                || reconciliation.states != checkedStates else { return }
+        pendingCheckItemIDs = reconciliation.pendingItemIDs
+        checkedStates = reconciliation.states
+        persistCheckCache()
     }
 
     private func setItemChecked(_ itemId: String, checked: Bool, in plan: inout WeekPlan) {

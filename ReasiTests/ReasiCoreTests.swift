@@ -451,6 +451,41 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(summary.coverageFraction, 2.0 / 3.0, accuracy: 0.001)
     }
 
+    func testShoppingCompletionPayloadIncludesEveryVisibleCheckState() throws {
+        let shoppingList = FixtureWeekPlan.current.shoppingList
+        let items = shoppingList.sections.flatMap(\.items)
+        let checkedID = try XCTUnwrap(items.first?.id)
+
+        let payload = ShoppingCompletionPayload(
+            shoppingList: shoppingList,
+            checkedItemIDs: [checkedID]
+        )
+
+        XCTAssertEqual(payload.shoppingListId, shoppingList.id)
+        XCTAssertEqual(payload.expectedStoreId, shoppingList.storeId)
+        XCTAssertEqual(payload.checkedStates.count, items.count)
+        XCTAssertEqual(payload.checkedStates[checkedID], true)
+        XCTAssertTrue(
+            items.dropFirst().allSatisfy { payload.checkedStates[$0.id] == false }
+        )
+
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(payload))
+        let object = try XCTUnwrap(encoded as? [String: Any])
+        XCTAssertEqual(object["shoppingListId"] as? String, shoppingList.id)
+        XCTAssertEqual((object["checkedStates"] as? [String: Bool])?[checkedID], true)
+    }
+
+    func testShoppingCheckReconciliationDropsInvisiblePendingItems() {
+        let reconciliation = ShoppingCheckStateReconciliation(
+            visibleItemIDs: ["visible-item"],
+            pendingItemIDs: ["visible-item", "deleted-item"],
+            states: ["visible-item": true, "deleted-item": true]
+        )
+
+        XCTAssertEqual(reconciliation.pendingItemIDs, ["visible-item"])
+        XCTAssertEqual(reconciliation.states, ["visible-item": true])
+    }
+
     func testMealImageRefreshOnlyAddsImageMetadata() {
         let original = FixtureWeekPlan.current.meals[0]
         let refreshed = MealSummary(
