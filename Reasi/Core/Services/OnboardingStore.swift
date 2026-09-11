@@ -10,6 +10,7 @@ enum OnboardingStep: Int, CaseIterable {
     case spendingTone
     case store
     case signIn
+    case storeGuide
     case ready
 
     var isSurvey: Bool {

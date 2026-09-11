@@ -1327,6 +1327,30 @@ final class SupabaseService {
         #endif
     }
 
+    func submitStoreGuide(storeId: StoreID, uploadPath: String) async throws -> StoreGuideSubmissionResponse {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else { throw AuthFlowError.notSignedIn }
+        return try await client.functions.invoke(
+            "submit-store-guide",
+            options: FunctionInvokeOptions(body: StoreGuideSubmissionInput(storeId: storeId, uploadPath: uploadPath))
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
+    func confirmStoreGuide(submissionId: String, sections: [StoreGuideSection]) async throws -> StoreGuideConfirmationResponse {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil() else { throw AuthFlowError.notSignedIn }
+        return try await client.functions.invoke(
+            "confirm-store-guide",
+            options: FunctionInvokeOptions(body: StoreGuideConfirmationInput(submissionId: submissionId, sections: sections))
+        )
+        #else
+        throw AuthFlowError.notConfigured
+        #endif
+    }
+
     func resolveProduct(input: ResolveProductInput) async throws -> ProductImportResult {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else {
@@ -1929,6 +1953,8 @@ struct ReasiAccessSnapshot: Decodable, Hashable {
     let freePreviewMealPlanId: String?
     let canGenerate: Bool
     let canUseSmartTools: Bool
+    let accessSource: String?
+    let contributorPreviewExpiresAt: String?
 }
 
 private struct RefreshEntitlementResponse: Decodable {
@@ -2126,6 +2152,47 @@ private struct ProfileStoreRow: Decodable {
 enum UploadKind: String {
     case productPhoto = "product-photos"
     case shoppingListPhoto = "shopping-list-photos"
+    case storeGuidePhoto = "store-guide-photos"
+}
+
+struct StoreGuideSection: Codable, Hashable, Identifiable {
+    let code: String
+    let title: String
+    let sectionType: String
+    let aisleNumber: Int?
+    let routeOrder: Int
+    let confidence: String
+    var id: String { code }
+}
+
+struct StoreGuideSubmissionInput: Encodable {
+    let storeId: StoreID
+    let uploadPath: String
+}
+
+struct StoreGuideSubmissionResponse: Decodable {
+    let submissionId: String
+    let status: String
+    let qualityReason: String?
+    let sections: [StoreGuideSection]
+    let reward: StoreGuideReward?
+}
+
+struct StoreGuideReward: Decodable {
+    let granted: Bool
+    let expiresAt: String
+}
+
+struct StoreGuideConfirmationInput: Encodable {
+    let submissionId: String
+    let sections: [StoreGuideSection]
+}
+
+struct StoreGuideConfirmationResponse: Decodable {
+    let versionId: String
+    let storeId: StoreID
+    let status: String
+    let sections: [StoreGuideSection]
 }
 
 struct ResolveProductInput: Encodable, Hashable {

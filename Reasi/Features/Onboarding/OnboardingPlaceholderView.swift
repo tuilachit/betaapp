@@ -2,6 +2,8 @@ import AuthenticationServices
 import CryptoKit
 import Security
 import SwiftUI
+import PhotosUI
+import UIKit
 
 #if canImport(GoogleSignIn)
 import GoogleSignIn
@@ -23,6 +25,13 @@ struct OnboardingPlaceholderView: View {
     @State private var authIsBusy = false
     @State private var authMessage: String?
     @State private var appleRawNonce: String?
+    @State private var guidePhotoItem: PhotosPickerItem?
+    @State private var guidePhotoData: Data?
+    @State private var guideSubmission: StoreGuideSubmissionResponse?
+    @State private var guideSections: [StoreGuideSection] = []
+    @State private var guideError: String?
+    @State private var guideIsBusy = false
+    @State private var showGuideCamera = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,13 +63,24 @@ struct OnboardingPlaceholderView: View {
         .onAppear {
             onboarding.captureStartedIfNeeded(analytics: analytics)
         }
+        .onChange(of: guidePhotoItem) { _, item in
+            guard let item else { return }
+            Task { await handleGuidePhoto(item) }
+        }
+        .fullScreenCover(isPresented: $showGuideCamera) {
+            OnboardingCameraCaptureView { image in
+                showGuideCamera = false
+                guard let data = image.jpegData(compressionQuality: 0.86) else { return }
+                Task { await processGuideData(data) }
+            }
+        }
     }
 
     private var topBar: some View {
         HStack(spacing: ReasiSpacing.s4) {
             if onboarding.currentStep.rawValue >= OnboardingStep.purpose.rawValue {
                 HStack(spacing: ReasiSpacing.s1) {
-                    ForEach(0..<7, id: \.self) { index in
+                    ForEach(0..<8, id: \.self) { index in
                         Capsule()
                             .fill(
                                 index <= onboarding.currentStep.progressIndex
@@ -87,6 +107,14 @@ struct OnboardingPlaceholderView: View {
                 .foregroundStyle(Color.reasi.textMuted)
                 .buttonStyle(ReasiPressStyle())
                 .accessibilityHint("Skips this question")
+            } else if onboarding.currentStep == .storeGuide {
+                Button("Skip") {
+                    analytics.capture(.storeGuideSkipped, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue)])
+                    onboarding.advance()
+                }
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+                .buttonStyle(ReasiPressStyle())
             }
         }
         .frame(height: 36)
@@ -112,6 +140,8 @@ struct OnboardingPlaceholderView: View {
                 storeScreen
             case .signIn:
                 signInScreen
+            case .storeGuide:
+                storeGuideScreen
             case .ready:
                 readyScreen
             }
@@ -497,6 +527,127 @@ struct OnboardingPlaceholderView: View {
         .padding(.top, ReasiSpacing.s2)
     }
 
+    private var storeGuideScreen: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
+            onboardingHeading(
+                eyebrow: "Help build your route",
+                title: "Get 3 days of Reasi Pro"
+            )
+
+            Text("Take a clear photo of your store's aisle guide. We'll turn it into a personal route for your first shop.")
+                .font(ReasiTypography.body)
+                .foregroundStyle(Color.reasi.textMuted)
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                HStack(spacing: ReasiSpacing.s3) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(Color.reasi.text)
+                    Text("No payment. No auto-renewal.")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                }
+                Text("One reward per account. Your photo is checked before the preview starts.")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+            .padding(ReasiSpacing.s4)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                Text("What to photograph")
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                HStack(spacing: ReasiSpacing.s2) {
+                    ForEach(["Aisle 1", "Pasta", "Sauces"], id: \.self) { label in
+                        Text(label)
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.text)
+                            .padding(.horizontal, ReasiSpacing.s2)
+                            .padding(.vertical, ReasiSpacing.s1)
+                            .background(Color.reasi.surfaceHigh, in: Capsule())
+                    }
+                }
+                Text("Look for the board near the entrance or above the aisles.")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+
+            PhotosPicker(selection: $guidePhotoItem, matching: .images) {
+                Label(guideSubmission == nil ? "Choose aisle guide photo" : "Choose another photo", systemImage: "photo.on.rectangle")
+                    .font(ReasiTypography.bodyMedium)
+                    .foregroundStyle(Color.reasi.text)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.reasi.surface, in: Capsule())
+                    .overlay { Capsule().stroke(Color.reasi.border, lineWidth: 1) }
+            }
+            .buttonStyle(ReasiPressStyle())
+            .disabled(guideIsBusy)
+
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button {
+                    analytics.capture(.storeGuideCaptureStarted, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue), "source": .string("camera")])
+                    showGuideCamera = true
+                } label: {
+                    Label("Take photo", systemImage: "camera")
+                        .font(ReasiTypography.bodyMedium)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ReasiPressStyle())
+                .disabled(guideIsBusy)
+            }
+
+            if guideIsBusy {
+                HStack(spacing: ReasiSpacing.s3) {
+                    ProgressView().tint(Color.reasi.text)
+                    Text("Checking the guide…")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+            }
+
+            if let guideSubmission = guideSubmission {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                    Text("Guide looks clear")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Text("Found \(guideSections.count) route sections. Check the order before using it.")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                    ForEach(Array(guideSections.enumerated()), id: \.element.id) { index, section in
+                        HStack(spacing: ReasiSpacing.s2) {
+                            Text("\(index + 1)")
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(Color.reasi.muted)
+                                .frame(width: 20)
+                            Text(section.title)
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(Color.reasi.text)
+                                .lineLimit(1)
+                            Spacer()
+                            Button { moveGuideSection(index, offset: -1) } label: { Image(systemName: "chevron.up") }
+                                .disabled(index == 0)
+                            Button { moveGuideSection(index, offset: 1) } label: { Image(systemName: "chevron.down") }
+                                .disabled(index == guideSections.count - 1)
+                        }
+                    }
+                }
+                .padding(ReasiSpacing.s4)
+                .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+            }
+
+            if let guideError {
+                Text(guideError)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.warning)
+            }
+
+            Spacer(minLength: 60)
+        }
+    }
+
     private var readyScreen: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
             onboardingHeading(
@@ -563,6 +714,8 @@ struct OnboardingPlaceholderView: View {
             "Continue"
         case .signIn:
             supabase.isSignedIn ? "Continue" : "Sign in to continue"
+        case .storeGuide:
+            guideSubmission == nil ? "Continue without guide" : "Use this route"
         case .ready:
             onboarding.isSaving ? "Saving your choices" : "Plan my first week"
         }
@@ -584,6 +737,8 @@ struct OnboardingPlaceholderView: View {
             onboarding.preferences.selectedStoreId != nil
         case .signIn:
             supabase.isSignedIn
+        case .storeGuide:
+            !guideIsBusy
         case .ready:
             !onboarding.isSaving
         }
@@ -593,6 +748,28 @@ struct OnboardingPlaceholderView: View {
         switch onboarding.currentStep {
         case .value, .benefit, .household, .foodStyle, .spendingTone, .store, .signIn:
             onboarding.advance()
+        case .storeGuide:
+            guard let guideSubmission else {
+                analytics.capture(.storeGuideSkipped, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue), "source": .string("continue_button")])
+                onboarding.advance()
+                return
+            }
+            Task {
+                do {
+                    guideIsBusy = true
+                    _ = try await supabase.confirmStoreGuide(submissionId: guideSubmission.submissionId, sections: guideSections)
+                    analytics.capture(.storeGuideConfirmed, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue), "section_count": .int(guideSections.count)])
+                    await MainActor.run {
+                        guideIsBusy = false
+                        onboarding.advance()
+                    }
+                } catch {
+                    await MainActor.run {
+                        guideIsBusy = false
+                        guideError = supabase.userFacingMessage(for: error)
+                    }
+                }
+            }
         case .purpose:
             onboarding.submitPurpose(analytics: analytics)
         case .ready:
@@ -827,6 +1004,59 @@ struct OnboardingPlaceholderView: View {
             return "3 selected. Tap one off to change your order."
         }
         return "Choose up to 3 in priority order."
+    }
+
+    private func handleGuidePhoto(_ item: PhotosPickerItem) async {
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                throw ReasiServiceError.invalidResponse
+            }
+            await processGuideData(data)
+        } catch {
+            await MainActor.run {
+                guideIsBusy = false
+                guideError = supabase.userFacingMessage(for: error)
+                analytics.capture(.storeGuideQualityFailed, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue)])
+                ReasiHaptics.warning()
+            }
+        }
+    }
+
+    private func processGuideData(_ data: Data) async {
+        await MainActor.run {
+            guideIsBusy = true
+            guideError = nil
+            analytics.capture(.storeGuideCaptureStarted, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue)])
+        }
+        do {
+            let uploadPath = try await supabase.uploadUserImage(data, kind: .storeGuidePhoto)
+            let result = try await supabase.submitStoreGuide(storeId: onboarding.preferences.resolvedStore.id, uploadPath: uploadPath)
+            await MainActor.run {
+                guidePhotoData = data
+                guideSubmission = result
+                guideSections = result.sections
+                guideIsBusy = false
+                analytics.capture(.storeGuideSubmitted, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue), "section_count": .int(result.sections.count)])
+                if result.reward?.granted == true {
+                    analytics.capture(.storeGuideRewardGranted, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue), "duration_days": .int(3)])
+                }
+                ReasiHaptics.success()
+            }
+        } catch {
+            await MainActor.run {
+                guideIsBusy = false
+                guideError = supabase.userFacingMessage(for: error)
+                analytics.capture(.storeGuideQualityFailed, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue)])
+                ReasiHaptics.warning()
+            }
+        }
+    }
+
+    private func moveGuideSection(_ index: Int, offset: Int) {
+        let destination = index + offset
+        guard guideSections.indices.contains(index), guideSections.indices.contains(destination) else { return }
+        guideSections.swapAt(index, destination)
+        ReasiHaptics.selection()
     }
 
     private func completeOnboarding() {
@@ -1128,6 +1358,36 @@ struct OnboardingPlaceholderView: View {
             result.append(characters[Int(randomByte) % characters.count])
         }
         return result
+    }
+}
+
+private struct OnboardingCameraCaptureView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let controller = UIImagePickerController()
+        controller.sourceType = .camera
+        controller.cameraCaptureMode = .photo
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onCapture: (UIImage) -> Void
+
+        init(onCapture: @escaping (UIImage) -> Void) { self.onCapture = onCapture }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage { onCapture(image) }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
     }
 }
 
