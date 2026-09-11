@@ -67,8 +67,9 @@ final class ReasiOnboardingUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Your spending"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Projected"].exists)
+        XCTAssertTrue(app.staticTexts["Spend"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Projected basket"].exists)
+        XCTAssertTrue(app.staticTexts["Based on 8 of 10 priced items"].exists)
 
         let profile = app.buttons["reasi-profile-button"]
         XCTAssertTrue(profile.exists)
@@ -76,14 +77,59 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 3))
         app.buttons["Back"].tap()
 
-        let shop = app.buttons["spend-recent-trip-ui-test-trip"]
-        XCTAssertTrue(shop.waitForExistence(timeout: 3))
-        for _ in 0..<4 where !shop.isHittable {
+        let chart = app.otherElements["spend-category-chart"]
+        XCTAssertTrue(chart.waitForExistence(timeout: 3))
+
+        let protein = app.buttons["spend-category-legend-protein"]
+        XCTAssertTrue(protein.exists)
+        let chartFrame = chart.frame
+        let chartTap = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(
+                dx: chartFrame.maxX - chartFrame.width * 0.10,
+                dy: chartFrame.midY
+            ))
+        chartTap.tap()
+        let chartSelectedLegend = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND value == %@",
+            "spend-category-legend-",
+            "Selected"
+        )).firstMatch
+        XCTAssertTrue(chartSelectedLegend.waitForExistence(timeout: 2))
+        chartSelectedLegend.tap()
+        protein.tap()
+        XCTAssertEqual(protein.value as? String, "Selected")
+
+        let periodControl = app.segmentedControls["Spending period"]
+        XCTAssertTrue(periodControl.exists)
+        periodControl.buttons["Month"].tap()
+        XCTAssertTrue(app.staticTexts["THIS MONTH"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "average per week")).firstMatch.exists)
+        periodControl.buttons["Week"].tap()
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].waitForExistence(timeout: 3))
+
+        let moreInsights = app.buttons["spend-more-insights"]
+        XCTAssertTrue(moreInsights.waitForExistence(timeout: 3))
+        for _ in 0..<6 where !isClearOfFloatingTabBar(moreInsights, in: app) {
             app.swipeUp()
         }
-        XCTAssertTrue(shop.isHittable)
+        XCTAssertTrue(isClearOfFloatingTabBar(moreInsights, in: app))
+        moreInsights.tap()
+        XCTAssertEqual(moreInsights.value as? String, "Expanded")
+        XCTAssertTrue(app.staticTexts["PATTERN"].exists)
+        XCTAssertTrue(app.staticTexts["WHY IT MATTERS"].exists)
+
+        let shop = app.buttons["spend-recent-trip-ui-test-trip"]
+        XCTAssertTrue(shop.waitForExistence(timeout: 3))
+        for _ in 0..<6 where !isClearOfFloatingTabBar(shop, in: app) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(isClearOfFloatingTabBar(shop, in: app))
         shop.tap()
         XCTAssertTrue(app.staticTexts["Shop recap"].waitForExistence(timeout: 3))
+    }
+
+    private func isClearOfFloatingTabBar(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        element.isHittable && element.frame.maxY < app.frame.maxY - 150
     }
 
     @MainActor
