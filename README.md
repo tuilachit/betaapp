@@ -4,6 +4,10 @@ Native SwiftUI rebuild of the Reasi mobile app.
 
 Reference app: `/Users/locnguyen/Documents/Reasi_mobile`
 
+## Appearance
+
+Choose **Light** or **Dark** in **Profile → Shopping & app → Appearance**. Changes apply immediately throughout the app and are saved on this iPhone, including after relaunch or sign-out. Light is the default; appearance does not follow the device setting or sync between accounts.
+
 ## Phase 0 Scope
 
 - SwiftUI Xcode scaffold.

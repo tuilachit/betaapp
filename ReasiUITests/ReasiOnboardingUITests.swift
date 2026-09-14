@@ -1,6 +1,128 @@
 import XCTest
+import UIKit
 
 final class ReasiOnboardingUITests: XCTestCase {
+    @MainActor
+    func testThemeScreensAndLargeTextInBothAppearances() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        let fixtures = ["-ReasiShowShoppingFixture", "-ReasiShowSpendFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        for (name, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+            let appearance = ["-reasi.settings.appearance", name]
+            app.launchArguments = fixtures + appearance
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+            for tab in ["Home", "Plans", "List", "Spend"] {
+                app.buttons[tab].tap()
+                assertAppearance(style, in: app, name: "\(tab) \(name)")
+                if tab == "Plans" {
+                    let meal = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Miso salmon rice bowls")).firstMatch
+                    reveal(meal, in: app)
+                    meal.tap()
+                    XCTAssertTrue(app.buttons["Close recipe"].waitForExistence(timeout: 3))
+                    assertAppearance(style, in: app, name: "Recipe overlay \(name)")
+                    app.buttons["Close recipe"].tap()
+                }
+            }
+            app.buttons["reasi-profile-button"].tap()
+            XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 3))
+            assertAppearance(style, in: app, name: "Account \(name)")
+            app.terminate()
+
+            app.launchArguments = fixtures + appearance + ["-reasi-show-paywall"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Keep planning without starting over"].waitForExistence(timeout: 8))
+            assertAppearance(style, in: app, name: "Paywall \(name)")
+            app.terminate()
+
+            app.launchArguments = appearance + ["-ReasiForceOnboarding", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+            app.launch()
+            XCTAssertTrue(app.buttons["Get started"].waitForExistence(timeout: 8))
+            assertAppearance(style, in: app, name: "Onboarding large text \(name)")
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testAppearanceSwitchesAcrossScreensAndPersistsAfterRelaunch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiShowSpendFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        app.launch()
+        XCTAssertTrue(app.buttons["reasi-profile-button"].waitForExistence(timeout: 8))
+        app.buttons["reasi-profile-button"].tap()
+
+        let picker = app.segmentedControls["reasi-appearance-picker"]
+        reveal(picker, in: app)
+        picker.buttons["Dark"].tap()
+        assertAppearance(.dark, in: app, name: "Profile Dark")
+        picker.buttons["Light"].tap()
+        XCTAssertTrue(picker.buttons["Light"].isSelected)
+        assertAppearance(.light, in: app, name: "Profile Light")
+
+        let listSettings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "List behavior")).firstMatch
+        reveal(listSettings, in: app)
+        listSettings.tap()
+        XCTAssertTrue(app.navigationBars["List behavior"].waitForExistence(timeout: 3))
+        assertAppearance(.light, in: app, name: "Settings Sheet Light")
+        app.buttons["Done"].tap()
+        for _ in 0..<8 where !app.buttons["Back"].isHittable { app.swipeDown() }
+        app.buttons["Back"].tap()
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 3))
+        assertAppearance(.light, in: app, name: "Shopping Light")
+        app.buttons["Spend"].tap()
+        XCTAssertTrue(app.staticTexts["Projected basket"].waitForExistence(timeout: 3))
+        assertAppearance(.light, in: app, name: "Spend Light")
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+        assertAppearance(.light, in: app, name: "Relaunch Light")
+        app.buttons["reasi-profile-button"].tap()
+        reveal(picker, in: app)
+        XCTAssertTrue(picker.buttons["Light"].isSelected)
+        picker.buttons["Dark"].tap()
+        assertAppearance(.dark, in: app, name: "Profile Restored Dark")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+        assertAppearance(.dark, in: app, name: "Relaunch Dark")
+    }
+
+    @MainActor
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<8 {
+            if element.isHittable && element.frame.maxY <= app.frame.maxY - 150 { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable)
+    }
+
+    @MainActor
+    private func assertAppearance(_ style: UIUserInterfaceStyle, in app: XCUIApplication, name: String) {
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        // Sample the unobstructed outer background, not the selected picker label.
+        let image = screenshot.image.cgImage!
+        let pixel = image.cropping(to: CGRect(x: image.width / 100, y: image.height / 2, width: 1, height: 1))!
+        var rgba = [UInt8](repeating: 0, count: 4)
+        rgba.withUnsafeMutableBytes { buffer in
+            let context = CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        let brightness = Double(Int(rgba[0]) + Int(rgba[1]) + Int(rgba[2])) / (3 * 255)
+        if style == .light {
+            XCTAssertGreaterThan(brightness, 0.8, name)
+        } else {
+            XCTAssertLessThan(brightness, 0.2, name)
+        }
+    }
+
     @MainActor
     private func launchOnboarding() -> XCUIApplication {
         let app = XCUIApplication()

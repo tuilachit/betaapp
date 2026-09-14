@@ -10,6 +10,7 @@ import GoogleSignIn
 #endif
 
 struct OnboardingPlaceholderView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
@@ -436,7 +437,7 @@ struct OnboardingPlaceholderView: View {
                 } onCompletion: { result in
                     handleAppleCompletion(result)
                 }
-                .signInWithAppleButtonStyle(.white)
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
                 .clipShape(Capsule())

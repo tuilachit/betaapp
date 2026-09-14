@@ -11,6 +11,7 @@ private enum ShoppingDockMetrics {
 }
 
 struct ShoppingListPlaceholderView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
@@ -435,7 +436,7 @@ struct ShoppingListPlaceholderView: View {
                 supabase: supabase
             )
         }
-        .shadow(color: .black.opacity(0.38), radius: 18, y: 10)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.38 : 0.10), radius: 18, y: 10)
     }
 
     @ViewBuilder
@@ -662,7 +663,7 @@ struct ShoppingListPlaceholderView: View {
                 .overlay {
                     Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
                 }
-                .shadow(color: .black.opacity(0.35), radius: 22, y: 12)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.10), radius: 22, y: 12)
         }
         .buttonStyle(ReasiPressStyle())
         .accessibilityLabel("Ask Reasi")
@@ -1603,7 +1604,7 @@ private struct CandidateReviewRow: View {
                         .overlay(alignment: .topLeading) {
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 22, weight: .semibold))
-                                .foregroundStyle(isSelected ? Color.reasi.success : .white)
+                                .foregroundStyle(isSelected ? Color.reasi.onImageSuccess : .white)
                                 .background(.black.opacity(0.5), in: Circle())
                                 .padding(6)
                         }
@@ -2830,7 +2831,7 @@ private struct SwipeToDeleteRow<Content: View>: View {
             } label: {
                 Image(systemName: "trash.fill")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.reasi.text)
                     .frame(width: actionWidth)
                     .frame(maxHeight: .infinity)
             }

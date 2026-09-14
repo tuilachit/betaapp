@@ -1,8 +1,10 @@
 import Foundation
 import Observation
+import SwiftUI
 import UserNotifications
 
 enum ReasiSettingKey {
+    static let appearance = "reasi.settings.appearance"
     static let hapticsEnabled = "reasi.settings.hapticsEnabled"
     static let hideCompletedItems = "reasi.settings.hideCompletedItems"
     static let keepScreenAwake = "reasi.settings.keepScreenAwake"
@@ -10,6 +12,15 @@ enum ReasiSettingKey {
     static let planningReminderWeekday = "reasi.settings.planningReminderWeekday"
     static let planningReminderHour = "reasi.settings.planningReminderHour"
     static let planningReminderMinute = "reasi.settings.planningReminderMinute"
+}
+
+enum ReasiAppearance: String, CaseIterable, Identifiable {
+    case light
+    case dark
+
+    var id: String { rawValue }
+    var title: String { self == .light ? "Light" : "Dark" }
+    var colorScheme: ColorScheme { self == .light ? .light : .dark }
 }
 
 enum WeeklyPlanningDay: Int, CaseIterable, Identifiable {
@@ -53,6 +64,7 @@ enum ReasiNotificationPermission: Equatable {
 @MainActor
 @Observable
 final class UserSettingsStore {
+    private(set) var appearance: ReasiAppearance
     private(set) var hapticsEnabled: Bool
     private(set) var hideCompletedItems: Bool
     private(set) var keepScreenAwake: Bool
@@ -73,6 +85,8 @@ final class UserSettingsStore {
     ) {
         self.defaults = defaults
         self.notificationCenter = notificationCenter
+        appearance = defaults.string(forKey: ReasiSettingKey.appearance)
+            .flatMap(ReasiAppearance.init(rawValue:)) ?? .light
         hapticsEnabled = Self.bool(defaults, key: ReasiSettingKey.hapticsEnabled, fallback: true)
         hideCompletedItems = Self.bool(defaults, key: ReasiSettingKey.hideCompletedItems, fallback: false)
         keepScreenAwake = Self.bool(defaults, key: ReasiSettingKey.keepScreenAwake, fallback: true)
@@ -117,6 +131,11 @@ final class UserSettingsStore {
         case (false, true): "Screen awake"
         case (false, false): "Standard"
         }
+    }
+
+    func setAppearance(_ appearance: ReasiAppearance) {
+        self.appearance = appearance
+        defaults.set(appearance.rawValue, forKey: ReasiSettingKey.appearance)
     }
 
     func setHapticsEnabled(_ enabled: Bool) {

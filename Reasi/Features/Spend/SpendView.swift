@@ -753,20 +753,20 @@ struct SpendView: View {
 
     private func categoryColor(_ role: SpendCategoryColorRole) -> Color {
         switch role {
-        case .produce: Color(hex: 0x9FE3B1)
-        case .protein: Color(hex: 0xFF9A8B)
-        case .pantry: Color(hex: 0xC5A9FF)
-        case .dairy: Color(hex: 0xFFD36A)
-        case .bakery: Color(hex: 0xF5B97A)
-        case .frozen: Color(hex: 0x88C9FF)
-        case .drinks: Color(hex: 0x7ADFD6)
-        case .baby: Color(hex: 0xF3A8D3)
-        case .personalCare: Color(hex: 0xE89AAE)
-        case .household: Color(hex: 0xA8B6FF)
+        case .produce: Color(light: 0x28743F, dark: 0x9FE3B1)
+        case .protein: Color(light: 0xBE4438, dark: 0xFF9A8B)
+        case .pantry: Color(light: 0x7750B5, dark: 0xC5A9FF)
+        case .dairy: Color(light: 0x926500, dark: 0xFFD36A)
+        case .bakery: Color(light: 0xA55C20, dark: 0xF5B97A)
+        case .frozen: Color(light: 0x236CAB, dark: 0x88C9FF)
+        case .drinks: Color(light: 0x007D75, dark: 0x7ADFD6)
+        case .baby: Color(light: 0xA34681, dark: 0xF3A8D3)
+        case .personalCare: Color(light: 0xAD405B, dark: 0xE89AAE)
+        case .household: Color(light: 0x4C5EB5, dark: 0xA8B6FF)
         case .other: Color.reasi.textMuted
-        case .accentA: Color(hex: 0xB2E0FF)
-        case .accentB: Color(hex: 0xE1B8FF)
-        case .accentC: Color(hex: 0xFFC6A5)
+        case .accentA: Color(light: 0x26729B, dark: 0xB2E0FF)
+        case .accentB: Color(light: 0x8B4EAF, dark: 0xE1B8FF)
+        case .accentC: Color(light: 0xA45730, dark: 0xFFC6A5)
         }
     }
 
@@ -1284,7 +1284,6 @@ private struct WeeklyBudgetEditor: View {
             }
         }
         .presentationDetents([.medium])
-        .preferredColorScheme(.dark)
     }
 
     private func save() {
@@ -1376,7 +1375,6 @@ private struct CheckoutTotalEditor: View {
             }
         }
         .presentationDetents([.medium])
-        .preferredColorScheme(.dark)
     }
 
     private func save() {
