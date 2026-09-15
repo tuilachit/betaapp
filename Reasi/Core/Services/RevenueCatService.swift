@@ -5,12 +5,20 @@ import Observation
 import RevenueCat
 #endif
 
-enum ReasiProPlanKind: String, Hashable {
+enum ReasiProPlanKind: String, CaseIterable, Hashable {
+    case weekly
     case monthly
     case annual
 
+    static let displayOrder: [Self] = [.annual, .monthly, .weekly]
+
+    var sortIndex: Int {
+        Self.displayOrder.firstIndex(of: self) ?? Int.max
+    }
+
     var title: String {
         switch self {
+        case .weekly: "Weekly"
         case .monthly: "Monthly"
         case .annual: "Annual"
         }
@@ -18,6 +26,7 @@ enum ReasiProPlanKind: String, Hashable {
 
     var billingLabel: String {
         switch self {
+        case .weekly: "per week"
         case .monthly: "per month"
         case .annual: "per year"
         }
@@ -42,6 +51,7 @@ enum ReasiProPurchaseOutcome: Equatable {
 final class RevenueCatService {
     static let entitlementId = "reasi_pro"
     static let offeringId = "default"
+    static let weeklyProductId = "ai.reasi.pro.weekly"
     static let monthlyProductId = "ai.reasi.pro.monthly"
     static let annualProductId = "ai.reasi.pro.annual"
 
@@ -277,6 +287,32 @@ final class RevenueCatService {
         await refreshCustomerInfo()
     }
 
+    #if DEBUG
+    func loadDebugPaywallFixture() {
+        planOptions = [
+            ReasiProPlanOption(
+                id: Self.annualProductId,
+                kind: .annual,
+                localizedPrice: "A$79.99",
+                trialText: "3 days free"
+            ),
+            ReasiProPlanOption(
+                id: Self.monthlyProductId,
+                kind: .monthly,
+                localizedPrice: "A$17.99",
+                trialText: nil
+            ),
+            ReasiProPlanOption(
+                id: Self.weeklyProductId,
+                kind: .weekly,
+                localizedPrice: "A$7.99",
+                trialText: nil
+            )
+        ]
+        lastError = nil
+    }
+    #endif
+
     private func drainIdentityChanges() async {
         while processedIdentityRevision < identityRevision {
             let revision = identityRevision
@@ -410,7 +446,11 @@ final class RevenueCatService {
         clearOfferingState()
         guard let offering = offerings[Self.offeringId] ?? offerings.current else { return }
 
-        let supportedProductIDs = Set([Self.monthlyProductId, Self.annualProductId])
+        let supportedProductIDs = Set([
+            Self.weeklyProductId,
+            Self.monthlyProductId,
+            Self.annualProductId
+        ])
         var uniquePackages: [String: Package] = [:]
         for package in offering.availablePackages {
             let productId = package.storeProduct.productIdentifier
@@ -429,6 +469,8 @@ final class RevenueCatService {
             let productId = package.storeProduct.productIdentifier
             let kind: ReasiProPlanKind
             switch productId {
+            case Self.weeklyProductId:
+                kind = .weekly
             case Self.monthlyProductId:
                 kind = .monthly
             case Self.annualProductId:
@@ -445,7 +487,7 @@ final class RevenueCatService {
             )
         }
         .sorted { left, right in
-            left.kind == .annual && right.kind != .annual
+            left.kind.sortIndex < right.kind.sortIndex
         }
     }
 

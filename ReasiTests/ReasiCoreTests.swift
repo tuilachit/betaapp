@@ -377,13 +377,21 @@ final class ReasiCoreTests: XCTestCase {
     func testReasiProContractIdentifiersMatchBackendContract() {
         let entitlementId = RevenueCatService.entitlementId
         let offeringId = RevenueCatService.offeringId
+        let weeklyProductId = RevenueCatService.weeklyProductId
         let monthlyProductId = RevenueCatService.monthlyProductId
         let annualProductId = RevenueCatService.annualProductId
 
         XCTAssertEqual(entitlementId, "reasi_pro")
         XCTAssertEqual(offeringId, "default")
+        XCTAssertEqual(weeklyProductId, "ai.reasi.pro.weekly")
         XCTAssertEqual(monthlyProductId, "ai.reasi.pro.monthly")
         XCTAssertEqual(annualProductId, "ai.reasi.pro.annual")
+    }
+
+    func testReasiProPlanKindsExposeLaunchBillingLabelsAndOrder() {
+        XCTAssertEqual(ReasiProPlanKind.weekly.title, "Weekly")
+        XCTAssertEqual(ReasiProPlanKind.weekly.billingLabel, "per week")
+        XCTAssertEqual(ReasiProPlanKind.displayOrder, [.annual, .monthly, .weekly])
     }
 
     func testRevenueCatKeyValidationRejectsUnsafeReleaseKeys() {
