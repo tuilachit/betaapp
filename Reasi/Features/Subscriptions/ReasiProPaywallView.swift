@@ -14,32 +14,41 @@ struct ReasiProPaywallView: View {
     @State private var needsAccessRefresh = false
     @State private var didTrackView = false
     @State private var isRefreshingAccess = false
+    @State private var showingExitView = false
+    @State private var showingDetailsSheet = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                header
-                valueCard
-                plans
+        Group {
+            if showingExitView {
+                exitView
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+                        header
+                        plans
 
-                if let message {
-                    Label(message, systemImage: needsAccessRefresh ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(needsAccessRefresh ? Color.reasi.warning : Color.reasi.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+                        if let message {
+                            Label(message, systemImage: needsAccessRefresh ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(needsAccessRefresh ? Color.reasi.warning : Color.reasi.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        primaryAction
+                        purchaseLinks
+                    }
+                    .padding(.horizontal, ReasiSpacing.s5)
+                    .padding(.top, ReasiSpacing.s4)
+                    .padding(.bottom, ReasiSpacing.s8)
                 }
-
-                primaryAction
-                renewalDisclosure
-                purchaseLinks
             }
-            .padding(.horizontal, ReasiSpacing.s5)
-            .padding(.top, ReasiSpacing.s4)
-            .padding(.bottom, ReasiSpacing.s8)
         }
         .background(Color.reasi.background.ignoresSafeArea())
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isTransactionActive)
+        .sheet(isPresented: $showingDetailsSheet) {
+            detailsSheet
+        }
         .task {
             if !didTrackView {
                 didTrackView = true
@@ -69,23 +78,55 @@ struct ReasiProPaywallView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            ZStack(alignment: .trailing) {
-                VStack(spacing: ReasiSpacing.s1) {
-                    Image("ReasiWordmark")
-                        .renderingMode(.template)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFill()
-                        .frame(width: 128, height: 34)
-                        .clipped()
+        VStack(spacing: ReasiSpacing.s4) {
+            HStack {
+                Spacer()
+                Button {
+                    showingExitView = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.reasi.text)
-                    Text("Reasi Pro")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
+                        .frame(width: 42, height: 42)
+                        .background(Color.reasi.surfaceHigh, in: Circle())
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(ReasiPressStyle())
+                .disabled(isTransactionActive)
+                .accessibilityLabel("Close paywall")
+            }
+            .frame(maxWidth: .infinity)
 
+            Image("ReasiWordmark")
+                .renderingMode(.template)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 108, height: 29)
+                .clipped()
+                .foregroundStyle(Color.reasi.text)
+
+            Text("Reasi Pro")
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+
+            Text("More weeks. Less work.")
+                .font(ReasiTypography.title2)
+                .foregroundStyle(Color.reasi.text)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Plan, shop, and track with less effort.")
+                .font(ReasiTypography.body)
+                .foregroundStyle(Color.reasi.textMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var exitView: some View {
+        VStack(spacing: ReasiSpacing.s6) {
+            HStack {
+                Spacer()
                 Button {
                     dismiss()
                 } label: {
@@ -97,60 +138,53 @@ struct ReasiProPaywallView: View {
                 }
                 .buttonStyle(ReasiPressStyle())
                 .disabled(isTransactionActive)
-                .accessibilityLabel("Close")
+                .accessibilityLabel("Dismiss")
             }
 
-            Text("Unlock your best grocery week")
-                .font(ReasiTypography.title2)
-                .foregroundStyle(Color.reasi.text)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: ReasiSpacing.s8)
 
-            Text(reason)
+            Image("ReasiWordmark")
+                .renderingMode(.template)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 92, height: 25)
+                .clipped()
+                .foregroundStyle(Color.reasi.text)
+
+            VStack(spacing: ReasiSpacing.s3) {
+                Text("Not ready yet?")
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.text)
+                    .multilineTextAlignment(.center)
+
+                Text("Your current plan stays yours. Come back when you need another week.")
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 300)
+
+            VStack(spacing: ReasiSpacing.s3) {
+                Button("Keep my plan") {
+                    dismiss()
+                }
+                .buttonStyle(ReasiPrimaryButtonStyle())
+
+                Button("View plans") {
+                    showingExitView = false
+                }
+                .buttonStyle(ReasiPressStyle())
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var valueCard: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            Text("Plan less. Shop with confidence.")
-                .font(ReasiTypography.headline)
-                .foregroundStyle(Color.reasi.text)
-
-            HStack(spacing: ReasiSpacing.s2) {
-                valuePillar("Plan", detail: "Cookable weeks", symbol: "calendar")
-                valuePillar("Shop", detail: "Store-aware lists", symbol: "cart")
-                valuePillar("Track", detail: "Spend insights", symbol: "chart.bar.xaxis")
             }
-        }
-        .padding(ReasiSpacing.s4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
-        }
-    }
 
-    private func valuePillar(_ title: String, detail: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.reasi.textMuted)
-            Text(title)
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.text)
-            Text(detail)
-                .font(ReasiTypography.navLabel)
-                .foregroundStyle(Color.reasi.muted)
-                .lineLimit(1)
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ReasiSpacing.s5)
+        .padding(.top, ReasiSpacing.s4)
+        .padding(.bottom, ReasiSpacing.s8)
     }
 
     @ViewBuilder
@@ -315,6 +349,39 @@ struct ReasiProPaywallView: View {
             || revenueCat.serverAccess?.isPro == true
     }
 
+    private var detailsSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
+                    if !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                            Text("Why you're seeing this")
+                                .font(ReasiTypography.headline)
+                                .foregroundStyle(Color.reasi.text)
+                            Text(reason)
+                                .font(ReasiTypography.body)
+                                .foregroundStyle(Color.reasi.textMuted)
+                        }
+                    }
+                    renewalDisclosure
+                }
+                .padding(ReasiSpacing.s5)
+            }
+            .background(Color.reasi.background.ignoresSafeArea())
+            .navigationTitle("Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        showingDetailsSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
     private var renewalDisclosure: some View {
         Group {
             if let selectedOption {
@@ -333,30 +400,38 @@ struct ReasiProPaywallView: View {
 
     private var purchaseLinks: some View {
         VStack(spacing: ReasiSpacing.s3) {
-            Button {
-                Task { await restore() }
-            } label: {
-                if revenueCat.isRestoring {
-                    ProgressView().tint(Color.reasi.text)
-                } else {
-                    Text("Restore Purchases")
+            HStack(spacing: ReasiSpacing.s5) {
+                Button {
+                    Task { await restore() }
+                } label: {
+                    if revenueCat.isRestoring {
+                        ProgressView().tint(Color.reasi.text)
+                    } else {
+                        Text("Restore")
+                    }
                 }
-            }
-            .font(ReasiTypography.callout)
-            .foregroundStyle(Color.reasi.text)
-            .disabled(revenueCat.isPurchasing || revenueCat.isRestoring || isRefreshingAccess)
-            .accessibilityLabel("Restore Purchases")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.text)
+                .disabled(revenueCat.isPurchasing || revenueCat.isRestoring || isRefreshingAccess)
+                .accessibilityLabel("Restore Purchases")
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ReasiSpacing.s4) {
+                Menu {
+                    Button("Why Reasi Pro?") {
+                        showingDetailsSheet = true
+                    }
                     legalLinks
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .frame(width: 36, height: 32)
                 }
-                VStack(spacing: ReasiSpacing.s3) {
-                    legalLinks
-                }
+                .accessibilityLabel("More paywall details")
             }
-            .font(ReasiTypography.caption)
-            .foregroundStyle(Color.reasi.textMuted)
+
+            Text("Subscriptions are managed through your Apple ID.")
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
         }
         .frame(maxWidth: .infinity)
     }

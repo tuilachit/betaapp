@@ -142,15 +142,28 @@ final class ReasiOnboardingUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Reasi Pro"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Unlock your best grocery week"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Plan less. Shop with confidence."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["More weeks. Less work."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Plan, shop, and track with less effort."].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Annual"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["A$79.99"].exists)
         XCTAssertTrue(app.staticTexts["A$17.99"].exists)
         XCTAssertTrue(app.staticTexts["A$7.99"].exists)
         XCTAssertTrue(app.staticTexts["3 days free"].exists)
         XCTAssertTrue(app.buttons["Restore Purchases"].exists)
-        XCTAssertFalse(app.staticTexts["Keep planning without starting over"].exists)
+        XCTAssertTrue(app.buttons["More paywall details"].exists)
+        XCTAssertFalse(app.staticTexts["Plan less. Shop with confidence."].exists)
+        XCTAssertFalse(app.staticTexts["Your first complete week is included. Reasi Pro unlocks every new week after that."].exists)
+
+        app.buttons["More paywall details"].tap()
+        XCTAssertTrue(app.buttons["Why Reasi Pro?"].waitForExistence(timeout: 3))
+        app.buttons["Why Reasi Pro?"].tap()
+        XCTAssertTrue(app.staticTexts["Why you're seeing this"].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+
+        app.buttons["Close paywall"].tap()
+        XCTAssertTrue(app.staticTexts["Not ready yet?"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Keep my plan"].exists)
+        XCTAssertTrue(app.buttons["View plans"].exists)
     }
 
     private func isClearOfFloatingTabBar(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
