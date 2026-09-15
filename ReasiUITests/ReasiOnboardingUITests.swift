@@ -128,6 +128,31 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Shop recap"].waitForExistence(timeout: 3))
     }
 
+    @MainActor
+    func testPaywallUsesReasiVisualHierarchy() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowShoppingFixture",
+            "-ReasiSkipBrandIntro",
+            "-ReasiUITestUnauthenticated",
+            "-reasi-show-paywall",
+            "-reasi-show-paywall-fixture",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Reasi Pro"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Unlock your best grocery week"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Plan less. Shop with confidence."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Annual"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["A$79.99"].exists)
+        XCTAssertTrue(app.staticTexts["A$17.99"].exists)
+        XCTAssertTrue(app.staticTexts["A$7.99"].exists)
+        XCTAssertTrue(app.staticTexts["3 days free"].exists)
+        XCTAssertTrue(app.buttons["Restore Purchases"].exists)
+        XCTAssertFalse(app.staticTexts["Keep planning without starting over"].exists)
+    }
+
     private func isClearOfFloatingTabBar(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         element.isHittable && element.frame.maxY < app.frame.maxY - 150
     }

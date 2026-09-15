@@ -287,6 +287,32 @@ final class RevenueCatService {
         await refreshCustomerInfo()
     }
 
+    #if DEBUG
+    func loadDebugPaywallFixture() {
+        planOptions = [
+            ReasiProPlanOption(
+                id: Self.annualProductId,
+                kind: .annual,
+                localizedPrice: "A$79.99",
+                trialText: "3 days free"
+            ),
+            ReasiProPlanOption(
+                id: Self.monthlyProductId,
+                kind: .monthly,
+                localizedPrice: "A$17.99",
+                trialText: nil
+            ),
+            ReasiProPlanOption(
+                id: Self.weeklyProductId,
+                kind: .weekly,
+                localizedPrice: "A$7.99",
+                trialText: nil
+            )
+        ]
+        lastError = nil
+    }
+    #endif
+
     private func drainIdentityChanges() async {
         while processedIdentityRevision < identityRevision {
             let revision = identityRevision
