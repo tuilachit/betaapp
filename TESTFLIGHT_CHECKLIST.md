@@ -9,7 +9,7 @@ Current app metadata:
 - Privacy URL: `https://www.reasiai.com/privacy`
 - Terms URL: `https://www.reasiai.com/terms`
 - Sign-in: Apple, Google, and email after the Apple-auth PR is merged and configured
-- Subscription products: `ai.reasi.pro.monthly` and `ai.reasi.pro.annual`
+- Subscription products: `ai.reasi.pro.weekly`, `ai.reasi.pro.monthly`, and `ai.reasi.pro.annual`
 
 ## Before Archiving
 
@@ -49,11 +49,11 @@ Current app metadata:
 
 ## Subscription Checks
 
-1. In App Store Connect, create the `Reasi Pro` subscription group and both monthly and annual products.
-2. Set the intended Australian prices and the seven-day annual introductory trial.
-3. In RevenueCat, configure entitlement `reasi_pro`, offering `default`, both App Store products, and the public iOS SDK key used by the app.
+1. In App Store Connect, create the `Reasi Pro` subscription group and weekly, monthly, and annual products.
+2. Set the Australian prices to A$7.99 weekly, A$17.99 monthly, and A$79.99 annually. Configure the 3-day introductory trial on the annual product.
+3. In RevenueCat, configure entitlement `reasi_pro`, offering `default`, all three App Store products, and the public iOS SDK key used by the app.
 4. Configure and sign the RevenueCat-to-Supabase webhook; keep that secret server-side only.
-5. With sandbox accounts, test monthly purchase, annual trial, cancellation, expiration, billing failure, restore, and offline entitlement behavior.
+5. With sandbox accounts, test weekly and monthly purchases, the annual trial, cancellation, expiration, billing failure, restore, and offline entitlement behavior.
 6. Confirm each account receives exactly one complete free-preview plan and can keep using that plan after the preview is claimed.
 
 ## App Store Connect

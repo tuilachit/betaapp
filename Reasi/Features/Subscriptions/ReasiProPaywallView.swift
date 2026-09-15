@@ -136,6 +136,7 @@ struct ReasiProPaywallView: View {
             VStack(spacing: ReasiSpacing.s3) {
                 SkeletonBlock(height: 92, radius: ReasiRadius.lg)
                 SkeletonBlock(height: 92, radius: ReasiRadius.lg)
+                SkeletonBlock(height: 92, radius: ReasiRadius.lg)
             }
         } else if revenueCat.planOptions.isEmpty {
             VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
