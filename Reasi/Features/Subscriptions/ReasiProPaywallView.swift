@@ -14,32 +14,43 @@ struct ReasiProPaywallView: View {
     @State private var needsAccessRefresh = false
     @State private var didTrackView = false
     @State private var isRefreshingAccess = false
+    @State private var showingExitView = false
+    @State private var showingDetailsSheet = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                header
-                benefits
-                plans
+        Group {
+            if showingExitView {
+                exitView
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+                        header
+                        trialTimeline
+                        plans
 
-                if let message {
-                    Label(message, systemImage: needsAccessRefresh ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(needsAccessRefresh ? Color.reasi.warning : Color.reasi.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+                        if let message {
+                            Label(message, systemImage: needsAccessRefresh ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(needsAccessRefresh ? Color.reasi.warning : Color.reasi.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        primaryAction
+                        compactRenewalDisclosure
+                        purchaseLinks
+                    }
+                    .padding(.horizontal, ReasiSpacing.s5)
+                    .padding(.top, ReasiSpacing.s4)
+                    .padding(.bottom, ReasiSpacing.s8)
                 }
-
-                primaryAction
-                renewalDisclosure
-                purchaseLinks
             }
-            .padding(.horizontal, ReasiSpacing.s5)
-            .padding(.top, ReasiSpacing.s4)
-            .padding(.bottom, ReasiSpacing.s8)
         }
         .background(Color.reasi.background.ignoresSafeArea())
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isTransactionActive)
+        .sheet(isPresented: $showingDetailsSheet) {
+            detailsSheet
+        }
         .task {
             if !didTrackView {
                 didTrackView = true
@@ -52,7 +63,15 @@ struct ReasiProPaywallView: View {
                 await refreshServerAccess()
                 return
             }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-reasi-show-paywall-fixture") {
+                revenueCat.loadDebugPaywallFixture()
+            } else {
+                await revenueCat.loadPaywall()
+            }
+            #else
             await revenueCat.loadPaywall()
+            #endif
             selectDefaultPlan()
         }
         .onChange(of: revenueCat.planOptions) { _, _ in
@@ -61,62 +80,174 @@ struct ReasiProPaywallView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+        VStack(spacing: ReasiSpacing.s4) {
             HStack {
-                Label("Reasi Pro", systemImage: "sparkles")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.background)
-                    .padding(.horizontal, ReasiSpacing.s3)
-                    .padding(.vertical, ReasiSpacing.s2)
-                    .background(Color.reasi.text, in: Capsule())
-
                 Spacer()
+                Button {
+                    showingExitView = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.reasi.text)
+                        .frame(width: 42, height: 42)
+                        .background(Color.reasi.surfaceHigh, in: Circle())
+                }
+                .buttonStyle(ReasiPressStyle())
+                .disabled(isTransactionActive)
+                .accessibilityLabel("Close paywall")
+            }
+            .frame(maxWidth: .infinity)
 
+            Image("ReasiWordmark")
+                .renderingMode(.template)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 108, height: 29)
+                .clipped()
+                .foregroundStyle(Color.reasi.text)
+
+            Text("Reasi Pro")
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+
+            Text(paywallHeadline)
+                .font(ReasiTypography.title2)
+                .foregroundStyle(Color.reasi.text)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(paywallSubtitle)
+                .font(ReasiTypography.body)
+                .foregroundStyle(Color.reasi.textMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var paywallHeadline: String {
+        guard let trialText = selectedOption?.trialText else {
+            return "Choose your Reasi Pro plan."
+        }
+        let duration = trialText.replacingOccurrences(of: " free", with: "")
+            .replacingOccurrences(of: " days", with: "-day")
+        return "Start your \(duration) free trial."
+    }
+
+    private var paywallSubtitle: String {
+        selectedOption?.trialText == nil
+            ? "Plan, shop, and track with less effort."
+            : "Try Reasi Pro before your first charge."
+    }
+
+    @ViewBuilder
+    private var trialTimeline: some View {
+        if let selectedOption,
+           let trialText = selectedOption.trialText {
+            let duration = trialText.replacingOccurrences(of: " free", with: "")
+            HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                VStack(spacing: 0) {
+                    Circle()
+                        .fill(Color.reasi.success)
+                        .frame(width: 10, height: 10)
+                    Rectangle()
+                        .fill(Color.reasi.borderStrong)
+                        .frame(width: 2, height: 30)
+                    Circle()
+                        .fill(Color.reasi.text)
+                        .frame(width: 10, height: 10)
+                }
+                VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+                    trialStep(title: "Today", detail: "Full Pro access starts")
+                    trialStep(
+                        title: "In \(duration)",
+                        detail: "Billing begins at \(selectedOption.localizedPrice) \(selectedOption.kind.billingLabel)"
+                    )
+                }
+            }
+            .padding(.horizontal, ReasiSpacing.s2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("No charge today")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.text)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    private func trialStep(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+            Text(title)
+                .font(ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.text)
+            Text(detail)
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+        }
+    }
+
+    private var exitView: some View {
+        VStack(spacing: ReasiSpacing.s6) {
+            HStack {
+                Spacer()
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.reasi.text)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 42, height: 42)
                         .background(Color.reasi.surfaceHigh, in: Circle())
                 }
                 .buttonStyle(ReasiPressStyle())
                 .disabled(isTransactionActive)
-                .accessibilityLabel("Close")
+                .accessibilityLabel("Dismiss")
             }
 
-            Text("Keep planning without starting over")
-                .font(ReasiTypography.title)
+            Spacer(minLength: ReasiSpacing.s8)
+
+            Image("ReasiWordmark")
+                .renderingMode(.template)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 92, height: 25)
+                .clipped()
                 .foregroundStyle(Color.reasi.text)
-                .fixedSize(horizontal: false, vertical: true)
 
-            Text(reason)
-                .font(ReasiTypography.body)
-                .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
+            VStack(spacing: ReasiSpacing.s3) {
+                Text("Not ready yet?")
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.text)
+                    .multilineTextAlignment(.center)
 
-    private var benefits: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            benefit("Generate a fresh, cookable week whenever you need one", symbol: "calendar.badge.plus")
-            benefit("Plan again when your budget, household, or cravings change", symbol: "arrow.triangle.2.circlepath")
-            benefit("Existing plans and lists stay available without Pro", symbol: "lock.open")
-        }
-    }
+                Text("Your current plan stays yours. Come back when you need another week.")
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 300)
 
-    private func benefit(_ title: String, symbol: String) -> some View {
-        HStack(alignment: .top, spacing: ReasiSpacing.s3) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.reasi.text)
-                .frame(width: 26)
-            Text(title)
+            VStack(spacing: ReasiSpacing.s3) {
+                Button("Keep my plan") {
+                    dismiss()
+                }
+                .buttonStyle(ReasiPrimaryButtonStyle())
+
+                Button("View plans") {
+                    showingExitView = false
+                }
+                .buttonStyle(ReasiPressStyle())
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
         }
+        .padding(.horizontal, ReasiSpacing.s5)
+        .padding(.top, ReasiSpacing.s4)
+        .padding(.bottom, ReasiSpacing.s8)
     }
 
     @ViewBuilder
@@ -134,6 +265,7 @@ struct ReasiProPaywallView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         } else if revenueCat.isLoading && revenueCat.planOptions.isEmpty {
             VStack(spacing: ReasiSpacing.s3) {
+                SkeletonBlock(height: 92, radius: ReasiRadius.lg)
                 SkeletonBlock(height: 92, radius: ReasiRadius.lg)
                 SkeletonBlock(height: 92, radius: ReasiRadius.lg)
             }
@@ -157,39 +289,139 @@ struct ReasiProPaywallView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         } else {
             VStack(spacing: ReasiSpacing.s3) {
-                ForEach(revenueCat.planOptions) { option in
-                    planRow(option)
+                if let featuredPlanOption {
+                    featuredPlanCard(featuredPlanOption)
+
+                    if secondaryPlanOptions.count > 1 {
+                        HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                            ForEach(secondaryPlanOptions) { option in
+                                compactPlanCard(option)
+                            }
+                        }
+                    } else {
+                        ForEach(secondaryPlanOptions) { option in
+                            planRow(option)
+                        }
+                    }
+                } else {
+                    ForEach(revenueCat.planOptions) { option in
+                        planRow(option)
+                    }
                 }
             }
         }
     }
 
-    private func planRow(_ option: ReasiProPlanOption) -> some View {
-        let isSelected = selectedPlanId == option.id
-        return Button {
-            selectedPlanId = option.id
-            message = nil
-            ReasiHaptics.selection()
-        } label: {
-            HStack(spacing: ReasiSpacing.s4) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.reasi.text : Color.reasi.dim)
+    private var featuredPlanOption: ReasiProPlanOption? {
+        revenueCat.planOptions.first(where: { $0.kind == .annual })
+    }
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: ReasiSpacing.s2) {
+    private var secondaryPlanOptions: [ReasiProPlanOption] {
+        revenueCat.planOptions.filter { $0.kind != .annual }
+    }
+
+    private func featuredPlanCard(_ option: ReasiProPlanOption) -> some View {
+        let isSelected = selectedPlanId == option.id
+        return VStack(spacing: 0) {
+            Text(option.trialText?.uppercased() ?? "BEST VALUE")
+                .font(ReasiTypography.navLabel)
+                .foregroundStyle(Color.reasi.background)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, ReasiSpacing.s1)
+                .background(Color.reasi.success)
+
+            Button {
+                selectPlan(option)
+            } label: {
+                HStack(spacing: ReasiSpacing.s3) {
+                    selectionMark(isSelected)
+
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
                         Text(option.kind.title)
                             .font(ReasiTypography.headline)
                             .foregroundStyle(Color.reasi.text)
-                        if option.kind == .annual {
-                            Text("BEST VALUE")
-                                .font(ReasiTypography.navLabel)
-                                .foregroundStyle(Color.reasi.background)
-                                .padding(.horizontal, ReasiSpacing.s2)
-                                .padding(.vertical, 4)
-                                .background(Color.reasi.success, in: Capsule())
-                        }
                     }
+
+                    Spacer(minLength: ReasiSpacing.s3)
+
+                    VStack(alignment: .trailing, spacing: ReasiSpacing.s1) {
+                        Text(option.localizedPrice)
+                            .font(ReasiTypography.headline)
+                            .foregroundStyle(Color.reasi.text)
+                        Text(option.kind.billingLabel)
+                            .font(ReasiTypography.caption)
+                            .foregroundStyle(Color.reasi.muted)
+                    }
+                }
+                .padding(.horizontal, ReasiSpacing.s4)
+                .padding(.vertical, ReasiSpacing.s3)
+                .frame(minHeight: 72)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(ReasiPressStyle())
+        }
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(
+                    isSelected
+                        ? (option.kind == .annual ? Color.reasi.success : Color.reasi.text)
+                        : Color.reasi.border,
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+        }
+        .accessibilityLabel("\(option.kind.title) plan")
+        .accessibilityValue(planAccessibilityValue(option))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func compactPlanCard(_ option: ReasiProPlanOption) -> some View {
+        let isSelected = selectedPlanId == option.id
+        return Button {
+            selectPlan(option)
+        } label: {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                HStack(alignment: .top) {
+                    Text(option.kind.title)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Spacer(minLength: ReasiSpacing.s2)
+                    selectionMark(isSelected)
+                }
+                Text(option.localizedPrice)
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                Text(option.kind.billingLabel)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+            .padding(ReasiSpacing.s4)
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
+        }
+        .buttonStyle(ReasiPressStyle())
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+        }
+        .accessibilityLabel("\(option.kind.title) plan")
+        .accessibilityValue(planAccessibilityValue(option))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func planRow(_ option: ReasiProPlanOption) -> some View {
+        let isSelected = selectedPlanId == option.id
+        return Button {
+            selectPlan(option)
+        } label: {
+            HStack(spacing: ReasiSpacing.s3) {
+                selectionMark(isSelected)
+
+                VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+                    Text(option.kind.title)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
                     if let trialText = option.trialText {
                         Text(trialText)
                             .font(ReasiTypography.caption)
@@ -199,7 +431,7 @@ struct ReasiProPaywallView: View {
 
                 Spacer(minLength: ReasiSpacing.s3)
 
-                VStack(alignment: .trailing, spacing: 3) {
+                VStack(alignment: .trailing, spacing: ReasiSpacing.s1) {
                     Text(option.localizedPrice)
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
@@ -208,18 +440,43 @@ struct ReasiProPaywallView: View {
                         .foregroundStyle(Color.reasi.muted)
                 }
             }
-            .padding(ReasiSpacing.s4)
-            .frame(minHeight: 88)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
-            }
+            .padding(.horizontal, ReasiSpacing.s4)
+            .padding(.vertical, ReasiSpacing.s3)
+            .frame(minHeight: 72)
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(ReasiPressStyle())
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+        }
         .accessibilityLabel("\(option.kind.title) plan")
         .accessibilityValue(planAccessibilityValue(option))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func selectionMark(_ isSelected: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(isSelected ? Color.reasi.text : Color.clear)
+                .frame(width: 24, height: 24)
+            Circle()
+                .stroke(isSelected ? Color.reasi.text : Color.reasi.borderStrong, lineWidth: 1.5)
+                .frame(width: 24, height: 24)
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.reasi.background)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func selectPlan(_ option: ReasiProPlanOption) {
+        selectedPlanId = option.id
+        message = nil
+        ReasiHaptics.selection()
     }
 
     private var primaryAction: some View {
@@ -271,6 +528,39 @@ struct ReasiProPaywallView: View {
             || revenueCat.serverAccess?.isPro == true
     }
 
+    private var detailsSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
+                    if !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                            Text("Why you're seeing this")
+                                .font(ReasiTypography.headline)
+                                .foregroundStyle(Color.reasi.text)
+                            Text(reason)
+                                .font(ReasiTypography.body)
+                                .foregroundStyle(Color.reasi.textMuted)
+                        }
+                    }
+                    renewalDisclosure
+                }
+                .padding(ReasiSpacing.s5)
+            }
+            .background(Color.reasi.background.ignoresSafeArea())
+            .navigationTitle("Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        showingDetailsSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
     private var renewalDisclosure: some View {
         Group {
             if let selectedOption {
@@ -287,32 +577,60 @@ struct ReasiProPaywallView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    @ViewBuilder
+    private var compactRenewalDisclosure: some View {
+        if let compactRenewalText {
+            Text(compactRenewalText)
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var compactRenewalText: String? {
+        guard let selectedOption else { return nil }
+        if let trialText = selectedOption.trialText {
+            let duration = trialText.replacingOccurrences(of: " free", with: "")
+            return "After \(duration): \(selectedOption.localizedPrice) \(selectedOption.kind.billingLabel). Auto-renews."
+        }
+        return "\(selectedOption.localizedPrice) \(selectedOption.kind.billingLabel). Auto-renews."
+    }
+
     private var purchaseLinks: some View {
         VStack(spacing: ReasiSpacing.s3) {
-            Button {
-                Task { await restore() }
-            } label: {
-                if revenueCat.isRestoring {
-                    ProgressView().tint(Color.reasi.text)
-                } else {
-                    Text("Restore Purchases")
+            HStack(spacing: ReasiSpacing.s5) {
+                Button {
+                    Task { await restore() }
+                } label: {
+                    if revenueCat.isRestoring {
+                        ProgressView().tint(Color.reasi.text)
+                    } else {
+                        Text("Restore")
+                    }
                 }
-            }
-            .font(ReasiTypography.callout)
-            .foregroundStyle(Color.reasi.text)
-            .disabled(revenueCat.isPurchasing || revenueCat.isRestoring || isRefreshingAccess)
-            .accessibilityLabel("Restore Purchases")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.text)
+                .disabled(revenueCat.isPurchasing || revenueCat.isRestoring || isRefreshingAccess)
+                .accessibilityLabel("Restore Purchases")
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ReasiSpacing.s4) {
+                Menu {
+                    Button("Why Reasi Pro?") {
+                        showingDetailsSheet = true
+                    }
                     legalLinks
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .frame(width: 36, height: 32)
                 }
-                VStack(spacing: ReasiSpacing.s3) {
-                    legalLinks
-                }
+                .accessibilityLabel("More paywall details")
             }
-            .font(ReasiTypography.caption)
-            .foregroundStyle(Color.reasi.textMuted)
+
+            Text("Managed by Apple.")
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
         }
         .frame(maxWidth: .infinity)
     }

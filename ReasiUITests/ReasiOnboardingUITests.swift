@@ -250,6 +250,47 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Shop recap"].waitForExistence(timeout: 3))
     }
 
+    @MainActor
+    func testPaywallUsesReasiVisualHierarchy() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowShoppingFixture",
+            "-ReasiSkipBrandIntro",
+            "-ReasiUITestUnauthenticated",
+            "-reasi-show-paywall",
+            "-reasi-show-paywall-fixture",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Reasi Pro"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Start your 3-day free trial."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Try Reasi Pro before your first charge."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["In 3 days"].exists)
+        XCTAssertTrue(app.staticTexts["No charge today"].exists)
+        XCTAssertTrue(app.staticTexts["Annual"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["A$79.99"].exists)
+        XCTAssertTrue(app.staticTexts["A$17.99"].exists)
+        XCTAssertTrue(app.staticTexts["A$7.99"].exists)
+        XCTAssertTrue(app.buttons["Restore Purchases"].exists)
+        XCTAssertTrue(app.buttons["More paywall details"].exists)
+        XCTAssertTrue(app.staticTexts["Billing begins at A$79.99 per year"].exists)
+        XCTAssertTrue(app.staticTexts["After 3 days: A$79.99 per year. Auto-renews."].exists)
+        XCTAssertFalse(app.staticTexts["Your first complete week is included. Reasi Pro unlocks every new week after that."].exists)
+
+        app.buttons["More paywall details"].tap()
+        XCTAssertTrue(app.buttons["Why Reasi Pro?"].waitForExistence(timeout: 3))
+        app.buttons["Why Reasi Pro?"].tap()
+        XCTAssertTrue(app.staticTexts["Why you're seeing this"].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+
+        app.buttons["Close paywall"].tap()
+        XCTAssertTrue(app.staticTexts["Not ready yet?"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Keep my plan"].exists)
+        XCTAssertTrue(app.buttons["View plans"].exists)
+    }
+
     private func isClearOfFloatingTabBar(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         element.isHittable && element.frame.maxY < app.frame.maxY - 150
     }
