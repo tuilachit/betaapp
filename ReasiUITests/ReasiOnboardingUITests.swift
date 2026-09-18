@@ -29,9 +29,9 @@ final class ReasiOnboardingUITests: XCTestCase {
             assertAppearance(style, in: app, name: "Account \(name)")
             app.terminate()
 
-            app.launchArguments = fixtures + appearance + ["-reasi-show-paywall"]
+            app.launchArguments = fixtures + appearance + ["-reasi-show-paywall", "-reasi-show-paywall-fixture"]
             app.launch()
-            XCTAssertTrue(app.staticTexts["Keep planning without starting over"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts["Reasi Pro"].waitForExistence(timeout: 8))
             assertAppearance(style, in: app, name: "Paywall \(name)")
             app.terminate()
 
