@@ -3,6 +3,59 @@ import UIKit
 
 final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
+    func testOnboardingHasNoClippedTextAtAccessibilitySizes() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for size in ["UICTContentSizeCategoryAccessibilityXL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            for appearance in ["light", "dark"] {
+                app.launchArguments = [
+                    "-ReasiForceOnboarding", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                    "-reasi.settings.appearance", appearance,
+                    "-UIPreferredContentSizeCategoryName", size,
+                ]
+                app.launch()
+                XCTAssertTrue(app.buttons["Get started"].waitForExistence(timeout: 8))
+                let heading = app.staticTexts["Never think about\ngroceries again."]
+                let viewport = app.scrollViews.firstMatch.frame
+                XCTAssertLessThanOrEqual(heading.frame.height, viewport.height,
+                                         "The welcome heading must be readable within one viewport at \(size)")
+                XCTAssertGreaterThanOrEqual(heading.frame.minX, viewport.minX - 1)
+                XCTAssertLessThanOrEqual(heading.frame.maxX, viewport.maxX + 1)
+                XCTAssertLessThanOrEqual(heading.frame.maxY, app.buttons["Get started"].frame.minY,
+                                         "The welcome heading must not be hidden behind the fixed action")
+                try app.performAccessibilityAudit(for: .textClipped)
+                let attachment = XCTAttachment(screenshot: app.screenshot())
+                attachment.name = "Onboarding \(size) \(appearance)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+
+                app.buttons["Get started"].tap()
+                for (title, action) in [
+                    ("Plan your week, build your list, and shop smarter in minutes.", "Continue"),
+                    ("What makes groceries hardest?", "Skip"),
+                    ("How many are you cooking for?", "Skip"),
+                    ("What feels good to cook?", "Skip"),
+                    ("How should Reasi talk about money?", "Skip"),
+                    ("Where do you usually shop?", "Skip"),
+                    ("Save your Reasi setup.", ""),
+                ] {
+                    let titleElement = app.staticTexts[title]
+                    XCTAssertTrue(titleElement.waitForExistence(timeout: 3))
+                    XCTAssertGreaterThanOrEqual(titleElement.frame.minX, viewport.minX - 1)
+                    XCTAssertLessThanOrEqual(titleElement.frame.maxX, viewport.maxX + 1)
+                    try app.performAccessibilityAudit(for: .textClipped)
+                    let screen = XCTAttachment(screenshot: app.screenshot())
+                    screen.name = "\(title) \(size) \(appearance)"
+                    screen.lifetime = .keepAlways
+                    add(screen)
+                    if !action.isEmpty { app.buttons[action].tap() }
+                }
+                app.terminate()
+            }
+        }
+    }
+
+    @MainActor
     func testThemeScreensAndLargeTextInBothAppearances() {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -21,8 +21,8 @@ enum ReasiFontWeight {
 }
 
 enum ReasiTypography {
-    static func font(size: CGFloat, weight: ReasiFontWeight = .regular) -> Font {
-        .custom(weight.fontName, size: size, relativeTo: .body)
+    static func font(size: CGFloat, weight: ReasiFontWeight = .regular, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        .custom(weight.fontName, size: size, relativeTo: textStyle)
     }
 
     static let largeTitle = font(size: 42, weight: .semibold)
@@ -35,4 +35,3 @@ enum ReasiTypography {
     static let caption = font(size: 12, weight: .semibold)
     static let navLabel = font(size: 10.5, weight: .semibold)
 }
-
