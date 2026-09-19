@@ -59,7 +59,7 @@ struct ReasiApp: App {
                 .environment(network)
                 .environment(userSettings)
                 .environment(spending)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(userSettings.appearance.colorScheme)
                 .tint(Color.reasi.text)
                 .task {
                     await supabase.restoreSession()

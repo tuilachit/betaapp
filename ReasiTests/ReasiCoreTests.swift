@@ -1,5 +1,92 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Reasi
+
+@MainActor
+final class ReasiAppearanceTests: XCTestCase {
+    func testAppearanceDefaultsToLightAndRejectsUnknownValues() {
+        let name = "ReasiAppearanceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+        defaults.set("system", forKey: ReasiSettingKey.appearance)
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+        defaults.set(42, forKey: ReasiSettingKey.appearance)
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+    }
+
+    func testAppearanceUpdatesAndRestoresBothChoices() {
+        let name = "ReasiAppearanceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = UserSettingsStore(defaults: defaults)
+
+        for appearance in ReasiAppearance.allCases {
+            settings.setAppearance(appearance)
+            XCTAssertEqual(settings.appearance, appearance)
+            XCTAssertEqual(defaults.string(forKey: ReasiSettingKey.appearance), appearance.rawValue)
+            XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, appearance)
+        }
+        XCTAssertEqual(ReasiAppearance.light.colorScheme, .light)
+        XCTAssertEqual(ReasiAppearance.dark.colorScheme, .dark)
+    }
+
+    func testPaletteAdaptsAndPreservesOriginalDarkColors() {
+        let colors = Color.reasi
+        let original: [(Color, UInt)] = [
+            (colors.background, 0x09090A), (colors.backgroundElevated, 0x0D0D0F),
+            (colors.surface, 0x171719), (colors.surfaceHigh, 0x202023),
+            (colors.border, 0x29292D), (colors.borderStrong, 0x3D3D43),
+            (colors.text, 0xF4F4F5), (colors.textMuted, 0xB8B8BF),
+            (colors.muted, 0x85858E), (colors.dim, 0x5E5E66),
+            (colors.danger, 0xFF6B6B), (colors.warning, 0xFFD36A),
+            (colors.success, 0xD7F4D0), (colors.planHighlight, 0x20251E),
+        ]
+        for (color, hex) in original {
+            let dark = components(color, style: .dark)
+            XCTAssertEqual(dark[0], Double((hex >> 16) & 255) / 255, accuracy: 0.001)
+            XCTAssertEqual(dark[1], Double((hex >> 8) & 255) / 255, accuracy: 0.001)
+            XCTAssertEqual(dark[2], Double(hex & 255) / 255, accuracy: 0.001)
+            XCTAssertNotEqual(dark, components(color, style: .light))
+        }
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            XCTAssertEqual(components(colors.glass, style: style)[3], 0.82, accuracy: 0.001)
+            XCTAssertGreaterThan(contrast(colors.background, colors.text, style: style), 7)
+            XCTAssertGreaterThan(contrast(colors.background, colors.success, style: style), 4.5)
+            XCTAssertGreaterThan(contrast(colors.onImageMuted, colors.imageBackground, style: style), 4.5)
+        }
+        XCTAssertEqual(components(colors.onImage, style: .light), components(colors.onImage, style: .dark))
+    }
+
+    func testLightModeTextAndStatusContrastAcrossSurfaces() {
+        let colors = Color.reasi
+        for background in [colors.background, colors.backgroundElevated, colors.surface, colors.surfaceHigh, colors.planHighlight] {
+            for foreground in [colors.text, colors.textMuted, colors.muted, colors.dim, colors.danger, colors.warning, colors.success] {
+                XCTAssertGreaterThanOrEqual(contrast(foreground, background, style: .light), 4.5)
+            }
+        }
+    }
+
+    private func components(_ color: Color, style: UIUserInterfaceStyle) -> [Double] {
+        let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        XCTAssertTrue(resolved.getRed(&r, green: &g, blue: &b, alpha: &a))
+        return [Double(r), Double(g), Double(b), Double(a)]
+    }
+
+    private func contrast(_ foreground: Color, _ background: Color, style: UIUserInterfaceStyle) -> Double {
+        func luminance(_ color: Color) -> Double {
+            let rgb = components(color, style: style).prefix(3).map {
+                $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4)
+            }
+            return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
+        }
+        let first = luminance(foreground), second = luminance(background)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+}
 
 final class ReasiCoreTests: XCTestCase {
     func testPurposeSelectionKeepsPriorityOrderAndCapsAtThree() {

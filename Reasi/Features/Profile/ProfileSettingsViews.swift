@@ -67,7 +67,6 @@ struct PlanningPreferencesSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private var goalSection: some View {
@@ -266,7 +265,6 @@ struct SpendingPreferencesSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private var toneSection: some View {
@@ -436,7 +434,6 @@ struct StoreSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -498,7 +495,6 @@ struct ShoppingPreferencesSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func setHideCompletedItems(_ enabled: Bool) {
@@ -610,7 +606,6 @@ struct PlanningReminderSettingsView: View {
                 await userSettings.refreshNotificationPermission()
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder

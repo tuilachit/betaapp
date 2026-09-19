@@ -447,13 +447,13 @@ private struct MealDetailSheet: View {
                             .background(Color.reasi.surfaceHigh, in: Circle())
                     }
                     .buttonStyle(ReasiPressStyle())
+                    .accessibilityLabel("Close recipe")
                 }
             }
             .toolbarBackground(Color.reasi.background, for: .navigationBar)
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .preferredColorScheme(.dark)
     }
 
     private var hero: some View {
@@ -473,10 +473,10 @@ private struct MealDetailSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(meal.day)
                             .font(ReasiTypography.caption)
-                            .foregroundStyle(Color.reasi.textMuted)
+                            .foregroundStyle(Color.reasi.onImageMuted)
                         Text(meal.dish)
                             .font(ReasiTypography.title)
-                            .foregroundStyle(Color.reasi.text)
+                            .foregroundStyle(Color.reasi.onImage)
                             .minimumScaleFactor(0.82)
                             .lineLimit(2)
                     }

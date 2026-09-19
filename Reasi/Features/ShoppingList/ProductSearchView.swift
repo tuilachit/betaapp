@@ -86,7 +86,6 @@ struct ProductSearchView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .task {
             if context.startsWithScanner, !didPresentInitialScanner {
                 didPresentInitialScanner = true
@@ -766,7 +765,6 @@ private struct ProductCandidateDetailView: View {
                 .background(.ultraThinMaterial)
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func detailRow(_ title: String, value: String, symbol: String) -> some View {
