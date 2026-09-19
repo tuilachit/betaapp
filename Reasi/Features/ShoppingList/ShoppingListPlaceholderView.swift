@@ -123,12 +123,12 @@ struct ShoppingListPlaceholderView: View {
                     }
                 }
                 .padding(.top, ReasiSpacing.s8)
-                .padding(.bottom, ReasiSpacing.s3)
+                .padding(.bottom, shoppingContentBottomPadding)
             }
             .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
         }
         .background(Color.reasi.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottomTrailing) {
             shoppingDock
         }
         .onAppear(perform: updateIdleTimer)
@@ -442,27 +442,23 @@ struct ShoppingListPlaceholderView: View {
     @ViewBuilder
     private var shoppingDock: some View {
         if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
-            VStack(spacing: 0) {
-                HStack(spacing: ShoppingDockMetrics.controlGap) {
-                    if shouldShowFinishControl {
-                        finishShoppingControl
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        Spacer(minLength: 0)
-                    }
-                    assistantButton
+            HStack(spacing: ShoppingDockMetrics.controlGap) {
+                if shouldShowFinishControl {
+                    finishShoppingControl
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .padding(.horizontal, ReasiSpacing.s5)
-
-                Color.clear
-                    .frame(height: ShoppingDockMetrics.tabBarClearance)
+                assistantButton
             }
-            .padding(.top, ReasiSpacing.s3)
-            .background(Color.reasi.background)
-        } else {
-            Color.clear
-                .frame(height: ShoppingDockMetrics.tabBarClearance)
+            .padding(.horizontal, ReasiSpacing.s5)
+            .padding(.bottom, ShoppingDockMetrics.tabBarClearance)
         }
+    }
+
+    private var shoppingContentBottomPadding: CGFloat {
+        // Let rows scroll behind the floating controls, while allowing the last
+        // item to scroll completely above them at the end of the list.
+        ShoppingDockMetrics.tabBarClearance + ReasiSpacing.s3
+            + (coreLoop.hasPlan && !coreLoop.isShoppingCompleted ? ShoppingDockMetrics.finishHeight : 0)
     }
 
     private var shouldShowFinishControl: Bool {
