@@ -373,6 +373,49 @@ final class ReasiOnboardingUITests: XCTestCase {
     }
 
     @MainActor
+    func testShoppingAssistantFloatsOverScrollingListWithoutCheckedItems() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowShoppingFixture",
+            "-ReasiSkipBrandIntro",
+            "-ReasiUITestUnauthenticated",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+        app.buttons["Uncheck Baby spinach"].tap()
+        app.buttons["Uncheck Lemons"].tap()
+        XCTAssertFalse(app.staticTexts["Swipe to finish"].exists)
+
+        let assistant = app.buttons["Ask Reasi"]
+        let scrollView = app.scrollViews.firstMatch
+        XCTAssertTrue(assistant.isHittable)
+        let initialFrame = assistant.frame
+        XCTAssertGreaterThan(scrollView.frame.maxY, initialFrame.maxY,
+                             "The list viewport must extend behind the floating assistant.")
+        XCTAssertLessThan(initialFrame.maxY, app.buttons["List"].frame.minY)
+
+        let finalItem = app.staticTexts["Pita bread"]
+        for _ in 0..<8 {
+            if finalItem.isHittable && finalItem.frame.maxY < assistant.frame.minY { break }
+            scrollView.swipeUp()
+            XCTAssertTrue(assistant.isHittable)
+            XCTAssertEqual(assistant.frame.minY, initialFrame.minY, accuracy: 1)
+        }
+        XCTAssertTrue(finalItem.isHittable)
+        XCTAssertLessThan(finalItem.frame.maxY, assistant.frame.minY)
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Floating assistant over scrolled unchecked list"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        assistant.tap()
+        XCTAssertTrue(app.navigationBars["Shopping assistant"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
     func testPurposeSurveyAcceptsThreeOrderedPriorities() throws {
         continueAfterFailure = false
         let app = launchOnboarding()
