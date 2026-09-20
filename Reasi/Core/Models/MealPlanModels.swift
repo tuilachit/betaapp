@@ -194,6 +194,12 @@ struct ProductSnapshot: Codable, Hashable {
     var categoryGroup: String? = nil
     var category: String? = nil
     var subCategory: String? = nil
+    var unitPriceAud: Double? = nil
+    var purchaseQuantity: Int? = nil
+    var requiredAmount: Double? = nil
+    var requiredUnit: String? = nil
+    var confidence: String? = nil
+    var uncertaintyText: String? = nil
 
     init(
         sku: String?,
@@ -209,7 +215,13 @@ struct ProductSnapshot: Codable, Hashable {
         actualPriceAud: Double? = nil,
         categoryGroup: String? = nil,
         category: String? = nil,
-        subCategory: String? = nil
+        subCategory: String? = nil,
+        unitPriceAud: Double? = nil,
+        purchaseQuantity: Int? = nil,
+        requiredAmount: Double? = nil,
+        requiredUnit: String? = nil,
+        confidence: String? = nil,
+        uncertaintyText: String? = nil
     ) {
         self.sku = sku
         self.productName = productName
@@ -225,6 +237,12 @@ struct ProductSnapshot: Codable, Hashable {
         self.categoryGroup = categoryGroup
         self.category = category
         self.subCategory = subCategory
+        self.unitPriceAud = unitPriceAud
+        self.purchaseQuantity = purchaseQuantity
+        self.requiredAmount = requiredAmount
+        self.requiredUnit = requiredUnit
+        self.confidence = confidence
+        self.uncertaintyText = uncertaintyText
     }
 
     init(candidate: ProductCandidate, actualPriceAud: Double? = nil) {
@@ -242,6 +260,183 @@ struct ProductSnapshot: Codable, Hashable {
         categoryGroup = candidate.categoryGroup
         category = candidate.category
         subCategory = candidate.subCategory
+        confidence = candidate.confidence.rawValue
+        uncertaintyText = candidate.uncertaintyText
+    }
+}
+
+/// Catalog prices are per sold pack. Basket totals account for every required pack.
+struct ProductPurchaseEstimate {
+    let amount: Double
+    let unit: String
+
+    private init(amount: Double, unit: String) {
+        self.amount = amount
+        self.unit = unit
+    }
+
+    /// Older plans use labels such as “1 small pack, about 300g”. Prefer their
+    /// explicit weight/volume, without converting cups or handfuls into guesses.
+    init?(shoppingQuantity: String, ingredientName: String) {
+        let text = shoppingQuantity.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let exact = Self(quantity: text) { self = exact; return }
+        let weightPattern = #"(\d+(?:\.\d+)?)\s*(kg|g|ml|l)\b"#
+        let weights = text.matches(of: try! Regex(weightPattern))
+        if weights.count == 1,
+           !text.contains(" or "), !text.contains("–"), !text.contains("-"),
+           let match = weights.first,
+           let measured = Self(quantity: String(text[match.range])) {
+            let prefix = String(text[..<match.range.lowerBound])
+            let suffix = String(text[match.range.upperBound...])
+            guard !text.contains("+"), !text.contains(" per "),
+                  suffix.range(of: #"^\s*(?:pack|bottle|jar|can|tub|total)?\s*\)?$"#, options: .regularExpression) != nil else { return nil }
+            if let multiplierMatch = prefix.range(of: #"^\d+\s*[x×]\s*$"#, options: .regularExpression),
+               let multiplier = Double(prefix[multiplierMatch].replacingOccurrences(of: #"[^\d]"#, with: "", options: .regularExpression)) {
+                self.init(amount: measured.amount * multiplier, unit: measured.unit)
+                return
+            }
+            // A second number is only safe when the label explicitly states the total.
+            if prefix.rangeOfCharacter(from: .decimalDigits) != nil,
+               !prefix.contains("about"), !prefix.contains("approx"), !prefix.contains("total") { return nil }
+            self = measured
+            return
+        }
+        let words = text.split(separator: " ").map(String.init)
+        guard let first = words.first, let count = Double(first), count.isFinite, count > 0 else { return nil }
+        let qualifiers: Set<String> = ["small", "medium", "large", "whole"]
+        let ingredientWords = Set(ShoppingProductMatcher.tokens(ingredientName))
+        let remainder = words.dropFirst().filter { !qualifiers.contains($0) }
+        if remainder.isEmpty || Set(ShoppingProductMatcher.tokens(remainder.joined(separator: " "))).isSubset(of: ingredientWords) {
+            self.init(amount: count, unit: "each")
+        } else if let measure = Self(quantity: "\(first) \(remainder.joined(separator: " "))") {
+            self = measure
+        } else {
+            return nil
+        }
+    }
+
+    init?(quantity: String) {
+        let pattern = #"^(\d+(?:\.\d+)?)\s*(kg|g|grams?|kilograms?|ml|l|litres?|each|ea|units?|pieces?|bulbs?|heads?|packs?|packets?|bottles?|jars?|cans?|tubs?|bunch(?:es)?|punnets?)$"#
+        let text = quantity.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let numberRange = Range(match.range(at: 1), in: text),
+              let unitRange = Range(match.range(at: 2), in: text),
+              let value = Double(text[numberRange]), value.isFinite, value > 0 else { return nil }
+        let parsedUnit = String(text[unitRange])
+        switch parsedUnit {
+        case "kg", "kilogram", "kilograms": amount = value * 1_000; unit = "g"
+        case "g", "gram", "grams": amount = value; unit = "g"
+        case "l", "litre", "litres": amount = value * 1_000; unit = "ml"
+        case "ml": amount = value; unit = "ml"
+        case "each", "ea", "unit", "units", "piece", "pieces", "bulb", "bulbs", "head", "heads": amount = value; unit = "each"
+        default: amount = value; unit = "pack"
+        }
+    }
+
+    func packCount(for candidate: ProductCandidate) -> Int? {
+        if unit == "pack" { return boundedCount(amount) }
+        let size = (candidate.size ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if unit == "each", candidate.displayName.lowercased().contains("loose") || size.contains("each") {
+            return boundedCount(amount)
+        }
+        let cleanSize = size.replacingOccurrences(of: #"^approx\.?\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+each$"#, with: "", options: .regularExpression)
+        let components = cleanSize.components(separatedBy: CharacterSet(charactersIn: "x×"))
+        let multiplier = components.count == 2 ? Double(components[0].trimmingCharacters(in: .whitespaces)) : 1
+        guard let multiplier, multiplier.isFinite, multiplier > 0,
+              let pack = ProductPurchaseEstimate(quantity: components.last ?? cleanSize),
+              pack.unit == unit || (unit == "each" && pack.unit == "pack") else { return nil }
+        return boundedCount(amount / (pack.amount * multiplier))
+    }
+
+    private func boundedCount(_ value: Double) -> Int? {
+        guard value.isFinite, value > 0, value <= 100 else { return nil }
+        return Int(ceil(value))
+    }
+
+    static func snapshot(candidate: ProductCandidate, item: ShoppingListItem, actualUnitPrice: Double? = nil) -> ProductSnapshot {
+        let requirement = ProductPurchaseEstimate(shoppingQuantity: item.quantity, ingredientName: item.name)
+        let count = requirement?.packCount(for: candidate)
+        let unitPrice = actualUnitPrice ?? candidate.priceAud
+        let validPrice = unitPrice.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        let total = count.flatMap { count in validPrice.map { ($0 * 100).rounded() * Double(count) / 100 } }
+        var snapshot = ProductSnapshot(candidate: candidate)
+        snapshot = ProductSnapshot(
+            sku: snapshot.sku, productName: snapshot.productName, brand: snapshot.brand, size: snapshot.size,
+            priceAud: total, imageUrl: snapshot.imageUrl, capturedAt: snapshot.capturedAt,
+            barcode: snapshot.barcode, sourceName: snapshot.sourceName, observationId: snapshot.observationId,
+            actualPriceAud: actualUnitPrice == nil ? nil : total,
+            categoryGroup: snapshot.categoryGroup, category: snapshot.category, subCategory: snapshot.subCategory,
+            unitPriceAud: validPrice, purchaseQuantity: count, requiredAmount: requirement?.amount, requiredUnit: requirement?.unit,
+            confidence: snapshot.confidence, uncertaintyText: snapshot.uncertaintyText
+        )
+        return snapshot
+    }
+}
+
+/// A search hit is not necessarily the ingredient requested (ginger beer, for
+/// example). Only choose actual retailer SKUs whose identity matches the list.
+enum ShoppingProductMatcher {
+    static func tokens(_ value: String) -> [String] {
+        value.lowercased().replacingOccurrences(of: "corn flour", with: "cornflour")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && $0 != "fresh" }
+            .map { word in
+                if word.count > 3, word.hasSuffix("s"), !word.hasSuffix("ss") { return String(word.dropLast()) }
+                return word
+            }
+    }
+
+    static func matches(_ ingredient: String, candidate: ProductCandidate, storeId: StoreID) -> Bool {
+        let retailer = storeId == .woolworthsRhodes ? "woolworths" : "coles"
+        guard candidate.sku?.isEmpty == false, candidate.imageUrl?.scheme == "https",
+              candidate.confidence != .low,
+              (candidate.retailer ?? candidate.sourceName).lowercased().contains(retailer) else { return false }
+        let name = Set(tokens(candidate.name))
+        let alternatives = ingredient.components(separatedBy: "/").map { Set(tokens($0)) }
+        guard let requested = alternatives.first(where: { !$0.isEmpty && $0.isSubset(of: name) }) else { return false }
+        let forms: Set<String> = ["sauce", "paste", "powder", "ground", "dried", "soup", "stock", "juice", "drink", "beer", "gin", "flavoured", "seasoning", "marinated", "crumbed", "salt", "butter", "oil", "bread", "chip", "cracker", "spread", "dip", "pesto", "pickled", "crushed", "grated", "chopped", "jam", "marmalade", "conserve", "syrup", "biscuit", "chocolate", "candy"]
+        guard name.intersection(forms).subtracting(requested).isEmpty else { return false }
+        let proteins: Set<String> = ["beef", "pork", "chicken", "turkey", "lamb", "duck", "fish", "salmon", "tuna", "prawn", "tofu"]
+        guard name.intersection(proteins).subtracting(requested).isEmpty else { return false }
+        if requested.contains("onion"), !requested.contains("shallot"), name.contains("shallot") { return false }
+        if ingredient.localizedCaseInsensitiveContains("fresh"), !name.intersection(["frozen", "dried", "grated", "paste"]).isEmpty { return false }
+        return true
+    }
+
+    static func choose(for item: ShoppingListItem, candidates: [ProductCandidate], storeId: StoreID) -> ProductCandidate? {
+        candidates.filter { matches(item.name, candidate: $0, storeId: storeId) }
+            .sorted { left, right in
+                let a = ProductPurchaseEstimate.snapshot(candidate: left, item: item)
+                let b = ProductPurchaseEstimate.snapshot(candidate: right, item: item)
+                // Compare the full number of packs, not the cheapest shelf ticket.
+                if a.priceAud != b.priceAud { return (a.priceAud ?? .infinity) < (b.priceAud ?? .infinity) }
+                if a.purchaseQuantity != b.purchaseQuantity { return (a.purchaseQuantity ?? 101) < (b.purchaseQuantity ?? 101) }
+                return (left.priceAud ?? .infinity) < (right.priceAud ?? .infinity)
+            }.first
+    }
+}
+
+struct AutomaticProductSelection {
+    let item: ShoppingListItem
+    let candidate: ProductCandidate
+    let snapshot: ProductSnapshot
+    let shoppingListId: String
+    let sectionLabel: String
+    let sectionSortKey: Int
+    let sectionType: ShoppingSectionType
+}
+
+enum ProductSelectionIssue: LocalizedError {
+    case quantityOrPriceUnknown
+    case overBudget(Double)
+
+    var errorDescription: String? {
+        switch self {
+        case .quantityOrPriceUnknown: "We can’t confirm the price for the quantity you need. Choose a product with a matching pack size and price."
+        case .overBudget(let amount): "This change would put your estimated basket \(amount.formatted(.currency(code: "AUD"))) over budget. Choose a lower-cost product."
+        }
     }
 }
 
@@ -511,6 +706,15 @@ struct BasketPriceSummary: Equatable {
     var coverageFraction: Double {
         guard totalItemCount > 0 else { return 0 }
         return Double(pricedItemCount) / Double(totalItemCount)
+    }
+
+    func issueReplacing(_ item: ShoppingListItem, with product: ProductSnapshot, budget: Double?) -> ProductSelectionIssue? {
+        guard let budget, budget.isFinite, budget > 0 else { return nil }
+        guard let price = product.priceAud, price.isFinite, price >= 0 else { return .quantityOrPriceUnknown }
+        let previous = item.product?.actualPriceAud ?? item.product?.priceAud ?? 0
+        let updatedCents = ((plannedTotalAud - previous + price) * 100).rounded()
+        let budgetCents = (budget * 100).rounded()
+        return updatedCents > budgetCents ? .overBudget((updatedCents - budgetCents) / 100) : nil
     }
 }
 
@@ -976,10 +1180,11 @@ struct WeekPlan: Identifiable, Codable, Hashable {
     var kind: PlanKind = .week
     var entryMethod: EntryMethod? = nil
     var occasionAt: Date? = nil
+    var budgetTargetAud: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, source, storeId, storeName, weekLabel, planningNotes, meals, shoppingList
-        case kind, entryMethod, occasionAt
+        case kind, entryMethod, occasionAt, budgetTargetAud
     }
 
     init(
@@ -993,7 +1198,8 @@ struct WeekPlan: Identifiable, Codable, Hashable {
         shoppingList: ShoppingList,
         kind: PlanKind = .week,
         entryMethod: EntryMethod? = nil,
-        occasionAt: Date? = nil
+        occasionAt: Date? = nil,
+        budgetTargetAud: Double? = nil
     ) {
         self.id = id
         self.source = source
@@ -1006,6 +1212,7 @@ struct WeekPlan: Identifiable, Codable, Hashable {
         self.kind = kind
         self.entryMethod = entryMethod
         self.occasionAt = occasionAt
+        self.budgetTargetAud = budgetTargetAud
     }
 
     init(from decoder: Decoder) throws {
@@ -1021,6 +1228,7 @@ struct WeekPlan: Identifiable, Codable, Hashable {
         kind = try container.decodeIfPresent(PlanKind.self, forKey: .kind) ?? .week
         entryMethod = try container.decodeIfPresent(EntryMethod.self, forKey: .entryMethod)
         occasionAt = try container.decodeIfPresent(Date.self, forKey: .occasionAt)
+        budgetTargetAud = try container.decodeIfPresent(Double.self, forKey: .budgetTargetAud)
     }
 
     func withMeals(_ meals: [MealSummary]) -> WeekPlan {
@@ -1035,7 +1243,8 @@ struct WeekPlan: Identifiable, Codable, Hashable {
             shoppingList: shoppingList,
             kind: kind,
             entryMethod: entryMethod,
-            occasionAt: occasionAt
+            occasionAt: occasionAt,
+            budgetTargetAud: budgetTargetAud
         )
     }
 }

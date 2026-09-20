@@ -30,7 +30,16 @@ struct ReasiApp: App {
 
     private static var initialPlan: WeekPlan? {
         #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture")
+        if ProcessInfo.processInfo.arguments.contains("-ReasiShopSavedFixture") {
+            return FixtureWeekPlan.completedShop(unpriced: ProcessInfo.processInfo.arguments.contains("-ReasiUnpricedShopFixture"))
+        }
+        if ProcessInfo.processInfo.arguments.contains("-ReasiProductPickerFixture") {
+            return FixtureWeekPlan.productPickerPlan(budgeted: ProcessInfo.processInfo.arguments.contains("-ReasiPickerBudgetFixture"))
+        }
+        if ProcessInfo.processInfo.arguments.contains("-ReasiMatchCatalogueFixture") {
+            return FixtureWeekPlan.catalogueMatchingPlan
+        }
+        return ProcessInfo.processInfo.arguments.contains("-ReasiShowShoppingFixture")
             ? FixtureWeekPlan.current
             : nil
         #else
