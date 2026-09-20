@@ -349,6 +349,199 @@ final class ReasiOnboardingUITests: XCTestCase {
     }
 
     @MainActor
+    func testSavedIngredientsResolveToRealCatalogueProducts() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiMatchCatalogueFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Coles Regular Pork Mince"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Estimated total"].exists)
+        XCTAssertTrue(app.buttons["Uncheck Pork mince"].exists)
+        XCTAssertTrue(app.staticTexts["500g"].exists)
+        XCTAssertFalse(app.staticTexts["Need 200g"].exists)
+        XCTAssertTrue(app.buttons["Change product for Pork mince"].isHittable)
+        XCTAssertFalse(app.staticTexts["Choose a product"].exists)
+        app.buttons["Change product for Pork mince"].tap()
+        XCTAssertTrue(app.navigationBars["Change product"].waitForExistence(timeout: 5))
+        app.buttons["Close product search"].tap()
+
+        app.buttons["Product details for Pork mince"].tap()
+        XCTAssertTrue(app.staticTexts["200g · Meat"].waitForExistence(timeout: 5))
+        app.buttons["Close"].tap()
+        XCTAssertTrue(app.buttons["Uncheck Pork mince"].exists, "Opening details must not toggle the item")
+
+        let top = XCTAttachment(screenshot: app.screenshot())
+        top.name = "Saved list resolved to actual Coles products"
+        top.lifetime = .keepAlways
+        add(top)
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Coles Soy Sauce"].exists)
+        XCTAssertTrue(app.staticTexts["Squid Fish Sauce"].exists)
+        let bottom = XCTAttachment(screenshot: app.screenshot())
+        bottom.name = "Specific sauce products with catalogue photos"
+        bottom.lifetime = .keepAlways
+        add(bottom)
+    }
+
+    @MainActor
+    func testSavedShopShowsSubtotalAndOpensMatchingRecap() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for appearance in ["light", "dark"] {
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiShopSavedFixture", "-ReasiShowSpendFixture",
+                                   "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated", "-reasi.settings.appearance", appearance]
+            app.launch()
+            let card = app.otherElements["shop-saved-card"]
+            XCTAssertTrue(card.waitForExistence(timeout: 8))
+            XCTAssertTrue(card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Estimated subtotal")).firstMatch.exists)
+            XCTAssertTrue(card.staticTexts["Excludes 2 unpriced items"].exists)
+            XCTAssertFalse(app.staticTexts["Swipe to finish"].exists)
+            XCTAssertFalse(app.buttons["Ask Reasi"].exists)
+            let button = app.buttons["view-saved-shop"]
+            XCTAssertTrue(button.isHittable)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Shop saved \(appearance)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            button.tap()
+            XCTAssertTrue(app.staticTexts["Shop recap"].waitForExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testSavedShopHandlesMissingPricesAndLargeText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiShopSavedFixture", "-ReasiUnpricedShopFixture", "-ReasiShowSpendFixture",
+                               "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated", "-reasi.settings.appearance", "light",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        let card = app.otherElements["shop-saved-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        XCTAssertTrue(card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Total unavailable")).firstMatch.exists)
+        XCTAssertFalse(card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "$0.00")).firstMatch.exists)
+        let button = app.buttons["view-saved-shop"]
+        reveal(button, in: app)
+        XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX - 20)
+        XCTAssertGreaterThanOrEqual(button.frame.minX, 20)
+        try app.performAccessibilityAudit(for: .textClipped)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Shop saved with large text and unavailable prices"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        button.tap()
+        XCTAssertTrue(app.staticTexts["THIS WEEK"].waitForExistence(timeout: 5), "Without a loaded matching trip, the button should open Spend history")
+        XCTAssertFalse(app.staticTexts["Shop recap"].exists)
+    }
+
+    @MainActor
+    func testProductPickerKeepsResultsConciseAndMovesCalculationsIntoDetails() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiProductPickerFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        app.launch()
+        let change = app.buttons["Change product for Brown onions"]
+        XCTAssertTrue(change.waitForExistence(timeout: 8))
+        change.tap()
+        let review = app.buttons["Review Coles Brown Onions"]
+        XCTAssertTrue(review.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "Show the prefilled results without covering them with the keyboard")
+        XCTAssertFalse(app.staticTexts["Required quantity or price unconfirmed"].exists)
+        XCTAssertFalse(app.scrollViews["product-search-results"].staticTexts["Fresh Produce"].exists)
+        XCTAssertTrue(app.buttons["Current product: Coles Loose Brown Onions"].exists)
+        XCTAssertFalse(app.buttons["Current product: Coles Loose Brown Onions"].isEnabled)
+        review.tap()
+        XCTAssertTrue(app.navigationBars["Product details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["2 medium"].exists)
+        XCTAssertTrue(app.staticTexts["Quantity or price needs checking"].exists)
+        XCTAssertFalse(app.textFields["Shelf price per pack"].exists)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Clean onion product picker"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
+    func testProductPickerPreservesBudgetReviewAndRecalculatesShelfPrice() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiProductPickerFixture", "-ReasiPickerBudgetFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        app.launch()
+        let change = app.buttons["Change product for Brown onions"]
+        XCTAssertTrue(change.waitForExistence(timeout: 8))
+        change.tap()
+        let review = app.buttons["Review Coles Brown Onions"]
+        XCTAssertTrue(review.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Over budget"].firstMatch.exists)
+        review.tap()
+        let useProduct = app.buttons["Use this product"]
+        XCTAssertTrue(useProduct.waitForExistence(timeout: 5))
+        XCTAssertFalse(useProduct.isEnabled)
+        let shelfPrice = app.buttons["Different shelf price?"]
+        for _ in 0..<4 where !shelfPrice.isHittable { app.swipeUp() }
+        XCTAssertTrue(shelfPrice.isHittable)
+        shelfPrice.tap()
+        let field = app.textFields["Shelf price per pack"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("1.50")
+        XCTAssertTrue(useProduct.isEnabled, "Recalculate the full basket when the shelf price is corrected")
+    }
+
+    @MainActor
+    func testShoppingProductControlsRemainUsableWithLargeText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ReasiShowShoppingFixture", "-ReasiMatchCatalogueFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"
+        ]
+        app.launch()
+        let change = app.buttons["Change product for Pork mince"]
+        XCTAssertTrue(change.waitForExistence(timeout: 8))
+        for _ in 0..<5 where !change.isHittable || change.frame.maxY > app.frame.maxY - 190 {
+            app.swipeUp()
+        }
+        XCTAssertTrue(change.isHittable)
+        XCTAssertGreaterThanOrEqual(change.frame.height, 44)
+        XCTAssertLessThanOrEqual(change.frame.maxX, app.frame.maxX - 10)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Compact shopping controls with large text"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        change.tap()
+        XCTAssertTrue(app.navigationBars["Change product"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testShoppingListShowsChosenProductsAndAVisibleChangeAction() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Coles Baby Spinach"].exists)
+        XCTAssertTrue(app.staticTexts["Priced subtotal"].exists)
+        let change = app.buttons["Change product for Baby spinach"]
+        XCTAssertTrue(change.isHittable)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Product choices and budget overview"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        change.tap()
+        XCTAssertTrue(app.navigationBars["Change product"].waitForExistence(timeout: 5))
+        app.buttons["Close product search"].tap()
+        XCTAssertTrue(app.buttons["Uncheck Baby spinach"].exists)
+    }
+
+    @MainActor
     func testShoppingListScrollsPastDockControls() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

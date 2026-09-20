@@ -639,3 +639,342 @@ enum FixtureWeekPlan {
         }
     }
 }
+
+#if DEBUG
+extension FixtureWeekPlan {
+    // Recorded retailer catalogue responses for UI verification. Never used as
+    // a fallback for customer lists or written to a customer account.
+    static var catalogueMatchingPlan: WeekPlan {
+        var plan = current
+        let ingredients = [
+            ("Pork mince", "200g", "Meat"),
+            ("Cornflour", "1 small pack, about 300g", "Aisle 7"),
+            ("Soy sauce", "250ml bottle", "Aisle 8"),
+            ("Fish sauce", "200ml bottle", "Aisle 8")
+        ]
+        plan.shoppingList.sections = []
+        for (index, ingredient) in ingredients.enumerated() {
+            let item = ShoppingListItem(id: "catalogue-\(index)", name: ingredient.0, quantity: ingredient.1,
+                                        checked: index == 0, aisleLabel: ingredient.2, sectionType: .unknown, product: nil)
+            if let existing = plan.shoppingList.sections.firstIndex(where: { $0.label == ingredient.2 }) {
+                plan.shoppingList.sections[existing].items.append(item)
+            } else {
+                plan.shoppingList.sections.append(ShoppingListSection(label: ingredient.2, sortKey: index, type: .unknown, items: [item]))
+            }
+        }
+        return plan
+    }
+
+    static var catalogueCandidates: [ProductCandidate] {
+        try! JSONDecoder().decode([ProductCandidate].self, from: Data(#"""
+[
+    {
+        "sku": "8781518",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "PORK/HAMS/BACON",
+        "category": "Pork",
+        "subCategory": "Meat & Seafood",
+        "name": "Regular Pork Mince",
+        "brand": "Coles",
+        "size": "500g",
+        "priceAud": 7,
+        "unitPriceAud": 14,
+        "unitQuantity": 1,
+        "unitMeasure": "kg",
+        "comparablePrice": "$14.00/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/8/8781518.jpg",
+        "productUrl": "https://www.coles.com.au/product/regular-pork-mince-8781518",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/regular-pork-mince-8781518",
+        "capturedAt": "2026-05-21T18:06:10.443Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "7352902",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "MEAL SOLUTIONS",
+        "category": "Baking",
+        "subCategory": "Pantry",
+        "name": "Cornflour",
+        "brand": "Coles",
+        "size": "300g",
+        "priceAud": 1.35,
+        "unitPriceAud": 4.5,
+        "unitQuantity": 1,
+        "unitMeasure": "kg",
+        "comparablePrice": "$4.50/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/7/7352902.jpg",
+        "productUrl": "https://www.coles.com.au/product/cornflour-7352902",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/cornflour-7352902",
+        "capturedAt": "2026-05-21T14:50:22.326Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "2579434",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "MEAL SOLUTIONS",
+        "category": "Sauces",
+        "subCategory": "Pantry",
+        "name": "Soy Sauce",
+        "brand": "Coles",
+        "size": "500mL",
+        "priceAud": 1.9,
+        "unitPriceAud": 0.38,
+        "unitQuantity": 100,
+        "unitMeasure": "ml",
+        "comparablePrice": "$0.38/ 100mL",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/2/2579434.jpg",
+        "productUrl": "https://www.coles.com.au/product/soy-sauce-2579434",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/soy-sauce-2579434",
+        "capturedAt": "2026-05-21T13:19:02.549Z",
+        "freshnessLabel": "Coles data captured 21 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "5420998",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "MEAL SOLUTIONS",
+        "category": "International Foods",
+        "subCategory": "Pantry",
+        "name": "Fish Sauce",
+        "brand": "Squid",
+        "size": "300mL",
+        "priceAud": 2.85,
+        "unitPriceAud": 0.95,
+        "unitQuantity": 100,
+        "unitMeasure": "ml",
+        "comparablePrice": "$0.95/ 100mL",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/5/5420998.jpg",
+        "productUrl": "https://www.coles.com.au/product/fish-sauce-5420998",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/fish-sauce-5420998",
+        "capturedAt": "2026-05-21T14:06:13.397Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    }
+]
+"""#.utf8))
+    }
+}
+#endif
+
+#if DEBUG
+extension FixtureWeekPlan {
+    static func completedShop(unpriced: Bool) -> WeekPlan {
+        var plan = catalogueMatchingPlan
+        for section in plan.shoppingList.sections.indices {
+            for index in plan.shoppingList.sections[section].items.indices {
+                let item = plan.shoppingList.sections[section].items[index]
+                let candidate = catalogueCandidates.first { $0.displayName.localizedCaseInsensitiveContains(item.name) }!
+                plan.shoppingList.sections[section].items[index] = ShoppingListItem(
+                    id: item.id, name: item.name, quantity: item.quantity, checked: true,
+                    aisleLabel: item.aisleLabel, sectionType: item.sectionType,
+                    product: unpriced ? nil : ProductPurchaseEstimate.snapshot(candidate: candidate, item: item),
+                    importedCandidate: candidate
+                )
+            }
+        }
+        let originalOnion = productPickerPlan(budgeted: false).shoppingList.sections[0].items[0]
+        let onion = ShoppingListItem(id: originalOnion.id, name: originalOnion.name, quantity: originalOnion.quantity,
+                                     checked: true, aisleLabel: originalOnion.aisleLabel, sectionType: originalOnion.sectionType,
+                                     product: unpriced ? nil : originalOnion.product, importedCandidate: originalOnion.importedCandidate)
+        let produce = [onion] + ["Garlic", "Fresh ginger"].map {
+            ShoppingListItem(id: "saved-\($0)", name: $0, quantity: "1", checked: true,
+                             aisleLabel: "Fresh Produce", sectionType: .perimeter, product: nil)
+        }
+        plan.shoppingList = ShoppingList(
+            id: unpriced ? "unpriced-ui-test-list" : "ui-test-list",
+            storeId: plan.storeId, storeName: plan.storeName,
+            sections: [ShoppingListSection(label: "Fresh Produce", sortKey: -1, type: .perimeter, items: produce)] + plan.shoppingList.sections,
+            status: .completed, completedAt: "2026-09-20T10:54:00.000Z"
+        )
+        return plan
+    }
+
+    static func productPickerPlan(budgeted: Bool) -> WeekPlan {
+        var plan = current
+        let candidate = productPickerCandidates.first { $0.sku == "4239517" }!
+        let ingredient = ShoppingListItem(id: "picker-onions", name: "Brown onions", quantity: budgeted ? "400g" : "2 medium", checked: false, aisleLabel: "Fresh Produce", sectionType: .perimeter, product: nil)
+        let item = ShoppingListItem(id: ingredient.id, name: ingredient.name, quantity: ingredient.quantity,
+                                   checked: false, aisleLabel: ingredient.aisleLabel, sectionType: ingredient.sectionType,
+                                   product: ProductPurchaseEstimate.snapshot(candidate: candidate, item: ingredient), importedCandidate: candidate)
+        plan.shoppingList.sections = [ShoppingListSection(label: "Fresh Produce", sortKey: 0, type: .perimeter, items: [item])]
+        plan.budgetTargetAud = budgeted ? 2 : nil
+        return plan
+    }
+
+    // Recorded search response, used only by the picker UI tests.
+    static var productPickerCandidates: [ProductCandidate] {
+        try! JSONDecoder().decode([ProductCandidate].self, from: Data(#"""
+[
+    {
+        "sku": "4803991",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "VEGETABLES/SALAD",
+        "category": "Vegetables",
+        "subCategory": "Fruit & Vegetables",
+        "name": "Brown Onions",
+        "brand": "Coles",
+        "size": "1kg",
+        "priceAud": 2.5,
+        "unitPriceAud": 2.5,
+        "unitQuantity": 1,
+        "unitMeasure": "kg",
+        "comparablePrice": "$2.50/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/4/4803991.jpg",
+        "productUrl": "https://www.coles.com.au/product/brown-onions-4803991",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/brown-onions-4803991",
+        "capturedAt": "2026-05-21T21:40:46.799Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "5076305",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "VEGETABLES/SALAD",
+        "category": "Vegetables",
+        "subCategory": "Fruit & Vegetables",
+        "name": "Brown Onions",
+        "brand": "Coles Organic",
+        "size": "1Kg",
+        "priceAud": 7.9,
+        "unitPriceAud": 7.9,
+        "unitQuantity": 1,
+        "unitMeasure": "kg",
+        "comparablePrice": "$7.90/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/5/5076305.jpg",
+        "productUrl": "https://www.coles.com.au/product/brown-onions-5076305",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/brown-onions-5076305",
+        "capturedAt": "2026-05-21T17:07:49.283Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "5134809",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "VEGETABLES/SALAD",
+        "category": "Vegetables",
+        "subCategory": "Fruit & Vegetables",
+        "name": "Brown Onion Shallots Loose",
+        "brand": "Coles",
+        "size": "approx. 35g each",
+        "priceAud": 0.46,
+        "unitPriceAud": 13,
+        "unitQuantity": 1,
+        "unitMeasure": "g",
+        "comparablePrice": "$13.00/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/5/5134809.jpg",
+        "productUrl": "https://www.coles.com.au/product/brown-onion-shallots-loose-5134809",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/brown-onion-shallots-loose-5134809",
+        "capturedAt": "2026-05-21T17:07:49.283Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "4239517",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "VEGETABLES/SALAD",
+        "category": "Vegetables",
+        "subCategory": "Fruit & Vegetables",
+        "name": "Loose Brown Onions",
+        "brand": "Coles",
+        "size": "approx. 200g",
+        "priceAud": 0.84,
+        "unitPriceAud": 4.2,
+        "unitQuantity": 1,
+        "unitMeasure": "g",
+        "comparablePrice": "$4.20/ 1kg",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/4/4239517.jpg",
+        "productUrl": "https://www.coles.com.au/product/loose-brown-onions-4239517",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/loose-brown-onions-4239517",
+        "capturedAt": "2026-05-21T17:07:49.283Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "4443579",
+        "barcode": null,
+        "retailer": "coles",
+        "categoryGroup": "MEAL SOLUTIONS",
+        "category": "Stocks & Gravy",
+        "subCategory": "Pantry",
+        "name": "Brown Onion Liquid Gravy Pouch",
+        "brand": "Gravox",
+        "size": "165g",
+        "priceAud": 2.5,
+        "unitPriceAud": 1.52,
+        "unitQuantity": 100,
+        "unitMeasure": "g",
+        "comparablePrice": "$1.52/ 100g",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/4/4443579.jpg",
+        "productUrl": "https://www.coles.com.au/product/brown-onion-liquid-gravy-pouch-4443579",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/brown-onion-liquid-gravy-pouch-4443579",
+        "capturedAt": "2026-05-21T18:06:15.513Z",
+        "freshnessLabel": "Coles data captured 22 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    },
+    {
+        "sku": "6046864",
+        "barcode": "9300681163300",
+        "retailer": "coles",
+        "categoryGroup": "MEAL SOLUTIONS",
+        "category": "Stocks & Gravy",
+        "subCategory": "Pantry",
+        "name": "Brown Onion Gravy Mix Tin",
+        "brand": "Gravox",
+        "size": "120g",
+        "priceAud": 5,
+        "unitPriceAud": 0.42,
+        "unitQuantity": 10,
+        "unitMeasure": "g",
+        "comparablePrice": "$0.42/ 10g",
+        "imageUrl": "https://cdn.productimages.coles.com.au/productimages/6/6046864.jpg",
+        "productUrl": "https://www.coles.com.au/product/brown-onion-gravy-mix-tin-6046864",
+        "sourceName": "Coles product catalog",
+        "sourceUrl": "https://www.coles.com.au/product/brown-onion-gravy-mix-tin-6046864",
+        "capturedAt": "2026-05-21T13:19:11.120Z",
+        "freshnessLabel": "Coles data captured 21 May 2026",
+        "confidence": "high",
+        "confidenceReason": "Matched against the packaged Coles product catalog with captured price data.",
+        "uncertaintyText": "Price is from captured Coles data and may differ at checkout."
+    }
+]
+"""#.utf8))
+    }
+}
+#endif
