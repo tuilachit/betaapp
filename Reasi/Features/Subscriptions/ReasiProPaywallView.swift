@@ -132,6 +132,7 @@ struct ReasiProPaywallView: View {
         }
         let duration = trialText.replacingOccurrences(of: " free", with: "")
             .replacingOccurrences(of: " days", with: "-day")
+            .replacingOccurrences(of: " weeks", with: "-week")
         return "Start your \(duration) free trial."
     }
 

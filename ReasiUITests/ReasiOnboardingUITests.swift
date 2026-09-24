@@ -142,10 +142,10 @@ final class ReasiOnboardingUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Reasi Pro"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Start your 3-day free trial."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Start your 2-week free trial."].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Try Reasi Pro before your first charge."].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["In 3 days"].exists)
+        XCTAssertTrue(app.staticTexts["In 2 weeks"].exists)
         XCTAssertTrue(app.staticTexts["No charge today"].exists)
         XCTAssertTrue(app.staticTexts["Annual"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["A$79.99"].exists)
@@ -154,8 +154,20 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Restore Purchases"].exists)
         XCTAssertTrue(app.buttons["More paywall details"].exists)
         XCTAssertTrue(app.staticTexts["Billing begins at A$79.99 per year"].exists)
-        XCTAssertTrue(app.staticTexts["After 3 days: A$79.99 per year. Auto-renews."].exists)
+        XCTAssertTrue(app.staticTexts["After 2 weeks: A$79.99 per year. Auto-renews."].exists)
         XCTAssertFalse(app.staticTexts["Your first complete week is included. Reasi Pro unlocks every new week after that."].exists)
+
+        let monthlyPlan = app.buttons["Monthly plan"]
+        XCTAssertTrue(monthlyPlan.exists)
+        monthlyPlan.tap()
+        XCTAssertTrue(app.staticTexts["Start your 3-day free trial."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["In 3 days"].exists)
+        XCTAssertTrue(app.staticTexts["After 3 days: A$17.99 per month. Auto-renews."].exists)
+
+        let weeklyPlan = app.buttons["Weekly plan"]
+        XCTAssertTrue(weeklyPlan.exists)
+        XCTAssertFalse((weeklyPlan.value as? String ?? "").localizedCaseInsensitiveContains("free"))
+        XCTAssertTrue((weeklyPlan.value as? String ?? "").contains("A$7.99"))
 
         app.buttons["More paywall details"].tap()
         XCTAssertTrue(app.buttons["Why Reasi Pro?"].waitForExistence(timeout: 3))
