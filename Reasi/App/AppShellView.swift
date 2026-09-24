@@ -39,7 +39,7 @@ struct AppShellView: View {
                 }
             )
         ) { request in
-            ReasiProPaywallView(reason: request.message) {
+            ReasiProPaywallView(reason: request.message, trigger: request.trigger) {
                 coreLoop.dismissPaywall()
                 startGeneration()
             }

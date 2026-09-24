@@ -749,12 +749,14 @@ struct ProfileView: View {
             return ("Reasi Pro", "Purchase found. Updating your plan access.", "arrow.triangle.2.circlepath")
         }
         switch revenueCat.serverAccess?.freePreviewStatus {
+        case .unavailable:
+            return ("Reasi Pro", "Subscribe to create a new week.", "lock.fill")
         case .available:
-            return ("Free preview", "Your first complete week is ready when you are.", "calendar.badge.checkmark")
+            return ("Reasi Pro", "Subscribe to create a new week.", "lock.fill")
         case .reserved:
-            return ("Planning preview", "Your included week is being prepared.", "clock")
+            return ("Reasi Pro", "Your plan is still being prepared.", "clock")
         case .completed:
-            return ("Free preview used", "Your saved plan and shopping list remain available.", "checkmark.circle")
+            return ("Existing plan", "Your saved plan and shopping list remain available.", "checkmark.circle")
         case nil:
             return ("Plan access", "Access status will refresh when you're connected.", "wifi.exclamationmark")
         }

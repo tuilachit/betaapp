@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReasiProPaywallView: View {
     let reason: String
+    let trigger: ReasiPaywallTrigger
     let onUnlocked: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -55,7 +56,7 @@ struct ReasiProPaywallView: View {
             if !didTrackView {
                 didTrackView = true
                 analytics.capture(.subscriptionPaywallViewed, properties: [
-                    "trigger": .string("second_plan")
+                    "trigger": .string(trigger.rawValue)
                 ])
             }
             needsAccessRefresh = shouldRefreshExistingPurchase
@@ -221,7 +222,7 @@ struct ReasiProPaywallView: View {
                     .foregroundStyle(Color.reasi.text)
                     .multilineTextAlignment(.center)
 
-                Text("Your current plan stays yours. Come back when you need another week.")
+                Text(exitCopy)
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.textMuted)
                     .multilineTextAlignment(.center)
@@ -248,6 +249,15 @@ struct ReasiProPaywallView: View {
         .padding(.horizontal, ReasiSpacing.s5)
         .padding(.top, ReasiSpacing.s4)
         .padding(.bottom, ReasiSpacing.s8)
+    }
+
+    private var exitCopy: String {
+        switch trigger {
+        case .onboarding:
+            "Your setup is saved. You can start your first plan when you are ready."
+        case .generationRequired, .debug:
+            "Your current plan stays yours. Come back when you need another week."
+        }
     }
 
     @ViewBuilder
