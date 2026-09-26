@@ -1,5 +1,92 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Reasi
+
+@MainActor
+final class ReasiAppearanceTests: XCTestCase {
+    func testAppearanceDefaultsToLightAndRejectsUnknownValues() {
+        let name = "ReasiAppearanceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+        defaults.set("system", forKey: ReasiSettingKey.appearance)
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+        defaults.set(42, forKey: ReasiSettingKey.appearance)
+        XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, .light)
+    }
+
+    func testAppearanceUpdatesAndRestoresBothChoices() {
+        let name = "ReasiAppearanceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let settings = UserSettingsStore(defaults: defaults)
+
+        for appearance in ReasiAppearance.allCases {
+            settings.setAppearance(appearance)
+            XCTAssertEqual(settings.appearance, appearance)
+            XCTAssertEqual(defaults.string(forKey: ReasiSettingKey.appearance), appearance.rawValue)
+            XCTAssertEqual(UserSettingsStore(defaults: defaults).appearance, appearance)
+        }
+        XCTAssertEqual(ReasiAppearance.light.colorScheme, .light)
+        XCTAssertEqual(ReasiAppearance.dark.colorScheme, .dark)
+    }
+
+    func testPaletteAdaptsAndPreservesOriginalDarkColors() {
+        let colors = Color.reasi
+        let original: [(Color, UInt)] = [
+            (colors.background, 0x09090A), (colors.backgroundElevated, 0x0D0D0F),
+            (colors.surface, 0x171719), (colors.surfaceHigh, 0x202023),
+            (colors.border, 0x29292D), (colors.borderStrong, 0x3D3D43),
+            (colors.text, 0xF4F4F5), (colors.textMuted, 0xB8B8BF),
+            (colors.muted, 0x85858E), (colors.dim, 0x5E5E66),
+            (colors.danger, 0xFF6B6B), (colors.warning, 0xFFD36A),
+            (colors.success, 0xD7F4D0), (colors.planHighlight, 0x20251E),
+        ]
+        for (color, hex) in original {
+            let dark = components(color, style: .dark)
+            XCTAssertEqual(dark[0], Double((hex >> 16) & 255) / 255, accuracy: 0.001)
+            XCTAssertEqual(dark[1], Double((hex >> 8) & 255) / 255, accuracy: 0.001)
+            XCTAssertEqual(dark[2], Double(hex & 255) / 255, accuracy: 0.001)
+            XCTAssertNotEqual(dark, components(color, style: .light))
+        }
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            XCTAssertEqual(components(colors.glass, style: style)[3], 0.82, accuracy: 0.001)
+            XCTAssertGreaterThan(contrast(colors.background, colors.text, style: style), 7)
+            XCTAssertGreaterThan(contrast(colors.background, colors.success, style: style), 4.5)
+            XCTAssertGreaterThan(contrast(colors.onImageMuted, colors.imageBackground, style: style), 4.5)
+        }
+        XCTAssertEqual(components(colors.onImage, style: .light), components(colors.onImage, style: .dark))
+    }
+
+    func testLightModeTextAndStatusContrastAcrossSurfaces() {
+        let colors = Color.reasi
+        for background in [colors.background, colors.backgroundElevated, colors.surface, colors.surfaceHigh, colors.planHighlight] {
+            for foreground in [colors.text, colors.textMuted, colors.muted, colors.dim, colors.danger, colors.warning, colors.success] {
+                XCTAssertGreaterThanOrEqual(contrast(foreground, background, style: .light), 4.5)
+            }
+        }
+    }
+
+    private func components(_ color: Color, style: UIUserInterfaceStyle) -> [Double] {
+        let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        XCTAssertTrue(resolved.getRed(&r, green: &g, blue: &b, alpha: &a))
+        return [Double(r), Double(g), Double(b), Double(a)]
+    }
+
+    private func contrast(_ foreground: Color, _ background: Color, style: UIUserInterfaceStyle) -> Double {
+        func luminance(_ color: Color) -> Double {
+            let rgb = components(color, style: style).prefix(3).map {
+                $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4)
+            }
+            return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
+        }
+        let first = luminance(foreground), second = luminance(background)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+}
 
 final class ReasiCoreTests: XCTestCase {
     func testPurposeSelectionKeepsPriorityOrderAndCapsAtThree() {
@@ -750,26 +837,207 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertNil(cache.loadTrip(userId: "user-b", tripId: "ui-test-trip"))
     }
 
-    private func fixtureProduct(name: String, price: Double?) -> ProductCandidate {
+    func testProductSelectionPricesAllRequiredPacksAndPreservesPricingMetadata() throws {
+        let candidate = fixtureProduct(name: "Chicken thigh fillets", price: 7, size: "500g")
+        let item = ShoppingListItem(id: "chicken", name: "Chicken thigh fillets", quantity: "1100 g", checked: false, aisleLabel: nil, sectionType: .unknown, product: nil)
+        let product = ProductPurchaseEstimate.snapshot(candidate: candidate, item: item)
+        XCTAssertEqual(product.purchaseQuantity, 3)
+        XCTAssertEqual(product.priceAud, 21)
+        XCTAssertEqual(product.unitPriceAud, 7)
+        let restored = try JSONDecoder().decode(ProductSnapshot.self, from: JSONEncoder().encode(product))
+        XCTAssertEqual(restored.purchaseQuantity, 3)
+        XCTAssertEqual(restored.requiredAmount, 1100)
+    }
+
+    func testProductSelectionDoesNotGuessQuantityOrMixWeightAndCount() {
+        XCTAssertNil(ProductPurchaseEstimate(quantity: "a small knob"))
+        let each = ProductPurchaseEstimate(quantity: "2 each")
+        XCTAssertNil(each?.packCount(for: fixtureProduct(name: "Brown onions", price: 2.5, size: "1kg")))
+        let weight = ProductPurchaseEstimate(quantity: "1 kg")
+        XCTAssertEqual(weight?.packCount(for: fixtureProduct(name: "Tomatoes", price: 5, size: "2 x 400g")), 2)
+    }
+
+    func testProductSwapChecksWholeBasketAgainstBudget() {
+        let item = ShoppingListItem(id: "rice", name: "Rice", quantity: "1000 g", checked: false, aisleLabel: nil, sectionType: .unknown, product: nil)
+        let product = ProductPurchaseEstimate.snapshot(candidate: fixtureProduct(name: "Rice", price: 4, size: "500g"), item: item)
+        let basket = BasketPriceSummary(items: [item])
+        XCTAssertNotNil(basket.issueReplacing(item, with: product, budget: 7))
+        XCTAssertNil(basket.issueReplacing(item, with: product, budget: 8))
+        let unpriced = ProductPurchaseEstimate.snapshot(candidate: fixtureProduct(name: "Rice", price: nil, size: "500g"), item: item)
+        XCTAssertNotNil(basket.issueReplacing(item, with: unpriced, budget: 8))
+    }
+
+    func testLegacyShoppingQuantitiesUseExplicitMeasuresWithoutGuessing() {
+        let labels: [(String, Double, String)] = [
+            ("1 small pack, about 300g", 300, "g"), ("250ml bottle", 250, "ml"),
+            ("1 small knob, about 80g", 80, "g"), ("2 x 400g", 800, "g"),
+            ("2 medium", 2, "each"), ("1 large head", 1, "each"), ("1 bulb", 1, "each")
+        ]
+        for (label, amount, unit) in labels {
+            let parsed = ProductPurchaseEstimate(shoppingQuantity: label, ingredientName: "Vegetables")
+            XCTAssertEqual(parsed?.amount, amount, label)
+            XCTAssertEqual(parsed?.unit, unit, label)
+        }
+        for label in ["a handful", "2 cups", "200g or 400g", "200–300g", "2 400g cans", "500 g + 1 pack", "200g per person"] {
+            XCTAssertNil(ProductPurchaseEstimate(shoppingQuantity: label, ingredientName: "Tomatoes"), label)
+        }
+    }
+
+    func testAutomaticProductChoiceUsesRealRetailerIdentityAndWholePackCost() {
+        let item = shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")
+        let small = catalogProduct(name: "Soy Sauce", price: 1.5, size: "100ml")
+        let bottle = catalogProduct(name: "Soy Sauce", price: 2.8, size: "500ml")
+        let otherRetailer = catalogProduct(name: "Soy Sauce", price: 1, size: "500ml", retailer: "woolworths")
+        XCTAssertEqual(ShoppingProductMatcher.choose(for: item, candidates: [small, otherRetailer, bottle], storeId: .topRyde), bottle)
+        XCTAssertEqual(ShoppingProductMatcher.choose(for: item, candidates: [bottle, otherRetailer], storeId: .woolworthsRhodes), otherRetailer)
+        XCTAssertFalse(ShoppingProductMatcher.matches("Fresh ginger", candidate: catalogProduct(name: "Ginger Beer", price: 1, size: "375ml"), storeId: .topRyde))
+        XCTAssertFalse(ShoppingProductMatcher.matches("Fresh ginger", candidate: catalogProduct(name: "Ginger Marmalade", price: 3.8, size: "375g"), storeId: .topRyde))
+        XCTAssertTrue(ShoppingProductMatcher.matches("Fresh ginger", candidate: catalogProduct(name: "Ginger Loose", price: 4.29, size: "approx. 130g"), storeId: .topRyde))
+        XCTAssertFalse(ShoppingProductMatcher.matches("Garlic", candidate: catalogProduct(name: "Crushed Garlic", price: 1, size: "200g"), storeId: .topRyde))
+        XCTAssertFalse(ShoppingProductMatcher.matches("Pork mince", candidate: catalogProduct(name: "Pork & Beef Mince", price: 1, size: "500g"), storeId: .topRyde))
+        XCTAssertNil(ShoppingProductMatcher.choose(for: item, candidates: [fixtureProduct(name: "Soy Sauce", price: 1, size: "500ml")], storeId: .topRyde))
+    }
+
+    @MainActor
+    func testSavedListAutomaticallySelectsProductsPreservingChecksAndExistingChoices() async {
+        let chosen = ProductSnapshot(candidate: catalogProduct(name: "Cornflour", price: 1.35, size: "300g"))
+        let core = shoppingStore(items: [
+            shoppingItem("pork", name: "Pork mince", quantity: "200g", checked: true),
+            shoppingItem("corn", name: "Cornflour", quantity: "300g", product: chosen),
+            shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")
+        ])
+        var searches: [String] = []
+        var saves: [AutomaticProductSelection] = []
+        await core.resolveMissingShoppingProducts(search: { query, store in
+            searches.append(query)
+            XCTAssertEqual(store, .topRyde)
+            return [self.catalogProduct(name: query, price: 3, size: query == "Pork mince" ? "500g" : "500ml")]
+        }, save: { selection in saves.append(selection); return true })
+        XCTAssertEqual(searches, ["Pork mince", "Soy sauce"])
+        XCTAssertEqual(saves.count, 2)
+        XCTAssertTrue(saves[0].item.checked)
+        XCTAssertEqual(core.checkedItemIDs, ["pork"])
+        XCTAssertEqual(core.allShoppingItems.map(\.id), ["pork", "corn", "soy"])
+        XCTAssertEqual(core.allShoppingItems[1].product, chosen)
+        XCTAssertTrue(core.allShoppingItems.allSatisfy { $0.product?.imageUrl != nil })
+        XCTAssertEqual(core.allShoppingItems[0].product?.purchaseQuantity, 1)
+        XCTAssertEqual(core.allShoppingItems[0].product?.priceAud, 3)
+        await core.resolveMissingShoppingProducts(search: { _, _ in XCTFail("Already resolved"); return [] }, save: { _ in XCTFail(); return true })
+    }
+
+    @MainActor
+    func testAutomaticSelectionDoesNotOverwriteAChoiceMadeDuringSearch() async {
+        let item = shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")
+        let core = shoppingStore(items: [item])
+        let manual = ProductSnapshot(candidate: catalogProduct(name: "Kikkoman Soy Sauce", price: 7.9, size: "600ml"))
+        await core.resolveMissingShoppingProducts(search: { _, _ in
+            core.plan.shoppingList.sections[0].items[0] = self.shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle", checked: true, product: manual)
+            return [self.catalogProduct(name: "Soy Sauce", price: 1.9, size: "500ml")]
+        }, save: { _ in XCTFail("Must preserve the customer's choice"); return true })
+        XCTAssertEqual(core.allShoppingItems.first?.product, manual)
+        XCTAssertEqual(core.allShoppingItems.first?.checked, true)
+    }
+
+    @MainActor
+    func testAutomaticSelectionCannotApplyToAReplacedListOrFailedSave() async {
+        let core = shoppingStore(items: [shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")])
+        let candidate = catalogProduct(name: "Soy Sauce", price: 1.9, size: "500ml")
+        await core.resolveMissingShoppingProducts(search: { _, _ in
+            core.plan = FixtureWeekPlan.plan(for: .init(id: .woolworthsRhodes, retailer: "woolworths", name: "Woolworths", shortName: "Woolies"))
+            return [candidate]
+        }, save: { _ in XCTFail("The store changed"); return true })
+        XCTAssertFalse(core.isMatchingShoppingProducts)
+
+        let failed = shoppingStore(items: [shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")])
+        await failed.resolveMissingShoppingProducts(search: { _, _ in [candidate] }, save: { _ in throw URLError(.notConnectedToInternet) })
+        XCTAssertNil(failed.allShoppingItems.first?.product)
+        XCTAssertNotNil(failed.shoppingProductMessage)
+        await failed.resolveMissingShoppingProducts(search: { _, _ in [candidate] }, save: { _ in true })
+        XCTAssertEqual(failed.allShoppingItems.first?.product?.sku, candidate.sku)
+        XCTAssertNil(failed.shoppingProductMessage)
+    }
+
+    @MainActor
+    func testAutomaticSelectionKeepsCheckChangesMadeWhileSaving() async {
+        let core = shoppingStore(items: [shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")])
+        await core.resolveMissingShoppingProducts(search: { _, _ in
+            [self.catalogProduct(name: "Soy Sauce", price: 1.9, size: "500ml")]
+        }, save: { _ in
+            core.plan.shoppingList.sections[0].items[0].checked = true
+            core.checkedItemIDs.insert("soy")
+            return true
+        })
+        XCTAssertEqual(core.allShoppingItems.first?.checked, true)
+        XCTAssertEqual(core.checkedItemIDs, ["soy"])
+        XCTAssertNotNil(core.allShoppingItems.first?.product)
+    }
+
+    @MainActor
+    func testCancelledProductSearchNeverSavesItsResult() async {
+        let core = shoppingStore(items: [shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")])
+        let task = Task { @MainActor in
+            await core.resolveMissingShoppingProducts(search: { _, _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return [self.catalogProduct(name: "Soy Sauce", price: 1.9, size: "500ml")]
+            }, save: { _ in XCTFail("Cancelled search must not save"); return true })
+        }
+        await task.value
+        XCTAssertNil(core.allShoppingItems.first?.product)
+        XCTAssertFalse(core.isMatchingShoppingProducts)
+        XCTAssertNil(core.shoppingProductMessage)
+    }
+
+    @MainActor
+    func testAutomaticSelectionRespectsBudgetAndDoesNotInventUnmatchedProducts() async {
+        let core = shoppingStore(items: [shoppingItem("soy", name: "Soy sauce", quantity: "250ml bottle")])
+        core.plan.budgetTargetAud = 2
+        await core.resolveMissingShoppingProducts(search: { _, _ in [self.catalogProduct(name: "Soy Sauce", price: 3, size: "500ml")] }, save: { _ in XCTFail("Over budget"); return true })
+        XCTAssertNil(core.allShoppingItems.first?.product)
+        XCTAssertTrue(core.shoppingProductMessage?.contains("budget") == true)
+
+        let unmatched = shoppingStore(items: [shoppingItem("ginger", name: "Fresh ginger", quantity: "80g")])
+        await unmatched.resolveMissingShoppingProducts(search: { _, _ in [self.catalogProduct(name: "Ginger Beer", price: 1, size: "375ml")] }, save: { _ in XCTFail("Not the requested ingredient"); return true })
+        XCTAssertNil(unmatched.allShoppingItems.first?.product)
+        XCTAssertNotNil(unmatched.shoppingProductMessage)
+    }
+
+    private func shoppingItem(_ id: String, name: String, quantity: String, checked: Bool = false, product: ProductSnapshot? = nil) -> ShoppingListItem {
+        ShoppingListItem(id: id, name: name, quantity: quantity, checked: checked, aisleLabel: nil, sectionType: .unknown, product: product)
+    }
+
+    @MainActor
+    private func shoppingStore(items: [ShoppingListItem]) -> CoreLoopStore {
+        var plan = FixtureWeekPlan.current
+        plan.shoppingList.sections = [ShoppingListSection(label: "Groceries", sortKey: 1, type: .unknown, items: items)]
+        return CoreLoopStore(plan: plan)
+    }
+
+    private func catalogProduct(name: String, price: Double, size: String, retailer: String = "coles") -> ProductCandidate {
+        fixtureProduct(name: name, price: price, size: size, retailer: retailer)
+    }
+
+    private func fixtureProduct(name: String, price: Double?, size: String? = nil, retailer: String? = nil) -> ProductCandidate {
         ProductCandidate(
             observationId: UUID().uuidString,
             name: name,
             brand: nil,
-            size: nil,
+            size: size,
             priceAud: price,
             unitPriceAud: nil,
             unitQuantity: nil,
             unitMeasure: nil,
             comparablePrice: nil,
-            imageUrl: nil,
+            imageUrl: retailer == nil ? nil : URL(string: "https://example.com/product.jpg"),
             productUrl: nil,
-            sourceName: "Test catalog",
+            sourceName: retailer ?? "Test catalog",
             sourceUrl: nil,
             capturedAt: nil,
             freshnessLabel: "Test",
             confidence: .high,
             confidenceReason: "Test fixture",
-            uncertaintyText: price == nil ? "Price not known" : ""
+            uncertaintyText: price == nil ? "Price not known" : "",
+            sku: retailer == nil ? nil : UUID().uuidString,
+            retailer: retailer
         )
     }
 }

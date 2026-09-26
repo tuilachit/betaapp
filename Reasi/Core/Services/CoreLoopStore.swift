@@ -149,6 +149,8 @@ final class CoreLoopStore {
     var isFinishingShopping = false
     var shoppingCompletionError: String?
     var lastShoppingTrip: ShoppingTripSummary?
+    var isMatchingShoppingProducts = false
+    var shoppingProductMessage: String?
 
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
@@ -167,6 +169,12 @@ final class CoreLoopStore {
     @ObservationIgnored private var pendingGeneration: PendingGenerationRequest?
     @ObservationIgnored private var storeSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var mealImageRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var productMatchingTask: Task<Void, Never>?
+    @ObservationIgnored private var productMatchingTaskID: UUID?
+    @ObservationIgnored private var productMatchingRunID: UUID?
+    @ObservationIgnored private var productMatchingContext: String?
+    @ObservationIgnored private var attemptedProductItemIDs: Set<String> = []
+    @ObservationIgnored private var manualProductItemIDs: Set<String> = []
 
     init(plan: WeekPlan? = nil) {
         let initialPlan = plan ?? FixtureWeekPlan.current
@@ -199,6 +207,155 @@ final class CoreLoopStore {
 
     var hasPendingGeneration: Bool {
         pendingGeneration != nil
+    }
+
+    var shoppingProductContext: String {
+        "\(activeUserId ?? "")/\(plan.id)/\(plan.shoppingList.id)/\(plan.storeId.rawValue)"
+    }
+
+    func matchShoppingProducts(supabase: SupabaseService, weeklyBudgetAud: Double? = nil, retry: Bool = false) {
+        guard hasPlan, plan.source == .supabase, supabase.isSignedIn,
+              !isRestoringPlan, !isSwitchingStore, !isFinishingShopping, plan.shoppingList.status == .active else {
+            cancelProductMatching()
+            return
+        }
+        if plan.budgetTargetAud == nil, plan.kind == .week,
+           let weeklyBudgetAud, weeklyBudgetAud.isFinite, weeklyBudgetAud > 0 {
+            plan.budgetTargetAud = weeklyBudgetAud
+            persistPlanCache()
+        }
+        if productMatchingContext != shoppingProductContext {
+            cancelProductMatching()
+            productMatchingContext = shoppingProductContext
+            attemptedProductItemIDs = []
+            shoppingProductMessage = nil
+        }
+        guard productMatchingTask == nil else { return }
+        if retry { attemptedProductItemIDs = [] }
+        let taskID = UUID()
+        productMatchingTaskID = taskID
+        productMatchingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.resolveMissingShoppingProducts(
+                search: { query, storeId in
+                    try await supabase.searchProducts(query: query, storeId: storeId, limit: 20)
+                },
+                save: { selection in
+                    try await supabase.selectProduct(
+                        selection.candidate, for: selection.item,
+                        shoppingListId: selection.shoppingListId,
+                        sectionLabel: selection.sectionLabel,
+                        sectionSortKey: selection.sectionSortKey,
+                        sectionType: selection.sectionType,
+                        actualPriceAud: nil, productSnapshot: selection.snapshot,
+                        onlyIfUnselected: true
+                    )
+                }
+            )
+            if self.productMatchingTaskID == taskID {
+                self.productMatchingTask = nil
+                self.productMatchingTaskID = nil
+            }
+        }
+    }
+
+    /// Also used by tests with catalogue/save closures, so cancellation, checked
+    /// items and budget failures are exercised without touching a real account.
+    func resolveMissingShoppingProducts(
+        search: (String, StoreID) async throws -> [ProductCandidate],
+        save: (AutomaticProductSelection) async throws -> Bool
+    ) async {
+        let items = allShoppingItems.filter {
+            $0.product == nil && !$0.id.hasPrefix("local-import-") && !attemptedProductItemIDs.contains($0.id)
+        }
+        guard !items.isEmpty, plan.shoppingList.status == .active else { return }
+        let runID = UUID()
+        productMatchingRunID = runID
+        let context = shoppingProductContext
+        let storeId = plan.storeId
+        isMatchingShoppingProducts = true
+        shoppingProductMessage = nil
+        defer {
+            if productMatchingRunID == runID {
+                isMatchingShoppingProducts = false
+                productMatchingRunID = nil
+            }
+        }
+        func isCurrent() -> Bool {
+            !Task.isCancelled && productMatchingRunID == runID && shoppingProductContext == context
+                && hasPlan && plan.shoppingList.status == .active && !isSwitchingStore && !isFinishingShopping
+        }
+        var budgetBlocked = false
+        for item in items {
+            guard isCurrent() else { return }
+            do {
+                let query = item.name.replacingOccurrences(of: #"\bfresh\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
+                let candidates = try await search(query, storeId)
+                guard isCurrent() else { return }
+                guard let current = allShoppingItems.first(where: { $0.id == item.id }),
+                      current.product == nil, current.quantity == item.quantity,
+                      !manualProductItemIDs.contains(item.id),
+                      let section = sectionContext(for: item.id, in: plan) else { continue }
+                guard let candidate = ShoppingProductMatcher.choose(for: current, candidates: candidates, storeId: storeId) else {
+                    attemptedProductItemIDs.insert(item.id)
+                    continue
+                }
+                let snapshot = ProductPurchaseEstimate.snapshot(candidate: candidate, item: current)
+                if basketPriceSummary.issueReplacing(current, with: snapshot, budget: plan.budgetTargetAud) != nil {
+                    attemptedProductItemIDs.insert(item.id)
+                    budgetBlocked = true
+                    continue
+                }
+                let saved = try await save(AutomaticProductSelection(
+                    item: current, candidate: candidate, snapshot: snapshot,
+                    shoppingListId: plan.shoppingList.id,
+                    sectionLabel: section.label, sectionSortKey: section.sortKey, sectionType: section.type
+                ))
+                guard isCurrent() else { return }
+                attemptedProductItemIDs.insert(item.id)
+                guard saved, !manualProductItemIDs.contains(item.id),
+                      let latest = allShoppingItems.first(where: { $0.id == item.id }), latest.product == nil else { continue }
+                // Read the latest checked state after the await. Selecting a
+                // suggestion never means the customer has bought/unbought it.
+                let selected = ShoppingListItem(
+                    id: latest.id, name: latest.name, quantity: latest.quantity, checked: latest.checked,
+                    aisleLabel: candidate.aisleLabel ?? latest.aisleLabel,
+                    sectionType: candidate.sectionType ?? latest.sectionType,
+                    product: snapshot, importedCandidate: candidate,
+                    locationUncertaintyText: candidate.sectionType == .unknown ? candidate.uncertaintyText : latest.locationUncertaintyText,
+                    clientId: latest.clientId
+                )
+                let label = candidate.sectionLabel ?? section.label
+                let sortKey = candidate.sectionSortKey ?? section.sortKey
+                if label == section.label, sortKey == section.sortKey,
+                   let sectionIndex = plan.shoppingList.sections.firstIndex(where: { $0.items.contains(where: { $0.id == item.id }) }),
+                   let itemIndex = plan.shoppingList.sections[sectionIndex].items.firstIndex(where: { $0.id == item.id }) {
+                    plan.shoppingList.sections[sectionIndex].items[itemIndex] = selected
+                } else {
+                    removeItem(item.id, from: &plan)
+                    insertItem(selected, sectionLabel: label, sectionSortKey: sortKey, sectionType: selected.sectionType, into: &plan)
+                }
+                persistPlanCache()
+            } catch {
+                guard isCurrent() else { return }
+                shoppingProductMessage = "We couldn’t finish finding products. Check your connection and try again, or choose a product yourself."
+                return
+            }
+        }
+        let remaining = allShoppingItems.filter { $0.product == nil }.count
+        if budgetBlocked {
+            shoppingProductMessage = "Some products couldn’t be confirmed within your budget. Choose an alternative, or update your meal plan."
+        } else if remaining > 0 {
+            shoppingProductMessage = "\(remaining) \(remaining == 1 ? "item needs" : "items need") your choice. We couldn’t find a close enough product match at this store."
+        }
+    }
+
+    private func cancelProductMatching() {
+        productMatchingTask?.cancel()
+        productMatchingTask = nil
+        productMatchingTaskID = nil
+        productMatchingRunID = nil
+        isMatchingShoppingProducts = false
     }
 
     func syncFixturePlan(to store: StoreSummary) {
@@ -287,6 +444,9 @@ final class CoreLoopStore {
 
         isSwitchingStore = true
         switchingStoreName = store.name
+        let matchingTask = productMatchingTask
+        cancelProductMatching()
+        await matchingTask?.value
         let existingPlan = plan
 
         do {
@@ -1070,6 +1230,8 @@ final class CoreLoopStore {
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) async throws {
+        manualProductItemIDs.insert(item.id)
+        defer { manualProductItemIDs.remove(item.id) }
         guard hasPlan,
               plan.shoppingList.status == .active,
               !item.id.hasPrefix("local-import-"),
@@ -1081,6 +1243,11 @@ final class CoreLoopStore {
         let resolvedSortKey = candidate.sectionSortKey ?? context.sortKey
         let resolvedType = candidate.sectionType ?? context.type
         let resolvedAisle = candidate.aisleLabel ?? item.aisleLabel ?? "Location not certain"
+        let selectedProduct = ProductPurchaseEstimate.snapshot(candidate: candidate, item: item, actualUnitPrice: actualPriceAud)
+        if let issue = basketPriceSummary.issueReplacing(item, with: selectedProduct, budget: plan.budgetTargetAud) {
+            throw issue
+        }
+        let selectingPlanID = plan.id
 
         try await supabase.selectProduct(
             candidate,
@@ -1089,17 +1256,19 @@ final class CoreLoopStore {
             sectionLabel: context.label,
             sectionSortKey: context.sortKey,
             sectionType: context.type,
-            actualPriceAud: actualPriceAud
+            actualPriceAud: selectedProduct.actualPriceAud,
+            productSnapshot: selectedProduct
         )
+        guard plan.id == selectingPlanID, plan.shoppingList.status == .active else { return }
 
         let selectedItem = ShoppingListItem(
             id: item.id,
             name: item.name,
             quantity: item.quantity,
-            checked: true,
+            checked: false,
             aisleLabel: resolvedAisle,
             sectionType: resolvedType,
-            product: ProductSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+            product: selectedProduct,
             importedCandidate: candidate,
             locationUncertaintyText: resolvedType == .unknown ? candidate.uncertaintyText : nil,
             clientId: item.clientId
@@ -1114,12 +1283,13 @@ final class CoreLoopStore {
                 sectionType: resolvedType,
                 into: &plan
             )
-            checkedItemIDs.insert(item.id)
+            checkedItemIDs.remove(item.id)
         }
-        checkedStates[item.id] = true
-        pendingCheckItemIDs.remove(item.id)
+        checkedStates[item.id] = false
+        pendingCheckItemIDs.insert(item.id)
         persistPlanCache()
         persistCheckCache()
+        startItemSync(itemId: item.id, supabase: supabase)
         ReasiHaptics.success()
         analytics.capture(.productCandidateAdded, properties: [
             "method": .string(candidate.barcode == nil ? "item_search" : "barcode"),
@@ -1347,6 +1517,10 @@ final class CoreLoopStore {
     }
 
     private func cancelOutstandingWork() {
+        cancelProductMatching()
+        productMatchingContext = nil
+        attemptedProductItemIDs = []
+        shoppingProductMessage = nil
         generationTask?.cancel()
         generationClockTask?.cancel()
         storeSwitchTask?.cancel()
@@ -1424,6 +1598,9 @@ final class CoreLoopStore {
               !isFinishingShopping else { return nil }
 
         isFinishingShopping = true
+        let matchingTask = productMatchingTask
+        cancelProductMatching()
+        await matchingTask?.value
         shoppingCompletionError = nil
         let summaryBeforeFinish = basketPriceSummary
         analytics.capture(.shoppingFinishStarted, properties: [

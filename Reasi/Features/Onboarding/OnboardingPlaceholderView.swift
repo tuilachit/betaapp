@@ -10,6 +10,8 @@ import GoogleSignIn
 #endif
 
 struct OnboardingPlaceholderView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
@@ -117,7 +119,7 @@ struct OnboardingPlaceholderView: View {
                 .buttonStyle(ReasiPressStyle())
             }
         }
-        .frame(height: 36)
+        .frame(minHeight: 36)
     }
 
     @ViewBuilder
@@ -157,7 +159,7 @@ struct OnboardingPlaceholderView: View {
 
     private var valueScreen: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-            Spacer(minLength: 54)
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 0 : 54)
 
             Circle()
                 .fill(Color.reasi.surface)
@@ -172,18 +174,19 @@ struct OnboardingPlaceholderView: View {
                 }
 
             Text("Never think about\ngroceries again.")
-                .font(ReasiTypography.largeTitle)
+                .font(ReasiTypography.font(size: 42, weight: .semibold, relativeTo: .largeTitle))
                 .foregroundStyle(Color.reasi.text)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
 
             Text("A useful week of meals and one calm list, ready when you are.")
                 .font(ReasiTypography.body)
                 .foregroundStyle(Color.reasi.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Spacer(minLength: 80)
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 0 : 80)
         }
-        .frame(minHeight: 540, alignment: .topLeading)
+        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 0 : 540, alignment: .topLeading)
     }
 
     private var benefitScreen: some View {
@@ -212,6 +215,7 @@ struct OnboardingPlaceholderView: View {
                 Text(purposeSelectionGuidance)
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: ReasiSpacing.s3)
 
@@ -273,7 +277,10 @@ struct OnboardingPlaceholderView: View {
                 title: "What feels good to cook?"
             )
 
-            OnboardingChipLayout(spacing: ReasiSpacing.s2) {
+            let chipLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: ReasiSpacing.s2))
+                : AnyLayout(OnboardingChipLayout(spacing: ReasiSpacing.s2))
+            chipLayout {
                 ForEach(FoodStyle.allCases) { style in
                     let isSelected = onboarding.preferences.foodStyles.contains(style)
                     Button {
@@ -286,11 +293,12 @@ struct OnboardingPlaceholderView: View {
                             }
                             Text(style.title)
                                 .font(ReasiTypography.bodyMedium)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .foregroundStyle(isSelected ? Color.reasi.background : Color.reasi.textMuted)
                         .padding(.horizontal, ReasiSpacing.s4)
-                        .frame(height: 48)
+                        .padding(.vertical, ReasiSpacing.s3)
+                        .frame(minHeight: 48)
                         .background(
                             isSelected ? Color.reasi.text : Color.reasi.surface,
                             in: Capsule()
@@ -361,9 +369,11 @@ struct OnboardingPlaceholderView: View {
                                 Text(store.name)
                                     .font(ReasiTypography.headline)
                                     .foregroundStyle(Color.reasi.text)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Text(store.retailerDisplayName)
                                     .font(ReasiTypography.caption)
                                     .foregroundStyle(Color.reasi.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
 
                             Spacer()
@@ -436,7 +446,7 @@ struct OnboardingPlaceholderView: View {
                 } onCompletion: { result in
                     handleAppleCompletion(result)
                 }
-                .signInWithAppleButtonStyle(.white)
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
                 .clipShape(Capsule())
@@ -782,10 +792,12 @@ struct OnboardingPlaceholderView: View {
             Text(eyebrow)
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.muted)
+                .fixedSize(horizontal: false, vertical: true)
             Text(title)
-                .font(ReasiTypography.title)
+                .font(ReasiTypography.font(size: 34, weight: .semibold, relativeTo: .title))
                 .foregroundStyle(Color.reasi.text)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
         }
     }
 
@@ -801,9 +813,11 @@ struct OnboardingPlaceholderView: View {
                 Text(title)
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(detail)
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
@@ -832,10 +846,12 @@ struct OnboardingPlaceholderView: View {
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
                         .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(detail)
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.muted)
                         .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: ReasiSpacing.s2)
@@ -875,10 +891,12 @@ struct OnboardingPlaceholderView: View {
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
                         .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(detail)
                         .font(ReasiTypography.caption)
                         .foregroundStyle(Color.reasi.muted)
                         .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: ReasiSpacing.s2)
@@ -949,10 +967,11 @@ struct OnboardingPlaceholderView: View {
                         .controlSize(.small)
                 }
                 Text(title)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .buttonStyle(ReasiPrimaryButtonStyle())
+        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.38)
     }
@@ -962,8 +981,10 @@ struct OnboardingPlaceholderView: View {
             Label(title, systemImage: symbol)
                 .font(ReasiTypography.bodyMedium)
                 .foregroundStyle(Color.reasi.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, ReasiSpacing.s3)
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
+                .frame(minHeight: 54)
                 .background(Color.reasi.surface, in: Capsule())
                 .overlay { Capsule().stroke(Color.reasi.border, lineWidth: 1) }
         }

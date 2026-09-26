@@ -13,6 +13,9 @@ struct ProductSearchView: View {
 
     let context: ProductSearchContext
     let store: StoreSummary
+    let targetItem: ShoppingListItem?
+    let basketSummary: BasketPriceSummary
+    let budgetTargetAud: Double?
     let recentCandidates: [ProductCandidate]
     let searchProducts: (String) async throws -> [ProductCandidate]
     let importProductLink: (String) async throws -> [ProductCandidate]
@@ -35,6 +38,9 @@ struct ProductSearchView: View {
     init(
         context: ProductSearchContext,
         store: StoreSummary,
+        targetItem: ShoppingListItem? = nil,
+        basketSummary: BasketPriceSummary = BasketPriceSummary(items: []),
+        budgetTargetAud: Double? = nil,
         recentCandidates: [ProductCandidate],
         searchProducts: @escaping (String) async throws -> [ProductCandidate],
         importProductLink: @escaping (String) async throws -> [ProductCandidate],
@@ -44,6 +50,9 @@ struct ProductSearchView: View {
     ) {
         self.context = context
         self.store = store
+        self.targetItem = targetItem
+        self.basketSummary = basketSummary
+        self.budgetTargetAud = budgetTargetAud
         self.recentCandidates = recentCandidates
         self.searchProducts = searchProducts
         self.importProductLink = importProductLink
@@ -62,11 +71,10 @@ struct ProductSearchView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 searchHeader
-                Divider().overlay(Color.reasi.border)
                 resultsContent
             }
             .background(Color.reasi.background)
-            .navigationTitle(context.targetItemID == nil ? "Add groceries" : "Choose product")
+            .navigationTitle(context.targetItemID == nil ? "Add groceries" : "Change product")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.reasi.background, for: .navigationBar)
             .toolbar {
@@ -79,20 +87,14 @@ struct ProductSearchView: View {
                     .accessibilityLabel("Close product search")
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Label(store.shortName, systemImage: "storefront")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
-                }
             }
         }
-        .preferredColorScheme(.dark)
         .task {
             if context.startsWithScanner, !didPresentInitialScanner {
                 didPresentInitialScanner = true
                 isShowingScanner = true
             } else {
-                searchIsFocused = true
+                searchIsFocused = context.initialQuery.isEmpty
             }
         }
         .task(id: query) {
@@ -115,6 +117,8 @@ struct ProductSearchView: View {
             ProductCandidateDetailView(
                 candidate: candidate,
                 isFulfillingItem: context.targetItemID != nil,
+                selectionSummary: { actualPrice in selectionDetail(for: candidate, actualPrice: actualPrice) },
+                selectionIssue: { actualPrice in selectionIssue(for: candidate, actualPrice: actualPrice) },
                 onAdd: { actualPrice in
                     await performAdd(candidate, actualPrice: actualPrice)
                 }
@@ -126,18 +130,6 @@ struct ProductSearchView: View {
 
     private var searchHeader: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            if let itemName = context.targetItemName {
-                Text("Choose the exact product for \u{201c}\(itemName)\u{201d}")
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .lineLimit(1)
-            } else {
-                Label("Shopping at \(store.shortName)", systemImage: "storefront")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .lineLimit(1)
-            }
-
             HStack(spacing: ReasiSpacing.s2) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .semibold))
@@ -156,9 +148,11 @@ struct ProductSearchView: View {
                         results = []
                         phase = .idle
                         isShowingExternalLookup = false
+                        searchIsFocused = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(Color.reasi.dim)
+                            .frame(width: 44, height: 44)
                     }
                     .accessibilityLabel("Clear search")
                 }
@@ -171,8 +165,9 @@ struct ProductSearchView: View {
                     Image(systemName: "barcode.viewfinder")
                         .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(Color.reasi.text)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 36, height: 36)
                         .background(Color.reasi.surfaceHigh, in: Circle())
+                        .frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Scan product barcode")
             }
@@ -226,6 +221,7 @@ struct ProductSearchView: View {
             .padding(.bottom, ReasiSpacing.s10)
         }
         .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("product-search-results")
     }
 
     private var discoveryContent: some View {
@@ -268,11 +264,11 @@ struct ProductSearchView: View {
     private var resultRows: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Products at \(store.shortName)")
-                    .font(ReasiTypography.headline)
-                    .foregroundStyle(Color.reasi.text)
+                Label(store.name, systemImage: "storefront")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.textMuted)
                 Spacer()
-                Text("\(results.count)")
+                Text("\(results.count) options")
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.muted)
             }
@@ -306,25 +302,52 @@ struct ProductSearchView: View {
     }
 
     private func productRow(_ candidate: ProductCandidate) -> some View {
-        ProductSearchResultRow(
+        let product = targetItem.map { ProductPurchaseEstimate.snapshot(candidate: candidate, item: $0) }
+        let issue = selectionIssue(for: candidate, actualPrice: nil)
+        let needsReview = issue != nil || (product != nil && (product?.purchaseQuantity == nil || product?.priceAud == nil))
+        let isCurrent = candidate.sku != nil && candidate.sku == targetItem?.product?.sku
+            && (candidate.retailer == nil || candidate.retailer == store.retailer)
+        return ProductSearchResultRow(
             candidate: candidate,
+            actionTitle: needsReview ? "Review" : targetItem == nil ? "Add" : "Choose",
+            isOverBudget: { if case .overBudget = issue { return true }; return false }(),
+            isCurrent: isCurrent,
             isAdding: addingID == candidate.id,
             isAdded: addedIDs.contains(candidate.id),
             openDetails: {
                 selectedCandidate = candidate
             },
             add: {
-                Task { await performAdd(candidate, actualPrice: nil) }
+                if needsReview {
+                    selectedCandidate = candidate
+                } else {
+                    Task { await performAdd(candidate, actualPrice: nil) }
+                }
             }
         )
+    }
+
+    private func selectionIssue(for candidate: ProductCandidate, actualPrice: Double?) -> ProductSelectionIssue? {
+        guard let targetItem else { return nil }
+        let product = ProductPurchaseEstimate.snapshot(candidate: candidate, item: targetItem, actualUnitPrice: actualPrice)
+        return basketSummary.issueReplacing(targetItem, with: product, budget: budgetTargetAud)
+    }
+
+    private func selectionDetail(for candidate: ProductCandidate, actualPrice: Double? = nil) -> ProductPickerSelectionSummary? {
+        guard let targetItem else { return nil }
+        let product = ProductPurchaseEstimate.snapshot(candidate: candidate, item: targetItem, actualUnitPrice: actualPrice)
+        let previous = targetItem.product?.actualPriceAud ?? targetItem.product?.priceAud ?? 0
+        let after = product.priceAud.map { basketSummary.plannedTotalAud - previous + $0 }
+        let totalLabel = basketSummary.pricedItemCount + (targetItem.product?.priceAud == nil ? 1 : 0) == basketSummary.totalItemCount ? "Basket" : "Priced subtotal"
+        return ProductPickerSelectionSummary(requiredQuantity: targetItem.quantity, packCount: product.purchaseQuantity, total: product.priceAud, basketAfter: after, basketLabel: totalLabel)
     }
 
     private var loadingRows: some View {
         VStack(spacing: 0) {
             ForEach(0..<6, id: \.self) { _ in
                 HStack(spacing: ReasiSpacing.s3) {
-                    SkeletonBlock(height: 64, radius: ReasiRadius.md)
-                        .frame(width: 64)
+                    SkeletonBlock(height: 56, radius: ReasiRadius.md)
+                        .frame(width: 56)
                     VStack(spacing: ReasiSpacing.s2) {
                         SkeletonBlock(height: 16, radius: 8)
                         SkeletonBlock(height: 12, radius: 6)
@@ -512,6 +535,10 @@ struct ProductSearchView: View {
 
     private func performAdd(_ candidate: ProductCandidate, actualPrice: Double?) async -> Bool {
         guard addingID == nil, !addedIDs.contains(candidate.id) else { return true }
+        if let issue = selectionIssue(for: candidate, actualPrice: actualPrice) {
+            actionError = issue.localizedDescription
+            return false
+        }
         addingID = candidate.id
         actionError = nil
         let added = await addCandidate(candidate, actualPrice)
@@ -542,94 +569,113 @@ private enum ProductSearchPhase: Equatable {
     }
 }
 
+private enum ProductPickerFormatting {
+    static func money(_ amount: Double) -> String {
+        amount.formatted(.currency(code: "AUD").locale(Locale(identifier: "en_AU")))
+    }
+
+    static func size(_ value: String) -> String {
+        value.replacingOccurrences(of: #"^approx\.?\s*"#, with: "≈", options: [.regularExpression, .caseInsensitive])
+    }
+}
+
+private struct ProductPickerSelectionSummary {
+    let requiredQuantity: String
+    let packCount: Int?
+    let total: Double?
+    let basketAfter: Double?
+    let basketLabel: String
+}
+
 private struct ProductSearchResultRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let candidate: ProductCandidate
+    let actionTitle: String
+    let isOverBudget: Bool
+    let isCurrent: Bool
     let isAdding: Bool
     let isAdded: Bool
     let openDetails: () -> Void
     let add: () -> Void
 
     var body: some View {
-        HStack(spacing: ReasiSpacing.s3) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+
+        layout {
             Button(action: openDetails) {
-                HStack(spacing: ReasiSpacing.s3) {
-                    ProductThumbnail(url: candidate.imageUrl, size: 64)
-
-                    VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 12) {
+                    ProductThumbnail(url: candidate.imageUrl, size: 56)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(candidate.displayName)
-                            .font(ReasiTypography.callout)
+                            .font(ReasiTypography.font(size: 15, weight: .medium))
                             .foregroundStyle(Color.reasi.text)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        HStack(spacing: 5) {
-                            if let size = candidate.size, !size.isEmpty {
-                                Text(size)
-                            }
-                            if let comparablePrice = candidate.comparablePrice, !comparablePrice.isEmpty {
-                                Text("\u{00b7}")
-                                Text(comparablePrice.lowercased())
-                            }
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let size = candidate.size, !size.isEmpty {
+                            Text(ProductPickerFormatting.size(size))
+                                .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                                .foregroundStyle(Color.reasi.muted)
                         }
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                        .lineLimit(1)
-
-                        if let aisle = candidate.aisleLabel, !aisle.isEmpty {
-                            Text(aisle)
+                        if isOverBudget {
+                            Text("Over budget")
                                 .font(ReasiTypography.caption)
-                                .foregroundStyle(Color.reasi.textMuted)
-                                .lineLimit(1)
+                                .foregroundStyle(Color.reasi.warning)
                         }
                     }
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(minHeight: 60)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Details for \(candidate.displayName)")
 
-            VStack(alignment: .trailing, spacing: ReasiSpacing.s2) {
-                if let price = candidate.priceAud {
-                    Text("$\(price, specifier: "%.2f")")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-                } else {
-                    Text("No price")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                }
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(candidate.priceAud.map(ProductPickerFormatting.money) ?? "—")
+                    .font(ReasiTypography.callout)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.reasi.text)
+                    .accessibilityLabel(candidate.priceAud.map { "Price per pack \(ProductPickerFormatting.money($0))" } ?? "Price unconfirmed")
 
                 Button(action: add) {
                     Group {
                         if isAdding {
-                            ProgressView()
-                                .controlSize(.small)
+                            ProgressView().controlSize(.small)
+                        } else if isCurrent || isAdded {
+                            Label(isCurrent ? "Current" : "Added", systemImage: "checkmark")
                         } else {
-                            Image(systemName: isAdded ? "checkmark" : "plus")
-                                .font(.system(size: 16, weight: .bold))
+                            Text(actionTitle)
                         }
                     }
-                    .foregroundStyle(isAdded ? Color.reasi.background : Color.reasi.text)
-                    .frame(width: 38, height: 38)
-                    .background(isAdded ? Color.reasi.success : Color.reasi.surfaceHigh, in: Circle())
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(isCurrent || isAdded ? Color.reasi.success : Color.reasi.textMuted)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(isCurrent || isAdded ? Color.reasi.success.opacity(0.08) : Color.reasi.surfaceHigh, in: Capsule())
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(ReasiPressStyle())
-                .disabled(isAdding || isAdded)
-                .accessibilityLabel(isAdded ? "Added \(candidate.displayName)" : "Add \(candidate.displayName)")
+                .disabled(isAdding || isAdded || isCurrent)
+                .accessibilityLabel(isCurrent ? "Current product: \(candidate.displayName)" : isAdded ? "Added \(candidate.displayName)" : "\(actionTitle) \(candidate.displayName)")
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, ReasiSpacing.s5)
-        .padding(.vertical, ReasiSpacing.s3)
+        .padding(.vertical, 12)
         .background(Color.reasi.background)
         .overlay(alignment: .bottom) {
-            Divider()
-                .overlay(Color.reasi.border)
-                .padding(.leading, 64 + ReasiSpacing.s5 + ReasiSpacing.s3)
+            Divider().overlay(Color.reasi.border)
+                .padding(.leading, 56 + ReasiSpacing.s5 + 12)
         }
     }
 }
 
-private struct ProductThumbnail: View {
+struct ProductThumbnail: View {
     let url: URL?
     let size: CGFloat
 
@@ -642,9 +688,13 @@ private struct ProductThumbnail: View {
                     .scaledToFit()
                     .padding(5)
             case .empty:
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(Color.reasi.muted)
+                if url == nil {
+                    placeholder
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.reasi.muted)
+                }
             case .failure:
                 placeholder
             @unknown default:
@@ -668,10 +718,13 @@ private struct ProductCandidateDetailView: View {
 
     let candidate: ProductCandidate
     let isFulfillingItem: Bool
+    let selectionSummary: (Double?) -> ProductPickerSelectionSummary?
+    let selectionIssue: (Double?) -> ProductSelectionIssue?
     let onAdd: (Double?) async -> Bool
 
     @State private var shelfPrice = ""
     @State private var isAdding = false
+    @State private var saveFailed = false
 
     var body: some View {
         NavigationStack {
@@ -689,7 +742,7 @@ private struct ProductCandidateDetailView: View {
                                     .foregroundStyle(Color.reasi.textMuted)
                             }
                             if let price = candidate.priceAud {
-                                Text("$\(price, specifier: "%.2f")")
+                                Text(ProductPickerFormatting.money(price))
                                     .font(ReasiTypography.title2)
                                     .foregroundStyle(Color.reasi.text)
                             } else {
@@ -705,6 +758,29 @@ private struct ProductCandidateDetailView: View {
                         }
                     }
 
+                    if let summary = selectionSummary(parsedShelfPrice) {
+                        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                            summaryRow("Recipe needs", value: summary.requiredQuantity)
+                            if let count = summary.packCount, let total = summary.total {
+                                summaryRow("Buy", value: "\(count) \(count == 1 ? "pack" : "packs") · \(ProductPickerFormatting.money(total))")
+                            } else {
+                                Text("Quantity or price needs checking")
+                                    .font(ReasiTypography.callout)
+                                    .foregroundStyle(Color.reasi.warning)
+                            }
+                            if let after = summary.basketAfter {
+                                summaryRow("\(summary.basketLabel) after change", value: ProductPickerFormatting.money(after))
+                            }
+                            if let issue = selectionIssue(parsedShelfPrice) {
+                                Text(issue.localizedDescription)
+                                    .font(ReasiTypography.callout)
+                                    .foregroundStyle(Color.reasi.warning)
+                            }
+                        }
+                        .padding(ReasiSpacing.s4)
+                        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg))
+                    }
+
                     detailRow("Location", value: candidate.aisleLabel ?? "Location not certain", symbol: "mappin.and.ellipse")
                     detailRow("Source", value: candidate.userFacingSourceName, symbol: "checkmark.shield")
                     detailRow("Freshness", value: candidate.freshnessLabel, symbol: "clock")
@@ -717,20 +793,28 @@ private struct ProductCandidateDetailView: View {
                     }
 
                     if isFulfillingItem {
-                        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                            Text("Price on the shelf")
-                                .font(ReasiTypography.headline)
-                                .foregroundStyle(Color.reasi.text)
-                            TextField("Optional", text: $shelfPrice)
-                                .keyboardType(.decimalPad)
-                                .font(ReasiTypography.body)
-                                .foregroundStyle(Color.reasi.text)
-                                .padding(ReasiSpacing.s4)
-                                .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
-                            Text("Only change this when the shelf price differs from the catalog.")
-                                .font(ReasiTypography.caption)
-                                .foregroundStyle(Color.reasi.muted)
+                        DisclosureGroup("Different shelf price?") {
+                            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                                TextField("Optional", text: $shelfPrice)
+                                    .accessibilityLabel("Shelf price per pack")
+                                    .keyboardType(.decimalPad)
+                                    .font(ReasiTypography.body)
+                                    .foregroundStyle(Color.reasi.text)
+                                    .padding(ReasiSpacing.s4)
+                                    .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+                                Text(shelfPriceIsInvalid ? "Enter a valid price per pack." : "Enter the price of one pack.")
+                                    .font(ReasiTypography.caption)
+                                    .foregroundStyle(shelfPriceIsInvalid ? Color.reasi.warning : Color.reasi.muted)
+                            }
+                            .padding(.top, ReasiSpacing.s3)
                         }
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.text)
+                    }
+                    if saveFailed {
+                        Text("Couldn’t save this product. Please try again.")
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.warning)
                     }
                 }
                 .padding(ReasiSpacing.s5)
@@ -748,25 +832,26 @@ private struct ProductCandidateDetailView: View {
                 Button {
                     guard !isAdding else { return }
                     isAdding = true
+                    saveFailed = false
                     Task {
                         let added = await onAdd(parsedShelfPrice)
                         isAdding = false
+                        saveFailed = !added
                         if added { dismiss() }
                     }
                 } label: {
                     HStack {
                         if isAdding { ProgressView().tint(Color.reasi.background) }
-                        Text(isAdding ? "Saving" : (isFulfillingItem ? "Use and check item" : "Add to list"))
+                        Text(isAdding ? "Saving" : (isFulfillingItem ? "Use this product" : "Add to list"))
                     }
                 }
                 .buttonStyle(ReasiPrimaryButtonStyle())
-                .disabled(isAdding)
+                .disabled(isAdding || shelfPriceIsInvalid || selectionIssue(parsedShelfPrice) != nil)
                 .padding(.horizontal, ReasiSpacing.s5)
                 .padding(.vertical, ReasiSpacing.s3)
                 .background(.ultraThinMaterial)
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func detailRow(_ title: String, value: String, symbol: String) -> some View {
@@ -783,6 +868,21 @@ private struct ProductCandidateDetailView: View {
                     .foregroundStyle(Color.reasi.text)
             }
         }
+    }
+
+    private func summaryRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s3) {
+            Text(title).foregroundStyle(Color.reasi.muted)
+            Spacer(minLength: 8)
+            Text(value).foregroundStyle(Color.reasi.text).multilineTextAlignment(.trailing)
+        }
+        .font(ReasiTypography.callout)
+    }
+
+    private var shelfPriceIsInvalid: Bool {
+        guard !shelfPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard let price = parsedShelfPrice else { return true }
+        return !price.isFinite || price < 0
     }
 
     private var parsedShelfPrice: Double? {

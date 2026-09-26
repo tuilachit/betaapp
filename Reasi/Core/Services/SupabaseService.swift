@@ -1030,7 +1030,9 @@ final class SupabaseService {
             ),
             kind: planRow.planKind,
             entryMethod: planRow.generationMetadata?.planBrief?.entryMethod,
-            occasionAt: planRow.occasionAt.flatMap(Self.parseISODate)
+            occasionAt: planRow.occasionAt.flatMap(Self.parseISODate),
+            budgetTargetAud: planRow.generationMetadata?.basket?.targetAud
+                ?? planRow.generationMetadata?.planBrief?.budgetTargetAud
         )
         #else
         throw AuthFlowError.notConfigured
@@ -1556,6 +1558,7 @@ final class SupabaseService {
         #endif
     }
 
+    @discardableResult
     func selectProduct(
         _ candidate: ProductCandidate,
         for item: ShoppingListItem,
@@ -1563,8 +1566,10 @@ final class SupabaseService {
         sectionLabel: String,
         sectionSortKey: Int,
         sectionType: ShoppingSectionType,
-        actualPriceAud: Double?
-    ) async throws {
+        actualPriceAud: Double?,
+        productSnapshot: ProductSnapshot,
+        onlyIfUnselected: Bool = false
+    ) async throws -> Bool {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             throw AuthFlowError.notSignedIn
@@ -1575,7 +1580,7 @@ final class SupabaseService {
         let resolvedSectionSortKey = candidate.sectionSortKey ?? sectionSortKey
         let resolvedSectionType = candidate.sectionType ?? sectionType
         let resolvedAisleLabel = candidate.aisleLabel ?? item.aisleLabel ?? "Location not certain"
-        let updated: ImportedShoppingListItemResponse = try await client
+        var update = try client
             .from("shopping_list_items")
             .update(
                 ShoppingListProductSelectionUpdate(
@@ -1587,26 +1592,33 @@ final class SupabaseService {
                     selectedRetailer: candidate.retailer,
                     selectedProductObservationId: candidate.observationId,
                     selectedBarcode: candidate.barcode,
-                    priceCents: candidate.priceAud.map { Int(($0 * 100).rounded()) },
-                    priceSnapshot: CatalogPriceSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+                    priceCents: productSnapshot.priceAud.map { Int(($0 * 100).rounded()) },
+                    priceSnapshot: CatalogPriceSnapshot(candidate: candidate, actualPriceAud: actualPriceAud, product: productSnapshot),
                     actualPriceAud: actualPriceAud,
-                    productSnapshot: ProductSnapshot(candidate: candidate, actualPriceAud: actualPriceAud),
+                    productSnapshot: productSnapshot,
                     productSelectedAt: now,
-                    checked: true,
-                    purchased: true,
-                    checkedAt: now,
-                    updatedAt: now
+                    checked: false,
+                    purchased: false,
+                    checkedAt: nil,
+                    updatedAt: now,
+                    preserveCheckState: onlyIfUnselected
                 )
             )
             .eq("id", value: item.id)
             .eq("shopping_list_id", value: shoppingListId)
             .eq("user_id", value: userId)
+        if onlyIfUnselected {
+            // Atomic guard: a background suggestion must never replace a choice
+            // the customer made while the catalogue request was in flight.
+            update = update.is("product_snapshot", value: nil)
+        }
+        let updated: [ImportedShoppingListItemResponse] = try await update
             .select("id")
-            .single()
             .execute()
             .value
-
-        guard updated.id == item.id else { throw ReasiServiceError.invalidResponse }
+        if onlyIfUnselected, updated.isEmpty { return false }
+        guard updated.first?.id == item.id else { throw ReasiServiceError.invalidResponse }
+        return true
         #else
         throw AuthFlowError.notConfigured
         #endif
@@ -2377,8 +2389,9 @@ private struct ShoppingListProductSelectionUpdate: Encodable {
     let productSelectedAt: String
     let checked: Bool
     let purchased: Bool
-    let checkedAt: String
+    let checkedAt: String?
     let updatedAt: String
+    var preserveCheckState = false
 
     enum CodingKeys: String, CodingKey {
         case sectionLabel = "section_label"
@@ -2399,6 +2412,29 @@ private struct ShoppingListProductSelectionUpdate: Encodable {
         case checkedAt = "checked_at"
         case updatedAt = "updated_at"
     }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(sectionLabel, forKey: .sectionLabel)
+        try values.encode(sectionSortKey, forKey: .sectionSortKey)
+        try values.encode(sectionType, forKey: .sectionType)
+        try values.encode(aisleLabel, forKey: .aisleLabel)
+        try values.encode(matchedSku, forKey: .matchedSku)
+        try values.encode(selectedRetailer, forKey: .selectedRetailer)
+        try values.encode(selectedProductObservationId, forKey: .selectedProductObservationId)
+        try values.encode(selectedBarcode, forKey: .selectedBarcode)
+        try values.encode(priceCents, forKey: .priceCents)
+        try values.encode(priceSnapshot, forKey: .priceSnapshot)
+        try values.encode(actualPriceAud, forKey: .actualPriceAud)
+        try values.encode(productSnapshot, forKey: .productSnapshot)
+        try values.encode(productSelectedAt, forKey: .productSelectedAt)
+        if !preserveCheckState {
+            try values.encode(checked, forKey: .checked)
+            try values.encode(purchased, forKey: .purchased)
+            try values.encode(checkedAt, forKey: .checkedAt)
+        }
+        try values.encode(updatedAt, forKey: .updatedAt)
+    }
 }
 
 private struct CatalogPriceSnapshot: Encodable {
@@ -2409,8 +2445,8 @@ private struct CatalogPriceSnapshot: Encodable {
     let capturedAt: String?
     let freshnessLabel: String
 
-    init(candidate: ProductCandidate, actualPriceAud: Double? = nil) {
-        priceAud = candidate.priceAud
+    init(candidate: ProductCandidate, actualPriceAud: Double? = nil, product: ProductSnapshot? = nil) {
+        priceAud = product == nil ? candidate.priceAud : product?.priceAud
         self.actualPriceAud = actualPriceAud
         sourceName = candidate.sourceName
         sourceURL = candidate.sourceUrl
@@ -2586,10 +2622,16 @@ private struct PersistedMealPlanSummaryRow: Decodable {
 
 private struct PersistedPlanGenerationMetadata: Decodable {
     let planBrief: PersistedPlanBriefMetadata?
+    let basket: PersistedBasketMetadata?
+}
+
+private struct PersistedBasketMetadata: Decodable {
+    let targetAud: Double?
 }
 
 private struct PersistedPlanBriefMetadata: Decodable {
     let entryMethod: EntryMethod?
+    let budgetTargetAud: Double?
 }
 
 private struct PersistedRecentPlanRow: Decodable {
@@ -2794,7 +2836,16 @@ private struct PersistedShoppingItemRow: Decodable {
                 barcode: productSnapshot.barcode,
                 sourceName: productSnapshot.sourceName,
                 observationId: productSnapshot.observationId,
-                actualPriceAud: resolvedActualPrice
+                actualPriceAud: resolvedActualPrice,
+                categoryGroup: productSnapshot.categoryGroup,
+                category: productSnapshot.category,
+                subCategory: productSnapshot.subCategory,
+                unitPriceAud: productSnapshot.unitPriceAud,
+                purchaseQuantity: productSnapshot.purchaseQuantity,
+                requiredAmount: productSnapshot.requiredAmount,
+                requiredUnit: productSnapshot.requiredUnit,
+                confidence: productSnapshot.confidence,
+                uncertaintyText: productSnapshot.uncertaintyText
             )
         } else if let price = actualPriceAud ?? priceCents.map({ Double($0) / 100 }) {
             resolvedProduct = ProductSnapshot(

@@ -155,7 +155,7 @@ struct HomeView: View {
             .background(
                 LinearGradient(
                     colors: [
-                        Color(hex: 0x20251E),
+                        Color.reasi.planHighlight,
                         Color.reasi.surface
                     ],
                     startPoint: .topLeading,
@@ -368,7 +368,7 @@ private struct HomeMealArtwork: View {
 
     var body: some View {
         ZStack {
-            Color.reasi.surfaceHigh
+            Color.reasi.imageBackground
 
             if let imageURL = meal.imageUrl {
                 AsyncImage(
@@ -383,7 +383,7 @@ private struct HomeMealArtwork: View {
                             .transition(.opacity)
                     case .empty:
                         ProgressView()
-                            .tint(Color.reasi.textMuted)
+                            .tint(Color.reasi.onImageMuted)
                     case .failure:
                         fallback
                     @unknown default:
@@ -400,7 +400,7 @@ private struct HomeMealArtwork: View {
     private var fallback: some View {
         Image(systemName: "fork.knife")
             .font(.system(size: 30, weight: .medium))
-            .foregroundStyle(Color.reasi.textMuted)
+            .foregroundStyle(Color.reasi.onImageMuted)
     }
 }
 
@@ -514,7 +514,6 @@ struct PlanBuilderView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .task {
             appState.planBuilder.begin(entryMethod: entryMethod)
             if let restored = appState.planBuilder.draft {

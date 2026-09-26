@@ -7,6 +7,7 @@ struct FloatingTabBar: View {
     var primaryAction: () -> Void
     @Namespace private var activeNamespace
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -26,6 +27,7 @@ struct FloatingTabBar: View {
                         }
                         .buttonStyle(ReasiPressStyle())
                         .accessibilityLabel(tab.title)
+                        .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
                     }
                 }
                 .padding(ReasiSpacing.s1)
@@ -82,12 +84,20 @@ struct FloatingTabBar: View {
         .padding(.horizontal, ReasiSpacing.s2)
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .fill(Color.reasi.surfaceHigh)
-                    .matchedGeometryEffect(id: "active-tab", in: activeNamespace)
+                if reduceMotion {
+                    activeTabBackground
+                } else {
+                    activeTabBackground
+                        .matchedGeometryEffect(id: "active-tab", in: activeNamespace)
+                }
             }
         }
-        .animation(ReasiMotion.tactileSpring, value: selectedTab)
+        .animation(reduceMotion ? nil : ReasiMotion.tabTransition, value: selectedTab)
+    }
+
+    private var activeTabBackground: some View {
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+            .fill(Color.reasi.surfaceHigh)
     }
 }
 

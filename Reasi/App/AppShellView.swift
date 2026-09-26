@@ -9,8 +9,10 @@ struct AppShellView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            tabStack
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SlidingTabContent(selection: appState.selectedTab) { tab in
+                tabStack(for: tab)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             FloatingTabBar(
                 selectedTab: Binding(
@@ -54,8 +56,8 @@ struct AppShellView: View {
     }
 
     @ViewBuilder
-    private var tabStack: some View {
-        switch appState.selectedTab {
+    private func tabStack(for tab: AppTab) -> some View {
+        switch tab {
         case .home:
             NavigationStack(path: Binding(
                 get: { appState.homeRouter.path },
@@ -118,6 +120,80 @@ struct AppShellView: View {
             appState: appState,
             network: network
         )
+    }
+}
+
+private struct SlidingTabContent<Content: View>: View {
+    let selection: AppTab
+    let content: (AppTab) -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var displayedTab: AppTab
+    @State private var previousTab: AppTab
+
+    init(selection: AppTab, @ViewBuilder content: @escaping (AppTab) -> Content) {
+        self.selection = selection
+        self.content = content
+        _displayedTab = State(initialValue: selection)
+        _previousTab = State(initialValue: selection)
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(AppTab.allCases) { tab in
+                ZStack {
+                    if displayedTab == tab {
+                        content(tab)
+                            .transition(TabSlideTransition(
+                                tab: tab,
+                                selection: selection,
+                                previousSelection: previousTab,
+                                reduceMotion: reduceMotion,
+                                layoutDirection: layoutDirection
+                            ))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(displayedTab == tab)
+                .accessibilityHidden(displayedTab != tab)
+                .zIndex(displayedTab == tab ? 1 : 0)
+            }
+        }
+        .clipped()
+        .animation(reduceMotion ? ReasiMotion.fast : ReasiMotion.tabTransition, value: displayedTab)
+        .onChange(of: selection) { _, newTab in
+            previousTab = displayedTab
+            displayedTab = newTab
+        }
+    }
+
+}
+
+private struct TabSlideTransition: Transition {
+    let tab: AppTab
+    // The requested selection updates before displayedTab. This refreshes the
+    // outgoing page's exit direction while it is still in the view hierarchy.
+    let selection: AppTab
+    let previousSelection: AppTab
+    let reduceMotion: Bool
+    let layoutDirection: LayoutDirection
+
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        let tabs = AppTab.allCases
+        let selectedIndex = tabs.firstIndex(of: selection) ?? 0
+        let previousIndex = tabs.firstIndex(of: previousSelection) ?? 0
+        let tabIndex = tabs.firstIndex(of: tab) ?? 0
+        let direction: CGFloat = phase == .didDisappear
+            ? (tabIndex < selectedIndex ? -1 : 1)
+            : (selectedIndex > previousIndex ? 1 : -1)
+        let layoutSign: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
+
+        GeometryReader { geometry in
+            content
+                .offset(x: phase.isIdentity || reduceMotion ? 0 : direction * layoutSign * geometry.size.width)
+                .opacity(phase.isIdentity ? 1 : 0)
+        }
     }
 }
 

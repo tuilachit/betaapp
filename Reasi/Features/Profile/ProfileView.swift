@@ -8,6 +8,7 @@ import GoogleSignIn
 #endif
 
 struct ProfileView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
@@ -167,7 +168,7 @@ struct ProfileView: View {
                 } onCompletion: { result in
                     handleAppleCompletion(result)
                 }
-                .signInWithAppleButtonStyle(.white)
+                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
                 .clipShape(Capsule())
@@ -405,6 +406,33 @@ struct ProfileView: View {
             sectionTitle("Shopping & app")
 
             VStack(spacing: 1) {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                    Label("Appearance", systemImage: "circle.lefthalf.filled")
+                        .font(ReasiTypography.bodyMedium)
+                        .foregroundStyle(Color.reasi.text)
+
+                    Picker("Appearance", selection: Binding(
+                        get: { userSettings.appearance },
+                        set: { appearance in
+                            userSettings.setAppearance(appearance)
+                            ReasiHaptics.selection()
+                            analytics.capture(.settingsUpdated, properties: [
+                                "setting": .string("appearance"),
+                                "value": .string(appearance.rawValue)
+                            ])
+                        }
+                    )) {
+                        ForEach(ReasiAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("reasi-appearance-picker")
+                }
+                .padding(ReasiSpacing.s4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.reasi.surface)
+
                 Button {
                     ReasiHaptics.light()
                     activeSettingsDestination = .shopping
