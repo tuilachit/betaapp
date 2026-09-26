@@ -1079,7 +1079,7 @@ final class SupabaseService {
             case 402:
                 let payload = try? JSONDecoder().decode(EdgeErrorResponse.self, from: data)
                 throw ReasiServiceError.reasiProRequired(
-                    payload?.message ?? "Your free preview is ready to keep. Choose Reasi Pro to create another week."
+                    payload?.message ?? "Reasi Pro is required to create a plan. Start your 3-day free trial to continue."
                 )
             case 409:
                 let payload = try? JSONDecoder().decode(EdgeErrorResponse.self, from: data)
@@ -1948,6 +1948,7 @@ private struct EdgeErrorResponse: Decodable {
 }
 
 enum FreePreviewStatus: String, Decodable, Hashable {
+    case unavailable
     case available
     case reserved
     case completed

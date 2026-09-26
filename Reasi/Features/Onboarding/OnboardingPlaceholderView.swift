@@ -1089,12 +1089,9 @@ struct OnboardingPlaceholderView: View {
             )
             guard completed else { return }
 
-            coreLoop.startWeekPlanGeneration(
-                store: appState.selectedStore,
-                supabase: supabase,
-                analytics: analytics,
-                appState: appState,
-                network: network
+            coreLoop.presentPaywall(
+                message: "Reasi Pro is required to create your first plan. Start your 3-day free trial to continue.",
+                trigger: .onboarding
             )
         }
     }

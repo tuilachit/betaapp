@@ -294,13 +294,13 @@ final class RevenueCatService {
                 id: Self.annualProductId,
                 kind: .annual,
                 localizedPrice: "A$79.99",
-                trialText: "3 days free"
+                trialText: "2 weeks free"
             ),
             ReasiProPlanOption(
                 id: Self.monthlyProductId,
                 kind: .monthly,
                 localizedPrice: "A$17.99",
-                trialText: nil
+                trialText: "3 days free"
             ),
             ReasiProPlanOption(
                 id: Self.weeklyProductId,
@@ -497,6 +497,10 @@ final class RevenueCatService {
         let period = discount.subscriptionPeriod
         let unit: String
         switch period.unit {
+        case .day where period.value >= 7 && period.value.isMultiple(of: 7):
+            let weeks = period.value / 7
+            unit = weeks == 1 ? "week" : "weeks"
+            return "\(weeks) \(unit) free"
         case .day: unit = period.value == 1 ? "day" : "days"
         case .week: unit = period.value == 1 ? "week" : "weeks"
         case .month: unit = period.value == 1 ? "month" : "months"

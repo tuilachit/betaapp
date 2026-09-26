@@ -46,9 +46,21 @@ enum WeekPlanGenerationState: Equatable {
     }
 }
 
+enum ReasiPaywallTrigger: String, Equatable {
+    case onboarding
+    case generationRequired
+    case debug
+}
+
 struct ReasiPaywallRequest: Identifiable, Equatable {
     let id = UUID()
     let message: String
+    let trigger: ReasiPaywallTrigger
+
+    init(message: String, trigger: ReasiPaywallTrigger = .generationRequired) {
+        self.message = message
+        self.trigger = trigger
+    }
 }
 
 enum ShoppingItemDeletionSource: String {
@@ -902,7 +914,7 @@ final class CoreLoopStore {
                case .reasiProRequired = serviceError {
                 clearPendingGeneration()
                 generationState = .idle
-                paywallRequest = ReasiPaywallRequest(message: message)
+                presentPaywall(message: message, trigger: .generationRequired)
                 ReasiHaptics.selection()
                 return
             }
@@ -915,10 +927,18 @@ final class CoreLoopStore {
         paywallRequest = nil
     }
 
+    func presentPaywall(
+        message: String,
+        trigger: ReasiPaywallTrigger = .generationRequired
+    ) {
+        paywallRequest = ReasiPaywallRequest(message: message, trigger: trigger)
+    }
+
     #if DEBUG
     func presentDebugPaywall() {
-        paywallRequest = ReasiPaywallRequest(
-            message: "Your first complete week is included. Reasi Pro unlocks every new week after that."
+        presentPaywall(
+            message: "Reasi Pro is required to create a plan. Start your 3-day free trial to continue.",
+            trigger: .debug
         )
     }
     #endif
