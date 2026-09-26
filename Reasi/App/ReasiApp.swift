@@ -69,7 +69,7 @@ struct ReasiApp: App {
                 .environment(userSettings)
                 .environment(spending)
                 .preferredColorScheme(userSettings.appearance.colorScheme)
-                .tint(Color.reasi.text)
+                .tint(Color.reasi.accent)
                 .task {
                     await supabase.restoreSession()
                     await onboarding.bootstrap(
@@ -321,7 +321,7 @@ private struct PasswordRecoverySheet: View {
                     HStack(spacing: ReasiSpacing.s3) {
                         if isBusy {
                             ProgressView()
-                                .tint(Color.reasi.background)
+                                .tint(Color.reasi.onAccent)
                         }
                         Text(isBusy ? "Updating..." : "Update password")
                     }

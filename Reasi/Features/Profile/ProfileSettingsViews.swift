@@ -56,7 +56,7 @@ struct PlanningPreferencesSettingsView: View {
                         HStack(spacing: ReasiSpacing.s3) {
                             if isSaving {
                                 ProgressView()
-                                    .tint(Color.reasi.background)
+                                    .tint(Color.reasi.onAccent)
                             }
                             Text(isSaving ? "Saving" : "Save preferences")
                         }
@@ -256,7 +256,7 @@ struct SpendingPreferencesSettingsView: View {
                         save()
                     } label: {
                         HStack(spacing: ReasiSpacing.s3) {
-                            if isSaving { ProgressView().tint(Color.reasi.background) }
+                            if isSaving { ProgressView().tint(Color.reasi.onAccent) }
                             Text(isSaving ? "Saving" : "Save spending settings")
                         }
                     }
@@ -750,9 +750,9 @@ private func selectionRow(
         if let selectionOrder {
             Text("\(selectionOrder)")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.reasi.background)
+                .foregroundStyle(Color.reasi.onAccent)
                 .frame(width: 24, height: 24)
-                .background(Color.reasi.text, in: Circle())
+                .background(Color.reasi.accent, in: Circle())
         } else {
             Image(systemName: "circle")
                 .font(.system(size: 21, weight: .semibold))
@@ -798,7 +798,7 @@ private func settingsToggleRow(
                 .foregroundStyle(Color.reasi.muted)
         }
     }
-    .tint(Color.reasi.text)
+    .tint(Color.reasi.accent)
     .padding(ReasiSpacing.s4)
     .frame(minHeight: 68)
     .background(Color.reasi.surface)

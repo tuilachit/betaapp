@@ -2,26 +2,34 @@ import SwiftUI
 import UIKit
 
 struct ReasiColorPalette {
-    let background = Color(light: 0xF6F6F8, dark: 0x09090A)
-    let backgroundElevated = Color(light: 0xFBFBFC, dark: 0x0D0D0F)
-    let surface = Color(light: 0xFFFFFF, dark: 0x171719)
-    let surfaceHigh = Color(light: 0xEDEDF1, dark: 0x202023)
-    let glass = Color(light: 0xFFFFFF, dark: 0x1C1C1E, opacity: 0.82)
-    let border = Color(light: 0xD7D7DE, dark: 0x29292D)
-    let borderStrong = Color(light: 0xB4B4BE, dark: 0x3D3D43)
-    let text = Color(light: 0x19191D, dark: 0xF4F4F5)
-    let textMuted = Color(light: 0x51515B, dark: 0xB8B8BF)
-    let muted = Color(light: 0x62626D, dark: 0x85858E)
-    let dim = Color(light: 0x666670, dark: 0x5E5E66)
+    // Oat neutrals: cream and oat in light, roasted espresso in dark.
+    let background = Color(light: 0xF5F0E8, dark: 0x13100E)
+    let backgroundElevated = Color(light: 0xFAF6F0, dark: 0x181512)
+    let surface = Color(light: 0xFFFCF7, dark: 0x201B18)
+    let surfaceHigh = Color(light: 0xEDE5D8, dark: 0x2A2420)
+    let glass = Color(light: 0xFFFCF7, dark: 0x241F1B, opacity: 0.82)
+    let border = Color(light: 0xDED4C4, dark: 0x362F29)
+    let borderStrong = Color(light: 0xC2B5A2, dark: 0x4B423A)
+    let text = Color(light: 0x2B211C, dark: 0xF4EEE6)
+    let textMuted = Color(light: 0x5B4E45, dark: 0xC7BCAF)
+    let muted = Color(light: 0x695C52, dark: 0x998D80)
+    let dim = Color(light: 0x6D6056, dark: 0x6E645A)
     let danger = Color(light: 0xB52A31, dark: 0xFF6B6B)
     let warning = Color(light: 0x8A5900, dark: 0xFFD36A)
     let success = Color(light: 0x27633A, dark: 0xD7F4D0)
-    let planHighlight = Color(light: 0xE7F0E3, dark: 0x20251E)
+    let planHighlight = Color(light: 0xF7E6D4, dark: 0x2B2019)
+
+    // Brand: muted red for primary actions and selection, pumpkin for highlights.
+    let accent = Color(light: 0xA3473E, dark: 0xD9776A)
+    let accentSoft = Color(light: 0xF3E1DB, dark: 0x2E1D1A)
+    let onAccent = Color(light: 0xFFFCF7, dark: 0x1F1512)
+    let highlight = Color(light: 0xD9772E, dark: 0xE8894A)
+    let onHighlight = Color(light: 0x2B211C, dark: 0x1F1512)
 
     // Photo and camera overlays stay dark in either app appearance.
-    let imageBackground = Color(hex: 0x202023)
-    let onImage = Color(hex: 0xF4F4F5)
-    let onImageMuted = Color(hex: 0xB8B8BF)
+    let imageBackground = Color(hex: 0x231E1B)
+    let onImage = Color(hex: 0xF4EEE6)
+    let onImageMuted = Color(hex: 0xC7BCAF)
     let onImageSuccess = Color(hex: 0xD7F4D0)
 }
 

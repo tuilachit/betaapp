@@ -861,7 +861,7 @@ struct PlanBuilderView: View {
             Task { await reviewOrGenerate() }
         } label: {
             if isInterpreting {
-                HStack { ProgressView().tint(Color.reasi.background); Text("Understanding your plan") }
+                HStack { ProgressView().tint(Color.reasi.onAccent); Text("Understanding your plan") }
             } else if hasUnansweredClarification {
                 Label("Choose an answer", systemImage: "arrow.up")
             } else {

@@ -45,13 +45,9 @@ struct FloatingTabBar: View {
                 } label: {
                     Image(systemName: primaryActionSymbol)
                         .font(.system(size: 25, weight: .medium))
-                        .foregroundStyle(Color.reasi.text)
+                        .foregroundStyle(Color.reasi.onAccent)
                         .frame(width: plusSize, height: plusSize)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .background(Color.reasi.glass, in: Circle())
-                        .overlay {
-                            Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
-                        }
+                        .background(Color.reasi.accent, in: Circle())
                 }
                 .buttonStyle(ReasiPressStyle())
                 .accessibilityLabel(primaryActionLabel)
@@ -78,7 +74,7 @@ struct FloatingTabBar: View {
                 }
             }
         }
-        .foregroundStyle(isSelected ? Color.reasi.text : Color.reasi.muted)
+        .foregroundStyle(isSelected ? Color.reasi.accent : Color.reasi.muted)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 58)
         .padding(.horizontal, ReasiSpacing.s2)
@@ -97,7 +93,7 @@ struct FloatingTabBar: View {
 
     private var activeTabBackground: some View {
         RoundedRectangle(cornerRadius: 30, style: .continuous)
-            .fill(Color.reasi.surfaceHigh)
+            .fill(Color.reasi.accentSoft)
     }
 }
 

@@ -33,23 +33,17 @@ final class ReasiAppearanceTests: XCTestCase {
         XCTAssertEqual(ReasiAppearance.dark.colorScheme, .dark)
     }
 
-    func testPaletteAdaptsAndPreservesOriginalDarkColors() {
+    func testPaletteAdaptsBetweenLightAndDark() {
         let colors = Color.reasi
-        let original: [(Color, UInt)] = [
-            (colors.background, 0x09090A), (colors.backgroundElevated, 0x0D0D0F),
-            (colors.surface, 0x171719), (colors.surfaceHigh, 0x202023),
-            (colors.border, 0x29292D), (colors.borderStrong, 0x3D3D43),
-            (colors.text, 0xF4F4F5), (colors.textMuted, 0xB8B8BF),
-            (colors.muted, 0x85858E), (colors.dim, 0x5E5E66),
-            (colors.danger, 0xFF6B6B), (colors.warning, 0xFFD36A),
-            (colors.success, 0xD7F4D0), (colors.planHighlight, 0x20251E),
+        let adaptive = [
+            colors.background, colors.backgroundElevated, colors.surface, colors.surfaceHigh,
+            colors.border, colors.borderStrong, colors.text, colors.textMuted,
+            colors.muted, colors.dim, colors.danger, colors.warning,
+            colors.success, colors.planHighlight, colors.accent, colors.accentSoft,
+            colors.onAccent, colors.highlight, colors.onHighlight,
         ]
-        for (color, hex) in original {
-            let dark = components(color, style: .dark)
-            XCTAssertEqual(dark[0], Double((hex >> 16) & 255) / 255, accuracy: 0.001)
-            XCTAssertEqual(dark[1], Double((hex >> 8) & 255) / 255, accuracy: 0.001)
-            XCTAssertEqual(dark[2], Double(hex & 255) / 255, accuracy: 0.001)
-            XCTAssertNotEqual(dark, components(color, style: .light))
+        for color in adaptive {
+            XCTAssertNotEqual(components(color, style: .dark), components(color, style: .light))
         }
         for style: UIUserInterfaceStyle in [.light, .dark] {
             XCTAssertEqual(components(colors.glass, style: style)[3], 0.82, accuracy: 0.001)
@@ -58,6 +52,17 @@ final class ReasiAppearanceTests: XCTestCase {
             XCTAssertGreaterThan(contrast(colors.onImageMuted, colors.imageBackground, style: style), 4.5)
         }
         XCTAssertEqual(components(colors.onImage, style: .light), components(colors.onImage, style: .dark))
+    }
+
+    func testBrandColorsStayReadableInBothAppearances() {
+        let colors = Color.reasi
+        for style: UIUserInterfaceStyle in [.light, .dark] {
+            XCTAssertGreaterThanOrEqual(contrast(colors.onAccent, colors.accent, style: style), 4.5)
+            XCTAssertGreaterThanOrEqual(contrast(colors.onHighlight, colors.highlight, style: style), 4.5)
+            for background in [colors.background, colors.surface, colors.surfaceHigh, colors.accentSoft] {
+                XCTAssertGreaterThanOrEqual(contrast(colors.accent, background, style: style), 4.5)
+            }
+        }
     }
 
     func testLightModeTextAndStatusContrastAcrossSurfaces() {

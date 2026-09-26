@@ -336,10 +336,10 @@ struct ReasiProPaywallView: View {
         return VStack(spacing: 0) {
             Text(option.trialText?.uppercased() ?? "BEST VALUE")
                 .font(ReasiTypography.navLabel)
-                .foregroundStyle(Color.reasi.background)
+                .foregroundStyle(Color.reasi.onHighlight)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, ReasiSpacing.s1)
-                .background(Color.reasi.success)
+                .background(Color.reasi.highlight)
 
             Button {
                 selectPlan(option)
@@ -376,9 +376,7 @@ struct ReasiProPaywallView: View {
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
                 .stroke(
-                    isSelected
-                        ? (option.kind == .annual ? Color.reasi.success : Color.reasi.text)
-                        : Color.reasi.border,
+                    isSelected ? Color.reasi.accent : Color.reasi.border,
                     lineWidth: isSelected ? 1.5 : 1
                 )
         }
@@ -414,7 +412,7 @@ struct ReasiProPaywallView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? Color.reasi.accent : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
         }
         .accessibilityLabel("\(option.kind.title) plan")
         .accessibilityValue(planAccessibilityValue(option))
@@ -460,7 +458,7 @@ struct ReasiProPaywallView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? Color.reasi.accent : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
         }
         .accessibilityLabel("\(option.kind.title) plan")
         .accessibilityValue(planAccessibilityValue(option))
@@ -470,15 +468,15 @@ struct ReasiProPaywallView: View {
     private func selectionMark(_ isSelected: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(isSelected ? Color.reasi.text : Color.clear)
+                .fill(isSelected ? Color.reasi.accent : Color.clear)
                 .frame(width: 24, height: 24)
             Circle()
-                .stroke(isSelected ? Color.reasi.text : Color.reasi.borderStrong, lineWidth: 1.5)
+                .stroke(isSelected ? Color.reasi.accent : Color.reasi.borderStrong, lineWidth: 1.5)
                 .frame(width: 24, height: 24)
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.reasi.background)
+                    .foregroundStyle(Color.reasi.onAccent)
             }
         }
         .accessibilityHidden(true)
@@ -502,7 +500,7 @@ struct ReasiProPaywallView: View {
         } label: {
             HStack(spacing: ReasiSpacing.s3) {
                 if revenueCat.isPurchasing || isRefreshingAccess {
-                    ProgressView().tint(Color.reasi.background)
+                    ProgressView().tint(Color.reasi.onAccent)
                 }
                 Text(primaryActionTitle)
             }

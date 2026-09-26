@@ -482,7 +482,7 @@ struct ProfileView: View {
                             .foregroundStyle(Color.reasi.muted)
                     }
                 }
-                .tint(Color.reasi.text)
+                .tint(Color.reasi.accent)
                 .padding(ReasiSpacing.s4)
                 .frame(minHeight: 64)
                 .background(Color.reasi.surface)

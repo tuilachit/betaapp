@@ -1444,14 +1444,15 @@ private struct ProductTextImportSheet: View {
                     HStack {
                         if isLoading {
                             ProgressView()
+                                .tint(Color.reasi.onAccent)
                         }
                         Text(isLoading ? "Checking..." : "Find product")
                             .font(ReasiTypography.bodyMedium)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, ReasiSpacing.s4)
-                    .foregroundStyle(Color.reasi.background)
-                    .background(Color.reasi.text, in: Capsule())
+                    .foregroundStyle(Color.reasi.onAccent)
+                    .background(Color.reasi.accent, in: Capsule())
                 }
                 .disabled(isLoading || isAddingManual)
                 .buttonStyle(ReasiPressStyle())
@@ -1929,8 +1930,8 @@ private struct ShoppingAssistantSheet: View {
                             Image(systemName: isSending ? "hourglass" : "arrow.up")
                                 .font(.system(size: 16, weight: .semibold))
                                 .frame(width: 42, height: 42)
-                                .foregroundStyle(Color.reasi.background)
-                                .background(Color.reasi.text, in: Circle())
+                                .foregroundStyle(Color.reasi.onAccent)
+                                .background(Color.reasi.accent, in: Circle())
                         }
                         .disabled(isSending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
@@ -2154,9 +2155,9 @@ struct BarcodeScannerScreen: View {
                         } label: {
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Color.reasi.background)
+                                .foregroundStyle(Color.reasi.onAccent)
                                 .frame(width: 44, height: 44)
-                                .background(Color.reasi.text, in: Circle())
+                                .background(Color.reasi.accent, in: Circle())
                         }
                         .disabled(!manualBarcodeIsValid)
                         .opacity(manualBarcodeIsValid ? 1 : 0.45)
@@ -2732,8 +2733,8 @@ private struct ShopSavedCard: View {
             .padding(.horizontal, ReasiSpacing.s4)
             .padding(.vertical, ReasiSpacing.s3)
             .frame(minHeight: 44)
-            .foregroundStyle(Color.reasi.background)
-            .background(Color.reasi.text, in: Capsule())
+            .foregroundStyle(Color.reasi.onAccent)
+            .background(Color.reasi.accent, in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(ReasiPressStyle())
@@ -2782,15 +2783,15 @@ private struct SwipeToFinishControl: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                        .fill(Color.reasi.text)
+                        .fill(Color.reasi.accent)
 
                     if isBusy {
                         ProgressView()
-                            .tint(Color.reasi.background)
+                            .tint(Color.reasi.onAccent)
                     } else {
                         Image(systemName: "chevron.right.2")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.reasi.background)
+                            .foregroundStyle(Color.reasi.onAccent)
                     }
                 }
                 .frame(width: thumbSize, height: thumbSize)

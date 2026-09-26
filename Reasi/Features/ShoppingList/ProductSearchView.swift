@@ -841,7 +841,7 @@ private struct ProductCandidateDetailView: View {
                     }
                 } label: {
                     HStack {
-                        if isAdding { ProgressView().tint(Color.reasi.background) }
+                        if isAdding { ProgressView().tint(Color.reasi.onAccent) }
                         Text(isAdding ? "Saving" : (isFulfillingItem ? "Use this product" : "Add to list"))
                     }
                 }

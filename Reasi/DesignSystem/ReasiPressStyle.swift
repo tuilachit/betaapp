@@ -16,11 +16,11 @@ struct ReasiPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(ReasiTypography.headline)
-            .foregroundStyle(Color.reasi.background)
+            .foregroundStyle(Color.reasi.onAccent)
             .padding(.vertical, allowsMultiline ? ReasiSpacing.s3 : 0)
             .frame(maxWidth: .infinity)
             .frame(minHeight: 64, maxHeight: allowsMultiline ? nil : 64)
-            .background(Color.reasi.text, in: Capsule())
+            .background(Color.reasi.accent, in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(ReasiMotion.fast, value: configuration.isPressed)
     }

@@ -509,15 +509,15 @@ struct OnboardingPlaceholderView: View {
             } label: {
                 HStack(spacing: ReasiSpacing.s2) {
                     if authIsBusy {
-                        ProgressView().tint(Color.reasi.background)
+                        ProgressView().tint(Color.reasi.onAccent)
                     }
                     Text(emailMode.actionTitle)
                 }
                 .font(ReasiTypography.headline)
-                .foregroundStyle(Color.reasi.background)
+                .foregroundStyle(Color.reasi.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(Color.reasi.text, in: Capsule())
+                .background(Color.reasi.accent, in: Capsule())
             }
             .buttonStyle(ReasiPressStyle())
             .disabled(authIsBusy)
@@ -944,16 +944,16 @@ struct OnboardingPlaceholderView: View {
 
     private func selectionIndicator(isSelected: Bool) -> some View {
         Circle()
-            .fill(isSelected ? Color.reasi.text : Color.clear)
+            .fill(isSelected ? Color.reasi.accent : Color.clear)
             .frame(width: 22, height: 22)
             .overlay {
-                Circle().stroke(isSelected ? Color.reasi.text : Color.reasi.borderStrong, lineWidth: 1.5)
+                Circle().stroke(isSelected ? Color.reasi.accent : Color.reasi.borderStrong, lineWidth: 1.5)
             }
             .overlay {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.reasi.background)
+                        .foregroundStyle(Color.reasi.onAccent)
                 }
             }
     }
@@ -963,7 +963,7 @@ struct OnboardingPlaceholderView: View {
             HStack(spacing: ReasiSpacing.s2) {
                 if onboarding.isSaving {
                     ProgressView()
-                        .tint(Color.reasi.background)
+                        .tint(Color.reasi.onAccent)
                         .controlSize(.small)
                 }
                 Text(title)
