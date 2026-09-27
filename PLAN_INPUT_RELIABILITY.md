@@ -38,8 +38,8 @@ This work does not merge, deploy, archive, or upload either repository.
 
 ## Verification: 2026-09-27
 
-- Full Debug simulator suite: **79 passed, 2 failed, 81 total** on iPhone 17e,
-  iOS 26.5. All 59 unit tests passed; 20 of 22 UI tests passed.
+- Latest full Debug simulator suite: **78 passed, 3 failed, 81 total** on iPhone
+  17e, iOS 26.5. All 59 unit tests passed; 19 of 22 UI tests passed.
 - All new input tests passed, including quantity/evidence round trips, selected
   product identity, review cancellation, uncertain-row opt-in and large-text controls.
 - Existing input picker UI tests passed. Review screenshots were inspected at
@@ -48,14 +48,28 @@ This work does not merge, deploy, archive, or upload either repository.
   archive, physical-device validation, or TestFlight upload.
 - Backend counterpart: 115 tests and affected Deno entrypoint type checks passed.
 
-The two UI failures were also observed before these reliability changes:
+The two failures from the earlier 79/81 run were fixed in the test harness:
 
 1. `testAppearanceSwitchesAcrossScreensAndPersistsAfterRelaunch`: Settings navigation
-   cannot reveal the List behavior target.
+   now uses the stable Settings identifier and scrolls in either direction to
+   reveal the List behavior target.
 2. `testProductPickerPreservesBudgetReviewAndRecalculatesShelfPrice`: typing into
-   Shelf price per pack fails because the field has no keyboard focus.
+   Shelf price per pack now first reveals the field and waits for keyboard focus.
 
-These remain unresolved. The full suite is not green.
+Both passed in a focused 2/2 run and the latest full run. The latest full run
+instead failed these three tests:
+
+1. `testOnboardingHasNoClippedTextAtAccessibilitySizes`: an expected element did
+   not satisfy its existence assertion.
+2. `testPaywallUsesReasiVisualHierarchy`: a true assertion failed.
+3. `testPurposeSurveyAcceptsThreeOrderedPriorities`: a selected option reported
+   `Not selected` instead of `Priority 1`.
+
+These three failures still require diagnosis. They passed in the earlier full
+run; that does not establish whether this is test instability or app behavior.
+The full suite is not green. Local evidence:
+`/tmp/reasi-sep27-release-all.xcresult` and
+`/tmp/reasi-sep27-release-regressions.xcresult`.
 
 ## Live acceptance still required
 

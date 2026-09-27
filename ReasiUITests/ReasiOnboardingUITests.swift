@@ -271,7 +271,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(picker.label.contains("Light"))
         assertAppearance(.light, in: app, name: "Profile Light")
 
-        let listSettings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "List behavior")).firstMatch
+        let listSettings = app.buttons["settings-shopping"]
         reveal(listSettings, in: app)
         listSettings.tap()
         XCTAssertTrue(app.navigationBars["List behavior"].waitForExistence(timeout: 3))
@@ -404,8 +404,10 @@ final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<8 {
-            if element.isHittable && element.frame.maxY <= app.frame.maxY - 150 { break }
-            app.swipeUp()
+            let frame = element.frame
+            if element.isHittable && frame.minY >= app.frame.minY + 100 && frame.maxY <= app.frame.maxY - 150 { break }
+            if element.exists && frame.minY < app.frame.minY + 100 { app.swipeDown() }
+            else { app.swipeUp() }
         }
         XCTAssertTrue(element.isHittable)
     }
@@ -757,7 +759,9 @@ final class ReasiOnboardingUITests: XCTestCase {
         shelfPrice.tap()
         let field = app.textFields["Shelf price per pack"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        reveal(field, in: app)
         field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         field.typeText("1.50")
         XCTAssertTrue(useProduct.isEnabled, "Recalculate the full basket when the shelf price is corrected")
     }
