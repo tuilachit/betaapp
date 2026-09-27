@@ -38,14 +38,19 @@ This work does not merge, deploy, archive, or upload either repository.
 
 ## Verification: 2026-09-27
 
-- Latest full Debug simulator suite: **78 passed, 3 failed, 81 total** on iPhone
-  17e, iOS 26.5. All 59 unit tests passed; 19 of 22 UI tests passed.
+- Latest completed full Debug simulator suite: **80 passed, 1 failed, 81 total**
+  on iPhone 17e, iOS 26.5. All 59 unit tests passed; 21 of 22 UI tests passed.
+  The suite is **not green**: the remaining failure is the largest-text
+  onboarding Skip interaction described below.
 - All new input tests passed, including quantity/evidence round trips, selected
   product identity, review cancellation, uncertain-row opt-in and large-text controls.
 - Existing input picker UI tests passed. Review screenshots were inspected at
   390-point width and accessibility text size; text-clipping audits passed.
-- Unsigned Release build for a generic iOS device passed. This is not a signed
-  archive, physical-device validation, or TestFlight upload.
+- Unsigned Release device build **1.0.0 (12)** and release preflight passed,
+  including Apple auth, fixture/guest-mode exclusion, bundle secret scanning,
+  and live Privacy/Terms HTTP 200 checks. Build 11 was the latest uploaded build
+  when checked in App Store Connect. This is not a signed archive,
+  physical-device validation, or TestFlight upload.
 - Backend counterpart: 115 tests and affected Deno entrypoint type checks passed.
 
 The two failures from the earlier 79/81 run were fixed in the test harness:
@@ -56,20 +61,63 @@ The two failures from the earlier 79/81 run were fixed in the test harness:
 2. `testProductPickerPreservesBudgetReviewAndRecalculatesShelfPrice`: typing into
    Shelf price per pack now first reveals the field and waits for keyboard focus.
 
-Both passed in a focused 2/2 run and the latest full run. The latest full run
-instead failed these three tests:
+Both passed in a focused 2/2 run and subsequent full runs. Follow-up regression work:
 
-1. `testOnboardingHasNoClippedTextAtAccessibilitySizes`: an expected element did
-   not satisfy its existence assertion.
-2. `testPaywallUsesReasiVisualHierarchy`: a true assertion failed.
-3. `testPurposeSurveyAcceptsThreeOrderedPriorities`: a selected option reported
-   `Not selected` instead of `Priority 1`.
+1. Fresh onboarding tests now isolate saved survey drafts through launch arguments.
+   The old purpose test inherited a selected answer, so its first tap deselected it.
+   The test now verifies that a new user starts at `0/3`.
+2. Survey/store-guide Skip controls and the paywall overflow now provide at least
+   44-point tap targets. Added size assertions failed on the old controls before
+   the fix. The paywall test also scrolls its controls into a reachable position.
+3. Accessibility onboarding checks wait for each previous heading to disappear
+   before taking the next step. The precise cause of the earlier unexpected step
+   advance was not established; do not treat this as a proven production double-tap fix.
+4. The first 80/81 run captured the Plans-to-List slide animation halfway through. Its
+   single-pixel theme assertion sampled a meal image, not the page background.
+   The theme test now waits for the destination heading's frame to settle before
+   taking a screenshot. Colour thresholds remain unchanged.
+5. The next full run passed that theme check but asserted photo-review dismissal
+   immediately after tapping Add. Photo review and input-picker tests now wait
+   for sheet/keyboard dismissal before checking the underlying draft. They still
+   assert cancellation adds nothing, uncertain rows are excluded, and confirmed
+   ideas survive reopening the builder.
 
-These three failures still require diagnosis. They passed in the earlier full
-run; that does not establish whether this is test instability or app behavior.
-The full suite is not green. Local evidence:
-`/tmp/reasi-sep27-release-all.xcresult` and
-`/tmp/reasi-sep27-release-regressions.xcresult`.
+The three onboarding/paywall/purpose tests passed together and in two earlier
+80/81 runs, but onboarding failed again in the final run. The corrected theme
+and photo-review tests both passed in that final run. A complete green rerun is
+still required; earlier focused passes are not proof of repeatable readiness.
+Local evidence: `/tmp/reasi-sep27-targets-red.xcresult`,
+`/tmp/reasi-sep27-targets-green.xcresult`, `/tmp/reasi-sep27-final-suite.xcresult`,
+`/tmp/reasi-sep27-theme-green.xcresult`, `/tmp/reasi-sep27-verified-suite.xcresult`,
+and `/tmp/reasi-sep27-release-validated.xcresult` (failed despite its filename).
+
+### Remaining onboarding blocker
+
+- Test: `ReasiOnboardingUITests/testOnboardingHasNoClippedTextAtAccessibilitySizes`.
+- On iPhone 17e / iOS 26.5, the fourth appearance/size combination (dark,
+  `UICTContentSizeCategoryAccessibilityXXXL`) reached Food style through Skip.
+- Tapping Skip there did not remove `What feels good to cook?` within three seconds.
+  The expected next step is spending coaching tone.
+- The recorded tap was at (329.5, 78.7), inside the Skip button's bounds
+  (289, 55, 81, 47.3 points). The failure hierarchy still showed Food style.
+  This was not simply an offscreen target or a tap outside its accessibility frame.
+- Root cause remains unproven: further touch-delivery/SwiftUI investigation and
+  a physical-device accessibility-size check are needed. Do not dismiss this as
+  a harmless flaky test or claim onboarding is fully fixed.
+- Exported diagnostic files: `/tmp/reasi-sep27-onboarding-blocker/`.
+
+## Release gates
+
+- Resolve the onboarding blocker and record a complete green run before merging
+  this PR. Then merge the reviewed PR heads, fetch fresh `main` in both repositories, and deploy
+  the additive backend migrations and functions before archiving the iOS app.
+- RevenueCat server-key and signed webhook checks passed. They do not replace
+  physical-device purchase, restore, trial-eligibility, or entitlement-unlock tests.
+- The production security advisor still flags disabled leaked-password protection,
+  two authenticated SECURITY DEFINER trip RPCs, and two service-only tables with
+  RLS but no policies. These findings are not a clean-advisor result.
+- Existing compiler/runtime warnings remain; passing checks do not imply a
+  warning-free build. No App Review resubmission is part of this local verification.
 
 ## Live acceptance still required
 

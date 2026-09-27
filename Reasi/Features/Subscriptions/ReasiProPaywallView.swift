@@ -634,7 +634,8 @@ struct ReasiProPaywallView: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.reasi.textMuted)
-                        .frame(width: 36, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("More paywall details")
             }
