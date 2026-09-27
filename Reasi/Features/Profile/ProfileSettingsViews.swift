@@ -7,191 +7,82 @@ enum ProfileSettingsDestination: String, Identifiable {
     case spending
     case shopping
     case reminders
+    case signIn
 
     var id: String { rawValue }
 }
 
 struct PlanningPreferencesSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-
     @State private var draft: OnboardingPreferences
     @State private var isSaving = false
 
+    private let original: OnboardingPreferences
     let onSave: (OnboardingPreferences) async -> Void
 
-    init(
-        preferences: OnboardingPreferences,
-        onSave: @escaping (OnboardingPreferences) async -> Void
-    ) {
+    init(preferences: OnboardingPreferences, onSave: @escaping (OnboardingPreferences) async -> Void) {
+        original = preferences
         _draft = State(initialValue: preferences)
         self.onSave = onSave
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s8) {
-                    settingsIntro(
-                        "Shape your week",
-                        detail: "These choices guide every new meal plan."
-                    )
-                    goalSection
-                    householdSection
-                    foodStyleSection
+            Form {
+                Section("Household") {
+                    Picker("Cooking for", selection: $draft.household) {
+                        Text("Not set").tag(HouseholdChoice?.none)
+                        ForEach(HouseholdChoice.allCases) { household in
+                            Text(household.title).tag(Optional(household))
+                        }
+                    }
+                    .accessibilityIdentifier("settings-household")
                 }
-                .padding(.horizontal, ReasiSpacing.s5)
-                .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, 116)
-            }
-            .background(Color.reasi.background)
-            .navigationTitle("Meal planning")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { closeToolbarItem(dismiss: dismiss) }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                settingsBottomBar {
-                    Button {
-                        save()
-                    } label: {
-                        HStack(spacing: ReasiSpacing.s3) {
-                            if isSaving {
-                                ProgressView()
-                                    .tint(Color.reasi.background)
+                .listRowBackground(Color.reasi.surface)
+
+                Section {
+                    ForEach(FoodStyle.allCases) { style in
+                        Button {
+                            if draft.foodStyles.contains(style) {
+                                draft.foodStyles.remove(style)
+                            } else {
+                                draft.foodStyles.insert(style)
                             }
-                            Text(isSaving ? "Saving" : "Save preferences")
-                        }
-                    }
-                    .buttonStyle(ReasiPrimaryButtonStyle())
-                    .disabled(isSaving)
-                    .opacity(isSaving ? 0.72 : 1)
-                }
-            }
-        }
-    }
-
-    private var goalSection: some View {
-        settingsSection("Shopping priorities") {
-            VStack(spacing: ReasiSpacing.s2) {
-                HStack {
-                    Text(priorityGuidance)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    Spacer()
-                    Text("\(draft.selectedPurposes.count)/\(OnboardingPreferences.maximumPurposeSelections)")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.text)
-                }
-                .padding(.horizontal, ReasiSpacing.s1)
-
-                ForEach(OnboardingPurpose.allCases) { purpose in
-                    let selectedPurposes = draft.selectedPurposes
-                    let rank = selectedPurposes.firstIndex(of: purpose).map { $0 + 1 }
-                    let limitReached = selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections
-                    Button {
-                        let wasSelected = draft.selectedPurposes.contains(purpose)
-                        draft.togglePurpose(purpose)
-                        if wasSelected || draft.selectedPurposes.contains(purpose) {
                             ReasiHaptics.selection()
-                        } else {
-                            ReasiHaptics.warning()
+                        } label: {
+                            settingsSelectionRow(style.title, selected: draft.foodStyles.contains(style))
                         }
-                    } label: {
-                        selectionRow(
-                            title: purpose.title,
-                            detail: purpose.summary,
-                            symbol: purpose.symbol,
-                            isSelected: rank != nil,
-                            selectionOrder: rank,
-                            selectionLimitReached: limitReached
-                        )
                     }
-                    .buttonStyle(ReasiPressStyle())
-                    .accessibilityHint(
-                        rank != nil
-                            ? "Removes this priority so you can reorder your choices"
-                            : limitReached
-                                ? "Remove a selected priority before adding this one"
-                                : "Adds this as the next priority"
-                    )
+                } header: {
+                    Text("Food styles")
+                } footer: {
+                    Text("Choose as many as you like.")
                 }
+                .listRowBackground(Color.reasi.surface)
+
+                Section {
+                    ForEach(OnboardingPurpose.allCases) { purpose in
+                        let rank = draft.selectedPurposes.firstIndex(of: purpose).map { $0 + 1 }
+                        Button {
+                            draft.togglePurpose(purpose)
+                            ReasiHaptics.selection()
+                        } label: {
+                            settingsSelectionRow(purpose.title, selected: rank != nil, rank: rank)
+                        }
+                        .disabled(rank == nil && draft.selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections)
+                    }
+                } header: {
+                    Text("Priorities")
+                } footer: {
+                    Text("Choose up to 3, most important first. Deselect a choice to change its order.")
+                }
+                .listRowBackground(Color.reasi.surface)
             }
+            .settingsFormStyle("Meal preferences")
+            .modifier(SettingsEditor(hasChanges: draft != original, isSaving: isSaving) { save() })
         }
     }
 
-    private var priorityGuidance: String {
-        if draft.selectedPurposes.count == OnboardingPreferences.maximumPurposeSelections {
-            return "3 selected. Tap one off to reorder."
-        }
-        return "Choose up to 3 in priority order."
-    }
-
-    private var householdSection: some View {
-        settingsSection("Cooking for") {
-            VStack(spacing: ReasiSpacing.s2) {
-                ForEach(HouseholdChoice.allCases) { household in
-                    Button {
-                        draft.household = household
-                        ReasiHaptics.selection()
-                    } label: {
-                        selectionRow(
-                            title: household.title,
-                            detail: "Recipes and quantities for \(household.householdSize)",
-                            symbol: household.householdSize == 1 ? "person" : "person.2",
-                            isSelected: draft.household == household
-                        )
-                    }
-                    .buttonStyle(ReasiPressStyle())
-                }
-            }
-        }
-    }
-
-    private var foodStyleSection: some View {
-        settingsSection("Food styles") {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 132), spacing: ReasiSpacing.s2)],
-                spacing: ReasiSpacing.s2
-            ) {
-                ForEach(FoodStyle.allCases) { style in
-                    Button {
-                        if draft.foodStyles.contains(style) {
-                            draft.foodStyles.remove(style)
-                        } else {
-                            draft.foodStyles.insert(style)
-                        }
-                        ReasiHaptics.selection()
-                    } label: {
-                        HStack(spacing: ReasiSpacing.s2) {
-                            Image(systemName: draft.foodStyles.contains(style) ? "checkmark" : styleSymbol(style))
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(style.title)
-                                .font(ReasiTypography.callout)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.86)
-                        }
-                        .foregroundStyle(
-                            draft.foodStyles.contains(style) ? Color.reasi.background : Color.reasi.text
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .padding(.horizontal, ReasiSpacing.s3)
-                        .background(
-                            draft.foodStyles.contains(style) ? Color.reasi.text : Color.reasi.surface,
-                            in: Capsule()
-                        )
-                        .overlay {
-                            Capsule().stroke(
-                                draft.foodStyles.contains(style) ? Color.clear : Color.reasi.borderStrong,
-                                lineWidth: 1
-                            )
-                        }
-                    }
-                    .buttonStyle(ReasiPressStyle())
-                    .accessibilityLabel(style.title)
-                    .accessibilityValue(draft.foodStyles.contains(style) ? "Selected" : "Not selected")
-                }
-            }
-        }
-    }
+    @Environment(\.dismiss) private var dismiss
 
     private func save() {
         guard !isSaving else { return }
@@ -206,125 +97,86 @@ struct PlanningPreferencesSettingsView: View {
 
 struct SpendingPreferencesSettingsView: View {
     @Environment(\.dismiss) private var dismiss
-
+    @FocusState private var budgetFocused: Bool
     @State private var draft: OnboardingPreferences
     @State private var budgetText: String
     @State private var isSaving = false
     @State private var errorMessage: String?
 
+    private let original: OnboardingPreferences
+    private let originalBudgetText: String
     let onSave: (OnboardingPreferences) async -> Void
 
-    init(
-        preferences: OnboardingPreferences,
-        onSave: @escaping (OnboardingPreferences) async -> Void
-    ) {
+    init(preferences: OnboardingPreferences, onSave: @escaping (OnboardingPreferences) async -> Void) {
+        original = preferences
+        let text = preferences.weeklyGroceryBudgetAud.map {
+            $0.formatted(.number.locale(Locale(identifier: "en_AU")).grouping(.never).precision(.fractionLength(0...2)))
+        } ?? ""
+        originalBudgetText = text
         _draft = State(initialValue: preferences)
-        _budgetText = State(initialValue: preferences.weeklyGroceryBudgetAud.map {
-            String(format: "%.0f", $0)
-        } ?? "")
+        _budgetText = State(initialValue: text)
         self.onSave = onSave
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s8) {
-                    settingsIntro(
-                        "Make insights feel useful",
-                        detail: "Tone changes the wording, not the facts behind your spending recap."
-                    )
-                    toneSection
-                    budgetSection
+            Form {
+                Section {
+                    HStack(spacing: ReasiSpacing.s3) {
+                        Text("A$")
+                            .foregroundStyle(Color.reasi.muted)
+                        TextField("No target", text: $budgetText)
+                            .keyboardType(.decimalPad)
+                            .focused($budgetFocused)
+                            .accessibilityLabel("Weekly budget")
+                            .accessibilityIdentifier("settings-weekly-budget")
+                    }
+                    .padding(.vertical, ReasiSpacing.s2)
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(ReasiTypography.caption)
-                            .foregroundStyle(Color.reasi.warning)
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.danger)
                     }
+                } header: {
+                    Text("Weekly budget")
+                } footer: {
+                    Text("Leave blank for no target.")
                 }
-                .padding(.horizontal, ReasiSpacing.s5)
-                .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, 116)
-            }
-            .background(Color.reasi.background)
-            .navigationTitle("Spending")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { closeToolbarItem(dismiss: dismiss) }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                settingsBottomBar {
-                    Button {
-                        save()
-                    } label: {
-                        HStack(spacing: ReasiSpacing.s3) {
-                            if isSaving { ProgressView().tint(Color.reasi.background) }
-                            Text(isSaving ? "Saving" : "Save spending settings")
+                .listRowBackground(Color.reasi.surface)
+
+                Section {
+                    ForEach(SpendingCoachTone.allCases) { tone in
+                        Button {
+                            draft.spendingCoachTone = tone
+                            ReasiHaptics.selection()
+                        } label: {
+                            settingsSelectionRow(tone.title, selected: draft.spendingCoachTone == tone)
                         }
                     }
-                    .buttonStyle(ReasiPrimaryButtonStyle())
-                    .disabled(isSaving)
+                } header: {
+                    Text("Coaching tone")
+                } footer: {
+                    Text(draft.spendingCoachTone.detail)
+                }
+                .listRowBackground(Color.reasi.surface)
+            }
+            .settingsFormStyle("Budget & coaching")
+            .modifier(SettingsEditor(hasChanges: hasChanges, isSaving: isSaving) { save() })
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { budgetFocused = false }
                 }
             }
         }
     }
 
-    private var toneSection: some View {
-        settingsSection("Coaching tone") {
-            VStack(spacing: ReasiSpacing.s2) {
-                ForEach(SpendingCoachTone.allCases) { tone in
-                    Button {
-                        draft.spendingCoachTone = tone
-                        ReasiHaptics.selection()
-                    } label: {
-                        HStack(spacing: ReasiSpacing.s4) {
-                            Image(systemName: tone.symbolName)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color.reasi.textMuted)
-                                .frame(width: 40, height: 40)
-                                .background(Color.reasi.surfaceHigh, in: Circle())
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(tone.title)
-                                    .font(ReasiTypography.bodyMedium)
-                                    .foregroundStyle(Color.reasi.text)
-                                Text(tone.detail)
-                                    .font(ReasiTypography.caption)
-                                    .foregroundStyle(Color.reasi.muted)
-                            }
-                            Spacer()
-                            Image(systemName: draft.spendingCoachTone == tone ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 21, weight: .semibold))
-                                .foregroundStyle(draft.spendingCoachTone == tone ? Color.reasi.text : Color.reasi.dim)
-                        }
-                        .padding(ReasiSpacing.s4)
-                        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-                    }
-                    .buttonStyle(ReasiPressStyle())
-                    .accessibilityAddTraits(draft.spendingCoachTone == tone ? .isSelected : [])
-                }
-            }
-        }
-    }
-
-    private var budgetSection: some View {
-        settingsSection("Weekly target") {
-            HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s2) {
-                Text("A$")
-                    .font(ReasiTypography.title2)
-                    .foregroundStyle(Color.reasi.textMuted)
-                TextField("Optional", text: $budgetText)
-                    .font(ReasiTypography.title2)
-                    .foregroundStyle(Color.reasi.text)
-                    .keyboardType(.decimalPad)
-            }
-            .padding(ReasiSpacing.s5)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
-        }
+    private var hasChanges: Bool {
+        budgetText != originalBudgetText || draft.spendingCoachTone != original.spendingCoachTone
     }
 
     private func save() {
+        guard !isSaving else { return }
         let normalized = budgetText.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ",", with: ".")
         if normalized.isEmpty {
@@ -332,13 +184,13 @@ struct SpendingPreferencesSettingsView: View {
         } else if let value = Double(normalized), value > 0, value <= 10_000 {
             draft.weeklyGroceryBudgetAud = value
         } else {
-            errorMessage = "Enter a weekly amount between A$1 and A$10,000, or leave it blank."
+            errorMessage = "Enter an amount above zero, up to A$10,000."
             return
         }
-
+        budgetFocused = false
+        isSaving = true
+        errorMessage = nil
         Task {
-            isSaving = true
-            errorMessage = nil
             await onSave(draft)
             isSaving = false
             dismiss()
@@ -349,90 +201,42 @@ struct SpendingPreferencesSettingsView: View {
 struct StoreSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStore: StoreSummary
-
+    private let originalStore: StoreSummary
     let onSelect: (StoreSummary) -> Void
 
     init(selectedStore: StoreSummary, onSelect: @escaping (StoreSummary) -> Void) {
+        originalStore = selectedStore
         _selectedStore = State(initialValue: selectedStore)
         self.onSelect = onSelect
     }
 
+    private var retailers: [String] {
+        Array(Set(FixtureStores.launchStores.map(\.retailerDisplayName))).sorted()
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                    settingsIntro(
-                        "Choose your store",
-                        detail: "Reasi will build future lists in that store's walking order."
-                    )
-
-                    VStack(spacing: ReasiSpacing.s2) {
-                        ForEach(FixtureStores.launchStores) { store in
+            Form {
+                ForEach(retailers, id: \.self) { retailer in
+                    Section(retailer) {
+                        ForEach(FixtureStores.launchStores.filter { $0.retailerDisplayName == retailer }) { store in
                             Button {
                                 selectedStore = store
                                 ReasiHaptics.selection()
                             } label: {
-                                HStack(spacing: ReasiSpacing.s4) {
-                                    Image(systemName: "storefront")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(Color.reasi.textMuted)
-                                        .frame(width: 42, height: 42)
-                                        .background(Color.reasi.surfaceHigh, in: Circle())
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(store.shortName)
-                                            .font(ReasiTypography.bodyMedium)
-                                            .foregroundStyle(Color.reasi.text)
-                                        Text(store.retailerDisplayName)
-                                            .font(ReasiTypography.caption)
-                                            .foregroundStyle(Color.reasi.muted)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: selectedStore.id == store.id ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 22, weight: .semibold))
-                                        .foregroundStyle(
-                                            selectedStore.id == store.id ? Color.reasi.success : Color.reasi.dim
-                                        )
-                                }
-                                .padding(ReasiSpacing.s4)
-                                .frame(minHeight: 72)
-                                .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                                        .stroke(
-                                            selectedStore.id == store.id ? Color.reasi.borderStrong : Color.reasi.border,
-                                            lineWidth: 1
-                                        )
-                                }
+                                settingsSelectionRow(store.shortName, selected: selectedStore.id == store.id)
                             }
-                            .buttonStyle(ReasiPressStyle())
                             .accessibilityLabel(store.name)
-                            .accessibilityValue(selectedStore.id == store.id ? "Selected" : "Not selected")
                         }
                     }
-                }
-                .padding(.horizontal, ReasiSpacing.s5)
-                .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, 116)
-            }
-            .background(Color.reasi.background)
-            .navigationTitle("Preferred store")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { closeToolbarItem(dismiss: dismiss) }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                settingsBottomBar {
-                    Button {
-                        onSelect(selectedStore)
-                        dismiss()
-                    } label: {
-                        Text("Use \(selectedStore.shortName)")
-                    }
-                    .buttonStyle(ReasiPrimaryButtonStyle())
+                    .listRowBackground(Color.reasi.surface)
                 }
             }
+            .settingsFormStyle("Preferred store")
+            .modifier(SettingsEditor(hasChanges: selectedStore.id != originalStore.id, isSaving: false) {
+                onSelect(selectedStore)
+                dismiss()
+            })
         }
     }
 }
@@ -444,73 +248,44 @@ struct ShoppingPreferencesSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
-                    settingsIntro(
-                        "Shopping mode",
-                        detail: "Keep the list focused while you move through the store."
-                    )
+            Form {
+                Section {
+                    Toggle("Hide bought items", isOn: Binding(
+                        get: { userSettings.hideCompletedItems },
+                        set: { enabled in
+                            userSettings.setHideCompletedItems(enabled)
+                            capture("hide_completed_items", enabled: enabled)
+                        }
+                    ))
+                    .accessibilityIdentifier("settings-hide-bought")
+                } footer: {
+                    Text("Bought items stay on your list, tucked out of the way.")
+                }
+                .listRowBackground(Color.reasi.surface)
 
-                    settingsSection("List") {
-                        VStack(spacing: 1) {
-                            settingsToggleRow(
-                                title: "Hide bought items",
-                                detail: "Checked items collapse into one quiet summary.",
-                                symbol: "checkmark.circle",
-                                isOn: Binding(
-                                    get: { userSettings.hideCompletedItems },
-                                    set: { enabled in setHideCompletedItems(enabled) }
-                                )
-                            )
-                            settingsToggleRow(
-                                title: "Keep screen awake",
-                                detail: "Only while your shopping list is open.",
-                                symbol: "sun.max",
-                                isOn: Binding(
-                                    get: { userSettings.keepScreenAwake },
-                                    set: { enabled in setKeepScreenAwake(enabled) }
-                                )
-                            )
+                Section {
+                    Toggle("Keep screen awake", isOn: Binding(
+                        get: { userSettings.keepScreenAwake },
+                        set: { enabled in
+                            userSettings.setKeepScreenAwake(enabled)
+                            capture("keep_screen_awake", enabled: enabled)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                                .stroke(Color.reasi.border, lineWidth: 1)
-                        }
-                    }
+                    ))
+                } footer: {
+                    Text("Only while your shopping list is open.")
                 }
-                .padding(.horizontal, ReasiSpacing.s5)
-                .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, 116)
+                .listRowBackground(Color.reasi.surface)
             }
-            .background(Color.reasi.background)
-            .navigationTitle("List behavior")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { closeToolbarItem(dismiss: dismiss) }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                settingsBottomBar {
-                    Button("Done") { dismiss() }
-                        .buttonStyle(ReasiPrimaryButtonStyle())
-                }
-            }
+            .settingsFormStyle("List behavior")
+            .tint(Color.reasi.success)
+            .toolbar { settingsDoneButton(dismiss: dismiss) }
         }
     }
 
-    private func setHideCompletedItems(_ enabled: Bool) {
-        userSettings.setHideCompletedItems(enabled)
+    private func capture(_ setting: String, enabled: Bool) {
         ReasiHaptics.selection()
         analytics.capture(.settingsUpdated, properties: [
-            "setting": .string("hide_completed_items"),
-            "enabled": .bool(enabled)
-        ])
-    }
-
-    private func setKeepScreenAwake(_ enabled: Bool) {
-        userSettings.setKeepScreenAwake(enabled)
-        ReasiHaptics.selection()
-        analytics.capture(.settingsUpdated, properties: [
-            "setting": .string("keep_screen_awake"),
+            "setting": .string(setting),
             "enabled": .bool(enabled)
         ])
     }
@@ -520,137 +295,63 @@ struct PlanningReminderSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(UserSettingsStore.self) private var userSettings
     @Environment(AnalyticsService.self) private var analytics
-
     @State private var isUpdating = false
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
-                    settingsIntro(
-                        "Make planning automatic",
-                        detail: "Choose one calm moment each week to plan before the rush."
-                    )
-
-                    settingsSection("Reminder") {
-                        VStack(spacing: 1) {
-                            settingsToggleRow(
-                                title: "Weekly reminder",
-                                detail: userSettings.planningReminderEnabled ? userSettings.reminderSummary : "No reminder scheduled",
-                                symbol: "bell",
-                                isOn: Binding(
-                                    get: { userSettings.planningReminderEnabled },
-                                    set: { enabled in updateReminderEnabled(enabled) }
-                                )
-                            )
-
-                            if userSettings.planningReminderEnabled {
-                                settingsControlRow(title: "Day", symbol: "calendar") {
-                                    Picker(
-                                        "Day",
-                                        selection: Binding(
-                                            get: { userSettings.planningReminderDay },
-                                            set: { day in updateReminderDay(day) }
-                                        )
-                                    ) {
-                                        ForEach(WeeklyPlanningDay.allCases) { day in
-                                            Text(day.title).tag(day)
-                                        }
-                                    }
-                                    .labelsHidden()
-                                    .tint(Color.reasi.textMuted)
-                                }
-
-                                settingsControlRow(title: "Time", symbol: "clock") {
-                                    Picker(
-                                        "Time",
-                                        selection: Binding(
-                                            get: { userSettings.planningReminderMinuteOfDay },
-                                            set: { minute in updateReminderTime(minute) }
-                                        )
-                                    ) {
-                                        ForEach(reminderTimeOptions, id: \.self) { minuteOfDay in
-                                            Text(reminderTimeLabel(minuteOfDay)).tag(minuteOfDay)
-                                        }
-                                    }
-                                    .labelsHidden()
-                                    .tint(Color.reasi.text)
-                                }
+            Form {
+                Section {
+                    Toggle("Weekly reminder", isOn: Binding(
+                        get: { userSettings.planningReminderEnabled },
+                        set: { enabled in updateReminderEnabled(enabled) }
+                    ))
+                    .tint(Color.reasi.success)
+                    .disabled(isUpdating)
+                    if isUpdating {
+                        ProgressView("Updating reminder")
+                    }
+                    if userSettings.planningReminderEnabled {
+                        Picker("Day", selection: Binding(
+                            get: { userSettings.planningReminderDay },
+                            set: { day in updateReminderDay(day) }
+                        )) {
+                            ForEach(WeeklyPlanningDay.allCases) { day in
+                                Text(day.title).tag(day)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                                .stroke(Color.reasi.border, lineWidth: 1)
+                        Picker("Time", selection: Binding(
+                            get: { userSettings.planningReminderMinuteOfDay },
+                            set: { minute in updateReminderTime(minute) }
+                        )) {
+                            ForEach(Array(stride(from: 0, to: 24 * 60, by: 30)), id: \.self) { minute in
+                                Text(reminderTimeLabel(minute)).tag(minute)
+                            }
                         }
                     }
+                }
+                .listRowBackground(Color.reasi.surface)
 
-                    permissionStatus
+                if userSettings.notificationPermission == .denied || userSettings.reminderMessage != nil {
+                    Section {
+                        if let message = userSettings.reminderMessage {
+                            Text(message)
+                                .font(ReasiTypography.callout)
+                                .foregroundStyle(Color.reasi.textMuted)
+                        }
+                        if userSettings.notificationPermission == .denied,
+                           let url = URL(string: UIApplication.openSettingsURLString) {
+                            Link("Open iPhone Settings", destination: url)
+                        }
+                    } header: {
+                        Text("Notification access")
+                    }
+                    .listRowBackground(Color.reasi.surface)
                 }
-                .padding(.horizontal, ReasiSpacing.s5)
-                .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, 116)
             }
-            .background(Color.reasi.background)
-            .navigationTitle("Weekly reminder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { closeToolbarItem(dismiss: dismiss) }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                settingsBottomBar {
-                    Button("Done") { dismiss() }
-                        .buttonStyle(ReasiPrimaryButtonStyle())
-                }
-            }
-            .task {
-                await userSettings.refreshNotificationPermission()
-            }
+            .settingsFormStyle("Weekly reminder")
+            .toolbar { settingsDoneButton(dismiss: dismiss) }
+            .task { await userSettings.refreshNotificationPermission() }
         }
-    }
-
-    @ViewBuilder
-    private var permissionStatus: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            HStack(spacing: ReasiSpacing.s3) {
-                Image(systemName: userSettings.notificationPermission == .denied ? "bell.slash" : "checkmark.shield")
-                    .foregroundStyle(
-                        userSettings.notificationPermission == .denied ? Color.reasi.warning : Color.reasi.textMuted
-                    )
-                Text("Notification access")
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.textMuted)
-                Spacer()
-                if isUpdating {
-                    ProgressView()
-                        .tint(Color.reasi.text)
-                } else {
-                    Text(userSettings.notificationPermission.label)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                }
-            }
-
-            if let reminderMessage = userSettings.reminderMessage {
-                Text(reminderMessage)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(
-                        userSettings.notificationPermission == .denied ? Color.reasi.warning : Color.reasi.muted
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if userSettings.notificationPermission == .denied,
-               let settingsURL = URL(string: UIApplication.openSettingsURLString) {
-                Link(destination: settingsURL) {
-                    Label("Open iPhone Settings", systemImage: "arrow.up.right")
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(Color.reasi.text)
-                        .padding(.vertical, ReasiSpacing.s2)
-                }
-            }
-        }
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
     }
 
     private func updateReminderEnabled(_ enabled: Bool) {
@@ -676,194 +377,117 @@ struct PlanningReminderSettingsView: View {
         ReasiHaptics.selection()
     }
 
-    private var reminderTimeOptions: [Int] {
-        Array(stride(from: 0, to: 24 * 60, by: 30))
+    private func updateReminderTime(_ minute: Int) {
+        userSettings.setPlanningReminderTime(minutesFromMidnight: minute)
+        analytics.capture(.settingsUpdated, properties: ["setting": .string("reminder_time")])
     }
 
-    private func updateReminderTime(_ minuteOfDay: Int) {
-        userSettings.setPlanningReminderTime(minutesFromMidnight: minuteOfDay)
-        analytics.capture(.settingsUpdated, properties: [
-            "setting": .string("reminder_time")
-        ])
-    }
-
-    private func reminderTimeLabel(_ minuteOfDay: Int) -> String {
-        let hour = minuteOfDay / 60
-        let minute = minuteOfDay % 60
-        let displayHour = hour % 12 == 0 ? 12 : hour % 12
-        let period = hour < 12 ? "AM" : "PM"
-        return String(format: "%d:%02d %@", displayHour, minute, period)
+    private func reminderTimeLabel(_ minute: Int) -> String {
+        let hour = minute / 60
+        return String(format: "%d:%02d %@", hour % 12 == 0 ? 12 : hour % 12, minute % 60, hour < 12 ? "AM" : "PM")
     }
 }
 
-private func settingsIntro(_ title: String, detail: String) -> some View {
-    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-        Text(title)
-            .font(ReasiTypography.title2)
+private extension View {
+    func settingsFormStyle(_ title: String) -> some View {
+        self
+            .font(ReasiTypography.body)
             .foregroundStyle(Color.reasi.text)
-        Text(detail)
-            .font(ReasiTypography.callout)
-            .foregroundStyle(Color.reasi.textMuted)
+            .scrollContentBackground(.hidden)
+            .background(Color.reasi.background)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.reasi.background, for: .navigationBar)
+            .tint(Color.reasi.text)
+    }
+}
+
+private struct SettingsEditor: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmDiscard = false
+    let hasChanges: Bool
+    let isSaving: Bool
+    let save: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .disabled(isSaving)
+            .interactiveDismissDisabled(hasChanges || isSaving)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", systemImage: "xmark") {
+                        if hasChanges {
+                            confirmDiscard = true
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                            .accessibilityLabel("Saving")
+                    } else if hasChanges {
+                        Button("Save", action: save)
+                            .font(ReasiTypography.headline)
+                            .accessibilityIdentifier("settings-save")
+                    }
+                }
+            }
+            .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Discard changes", role: .destructive) { dismiss() }
+                Button("Keep editing", role: .cancel) {}
+            }
+    }
+}
+
+private func settingsSelectionRow(_ title: String, selected: Bool, rank: Int? = nil) -> some View {
+    HStack(spacing: ReasiSpacing.s3) {
+        Text(title)
+            .font(ReasiTypography.body)
+            .foregroundStyle(Color.reasi.text)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-private func settingsSection<Content: View>(
-    _ title: String,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-        Text(title.uppercased())
-            .font(ReasiTypography.caption)
-            .foregroundStyle(Color.reasi.muted)
-            .padding(.leading, ReasiSpacing.s1)
-        content()
-    }
-}
-
-private func selectionRow(
-    title: String,
-    detail: String,
-    symbol: String,
-    isSelected: Bool,
-    selectionOrder: Int? = nil,
-    selectionLimitReached: Bool = false
-) -> some View {
-    HStack(spacing: ReasiSpacing.s4) {
-        Image(systemName: symbol)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Color.reasi.textMuted)
-            .frame(width: 40, height: 40)
-            .background(Color.reasi.surfaceHigh, in: Circle())
-
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(ReasiTypography.bodyMedium)
-                .foregroundStyle(Color.reasi.text)
-            Text(detail)
+        Spacer(minLength: ReasiSpacing.s2)
+        if let rank {
+            Text("\(rank)")
                 .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
-        }
-
-        Spacer()
-
-        if let selectionOrder {
-            Text("\(selectionOrder)")
-                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.reasi.background)
                 .frame(width: 24, height: 24)
                 .background(Color.reasi.text, in: Circle())
         } else {
-            Image(systemName: "circle")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.reasi.dim)
+            Image(systemName: "checkmark")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.reasi.text)
+                .frame(width: 24)
+                .opacity(selected ? 1 : 0)
         }
     }
-    .padding(ReasiSpacing.s4)
-    .frame(minHeight: 72)
-    .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-    .overlay {
-        RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-            .stroke(isSelected ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
-    }
+    .padding(.vertical, ReasiSpacing.s2)
+    .frame(minHeight: 36)
+    .contentShape(Rectangle())
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(title)
-    .accessibilityValue(
-        selectionOrder.map { "Priority \($0)" }
-            ?? (selectionLimitReached ? "Not selected. 3 priorities selected" : "Not selected")
-    )
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
-}
-
-private func settingsToggleRow(
-    title: String,
-    detail: String,
-    symbol: String,
-    isOn: Binding<Bool>
-) -> some View {
-    Toggle(isOn: isOn) {
-        Label {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                Text(detail)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } icon: {
-            Image(systemName: symbol)
-                .frame(width: 22)
-                .foregroundStyle(Color.reasi.muted)
-        }
-    }
-    .tint(Color.reasi.text)
-    .padding(ReasiSpacing.s4)
-    .frame(minHeight: 68)
-    .background(Color.reasi.surface)
-}
-
-private func settingsControlRow<Control: View>(
-    title: String,
-    symbol: String,
-    @ViewBuilder control: () -> Control
-) -> some View {
-    HStack(spacing: ReasiSpacing.s4) {
-        Image(systemName: symbol)
-            .frame(width: 22)
-            .foregroundStyle(Color.reasi.muted)
-        Text(title)
-            .font(ReasiTypography.bodyMedium)
-            .foregroundStyle(Color.reasi.text)
-        Spacer()
-        control()
-    }
-    .padding(ReasiSpacing.s4)
-    .frame(minHeight: 58)
-    .background(Color.reasi.surface)
-}
-
-private func settingsBottomBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-    content()
-        .padding(.horizontal, ReasiSpacing.s5)
-        .padding(.top, ReasiSpacing.s3)
-        .padding(.bottom, ReasiSpacing.s2)
-        .background(.ultraThinMaterial)
+    .accessibilityValue(rank.map { "Priority \($0)" } ?? (selected ? "Selected" : "Not selected"))
+    .accessibilityAddTraits(selected ? .isSelected : [])
 }
 
 @ToolbarContentBuilder
-private func closeToolbarItem(dismiss: DismissAction) -> some ToolbarContent {
-    ToolbarItem(placement: .topBarTrailing) {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.reasi.text)
-                .frame(width: 34, height: 34)
-                .background(Color.reasi.surfaceHigh, in: Circle())
-        }
-        .accessibilityLabel("Close")
+private func settingsDoneButton(dismiss: DismissAction) -> some ToolbarContent {
+    ToolbarItem(placement: .confirmationAction) {
+        Button("Done") { dismiss() }
+            .font(ReasiTypography.headline)
+            .tint(Color.reasi.text)
     }
 }
 
-private func styleSymbol(_ style: FoodStyle) -> String {
-    switch style {
-    case .vietnamese, .chinese, .mediterranean: "globe.asia.australia"
-    case .quickDinners: "clock"
-    case .vegetarian: "leaf"
-    case .highProtein: "bolt"
-    case .batchCook: "square.stack.3d.up"
-    }
-}
-
-#Preview("Plan settings") {
+#Preview("Meal preferences") {
     PlanningPreferencesSettingsView(preferences: .empty) { _ in }
         .preferredColorScheme(.dark)
 }
 
-#Preview("Shopping settings") {
+#Preview("List behavior") {
     ShoppingPreferencesSettingsView()
         .environment(UserSettingsStore())
         .environment(AnalyticsService())

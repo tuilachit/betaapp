@@ -9,7 +9,6 @@ import GoogleSignIn
 
 struct ProfileView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
@@ -29,32 +28,51 @@ struct ProfileView: View {
     @State private var preferenceSyncMessage: String?
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                header
+        List {
+            Section {
                 if supabase.isSignedIn {
                     signedInAccountCard
-                    subscriptionSection
                 } else {
-                    authCard
-                }
-                planPreferencesSection
-                shoppingSettingsSection
-                supportSection
-                if supabase.isSignedIn {
-                    accountActionsSection
+                    Button {
+                        activeSettingsDestination = .signIn
+                    } label: {
+                        profileRow("Sign in", value: "Your account", symbol: "person.crop.circle", accessory: .chevron)
+                    }
+                    .accessibilityIdentifier("settings-sign-in")
                 }
             }
-            .padding(.horizontal, ReasiSpacing.s5)
-            .padding(.top, ReasiSpacing.s8)
-            .padding(.bottom, 120)
+            .listRowBackground(Color.reasi.surface)
+
+            if supabase.isSignedIn {
+                subscriptionSection
+            }
+
+            planPreferencesSection
+            shoppingSettingsSection
+            supportSection
+
+            if supabase.isSignedIn {
+                accountActionsSection
+            }
+
+            Section {
+                Text("Reasi \(appVersion)")
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.muted)
+                    .frame(maxWidth: .infinity)
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Color.reasi.background)
-        .toolbar(.hidden, for: .navigationBar)
-        .alert(
-            "Delete your Reasi account?",
-            isPresented: $showDeleteConfirmation,
-        ) {
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(Color.reasi.background, for: .navigationBar)
+        .tint(Color.reasi.text)
+        .alert("Delete your Reasi account?", isPresented: $showDeleteConfirmation) {
             Button("Delete account", role: .destructive) {
                 runAuthAction(mode: .deleteAccount)
             }
@@ -80,34 +98,29 @@ struct ProfileView: View {
                 ShoppingPreferencesSettingsView()
             case .reminders:
                 PlanningReminderSettingsView()
+            case .signIn:
+                NavigationStack {
+                    ScrollView {
+                        authCard
+                            .padding(ReasiSpacing.s5)
+                    }
+                    .background(Color.reasi.background)
+                    .navigationTitle("Sign in")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close", systemImage: "xmark") {
+                                activeSettingsDestination = nil
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                    }
+                }
             }
         }
-        .onAppear {
-            supabase.refreshAuthLabel()
-        }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.reasi.text)
-                    .frame(width: 44, height: 44)
-                    .background(Color.reasi.surface, in: Circle())
-            }
-            .buttonStyle(ReasiPressStyle())
-            .accessibilityLabel("Back")
-
-            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                Text("Profile")
-                    .font(ReasiTypography.largeTitle)
-                    .foregroundStyle(Color.reasi.text)
-                Text(supabase.isSignedIn ? "Your account and preferences" : "Sign in to keep your plans in sync")
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.muted)
+        .onChange(of: supabase.isSignedIn) { _, signedIn in
+            if signedIn, activeSettingsDestination == .signIn {
+                activeSettingsDestination = nil
             }
         }
     }
@@ -277,351 +290,189 @@ struct ProfileView: View {
     }
 
     private var signedInAccountCard: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack(spacing: ReasiSpacing.s3) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.reasi.success)
-
-                VStack(alignment: .leading, spacing: 3) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 40, weight: .regular))
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
                     Text(accountIdentityTitle)
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(authMethodLabel)
-                        .font(ReasiTypography.caption)
+                        .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
                 }
-
-                Spacer()
             }
+            .padding(.vertical, ReasiSpacing.s2)
 
             if supabase.currentAuthMethod == .email && !supabase.emailIsVerified {
-                HStack(alignment: .top, spacing: ReasiSpacing.s3) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundStyle(Color.reasi.warning)
-                    Text("Email is not verified yet. Verify it before generating a plan or using live shopping tools.")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
-                }
-                .padding(ReasiSpacing.s4)
-                .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-
-                secondaryAuthButton("Resend verification", symbol: "envelope.badge") {
+                Text("Verify your email to start planning.")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.warning)
+                Button("Resend verification") {
                     runAuthAction(mode: .resendVerification)
                 }
+                .disabled(authIsBusy)
             }
 
             if authIsBusy {
-                HStack(spacing: ReasiSpacing.s3) {
-                    ProgressView()
-                        .tint(Color.reasi.text)
-                    Text("Updating your account")
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(Color.reasi.textMuted)
-                }
+                ProgressView("Updating account")
+                    .font(ReasiTypography.callout)
             }
-
             if let authMessage {
                 Text(authMessage)
-                    .font(ReasiTypography.caption)
+                    .font(ReasiTypography.callout)
                     .foregroundStyle(isErrorMessage(authMessage) ? Color.reasi.danger : Color.reasi.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(ReasiSpacing.s5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
-        }
     }
 
+    @ViewBuilder
     private var planPreferencesSection: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Personalization")
-
-            VStack(spacing: 1) {
-                Button {
-                    ReasiHaptics.light()
-                    activeSettingsDestination = .planning
-                } label: {
-                    profileRow(
-                        "Meal planning",
-                        value: planningProfileSummary,
-                        subtitle: "Goal, household and food preferences",
-                        symbol: "slider.horizontal.3",
-                        accessory: .chevron
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-
-                Button {
-                    ReasiHaptics.light()
-                    activeSettingsDestination = .store
-                } label: {
-                    profileRow(
-                        "Preferred store",
-                        value: appState.selectedStore.name,
-                        subtitle: "Sets the aisle route for future lists",
-                        symbol: "storefront",
-                        accessory: .chevron
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-
-                Button {
-                    ReasiHaptics.light()
-                    activeSettingsDestination = .spending
-                } label: {
-                    profileRow(
-                        "Spending coach",
-                        value: onboarding.preferences.spendingCoachTone.title,
-                        subtitle: spendingPreferenceSummary,
-                        symbol: "chart.bar",
-                        accessory: .chevron
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-            }
-            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
-
+        Section {
+            settingsButton("Preferred store", value: appState.selectedStore.shortName,
+                           symbol: "storefront", destination: .store)
+            settingsButton("Meal preferences", value: "\(onboarding.preferences.householdSize) people",
+                           symbol: "fork.knife", destination: .planning)
+            settingsButton("List behavior", symbol: "checklist", destination: .shopping)
+        } header: {
+            Text("Shopping")
+        } footer: {
             if let preferenceSyncMessage {
-                Label(preferenceSyncMessage, systemImage: "icloud.slash")
-                    .font(ReasiTypography.caption)
+                Text(preferenceSyncMessage)
                     .foregroundStyle(Color.reasi.warning)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityElement(children: .combine)
             }
         }
+        .listRowBackground(Color.reasi.surface)
+
+        Section("Spending") {
+            settingsButton("Budget & coaching", value: spendingPreferenceSummary,
+                           symbol: "chart.bar", destination: .spending)
+        }
+        .listRowBackground(Color.reasi.surface)
     }
 
     private var shoppingSettingsSection: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Shopping & app")
-
-            VStack(spacing: 1) {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-                    Label("Appearance", systemImage: "circle.lefthalf.filled")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-
-                    Picker("Appearance", selection: Binding(
-                        get: { userSettings.appearance },
-                        set: { appearance in
-                            userSettings.setAppearance(appearance)
-                            ReasiHaptics.selection()
-                            analytics.capture(.settingsUpdated, properties: [
-                                "setting": .string("appearance"),
-                                "value": .string(appearance.rawValue)
-                            ])
-                        }
-                    )) {
-                        ForEach(ReasiAppearance.allCases) { appearance in
-                            Text(appearance.title).tag(appearance)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("reasi-appearance-picker")
+        Section("App") {
+            Picker(selection: Binding(
+                get: { userSettings.appearance },
+                set: { appearance in
+                    userSettings.setAppearance(appearance)
+                    ReasiHaptics.selection()
+                    analytics.capture(.settingsUpdated, properties: [
+                        "setting": .string("appearance"),
+                        "value": .string(appearance.rawValue)
+                    ])
                 }
-                .padding(ReasiSpacing.s4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.reasi.surface)
-
-                Button {
-                    ReasiHaptics.light()
-                    activeSettingsDestination = .shopping
-                } label: {
-                    profileRow(
-                        "List behavior",
-                        value: userSettings.shoppingBehaviorSummary,
-                        subtitle: "Bought items and screen behavior",
-                        symbol: "checklist",
-                        accessory: .chevron
-                    )
+            )) {
+                ForEach(ReasiAppearance.allCases) { appearance in
+                    Text(appearance.title).tag(appearance)
                 }
-                .buttonStyle(ReasiPressStyle())
-
-                Button {
-                    ReasiHaptics.light()
-                    activeSettingsDestination = .reminders
-                } label: {
-                    profileRow(
-                        "Weekly reminder",
-                        value: userSettings.reminderSummary,
-                        subtitle: "A gentle nudge to plan before the week",
-                        symbol: "bell",
-                        accessory: .chevron
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-
-                Toggle(
-                    isOn: Binding(
-                        get: { userSettings.hapticsEnabled },
-                        set: { enabled in updateHaptics(enabled) }
-                    )
-                ) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Haptic feedback")
-                                .font(ReasiTypography.bodyMedium)
-                                .foregroundStyle(Color.reasi.text)
-                            Text("Tactile taps while planning and shopping")
-                                .font(ReasiTypography.caption)
-                                .foregroundStyle(Color.reasi.muted)
-                        }
-                    } icon: {
-                        Image(systemName: "hand.tap")
-                            .frame(width: 22)
-                            .foregroundStyle(Color.reasi.muted)
-                    }
-                }
-                .tint(Color.reasi.text)
-                .padding(ReasiSpacing.s4)
-                .frame(minHeight: 64)
-                .background(Color.reasi.surface)
+            } label: {
+                settingsLabel("Appearance", symbol: "circle.lefthalf.filled")
             }
-            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("reasi-appearance-picker")
+
+            settingsButton("Weekly reminder", value: userSettings.reminderSummary,
+                           symbol: "bell", destination: .reminders)
+
+            Toggle(isOn: Binding(
+                get: { userSettings.hapticsEnabled },
+                set: { enabled in updateHaptics(enabled) }
+            )) {
+                settingsLabel("Haptics", symbol: "hand.tap")
             }
+            .tint(Color.reasi.success)
+            .accessibilityIdentifier("settings-haptics")
         }
+        .listRowBackground(Color.reasi.surface)
     }
 
     private var supportSection: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Support & privacy")
-
-            VStack(spacing: 1) {
-                privacyPolicyRow
-                termsOfServiceRow
-                profileRow("App version", value: appVersion, symbol: "info.circle")
+        Section("Support") {
+            Link(destination: URL(string: "mailto:support@reasiai.com")!) {
+                profileRow("Contact us", symbol: "envelope", accessory: .externalLink)
             }
-            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
+            privacyPolicyRow
+            termsOfServiceRow
         }
+        .listRowBackground(Color.reasi.surface)
     }
 
     private var subscriptionSection: some View {
-        let presentation = subscriptionPresentation
-        return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Plan access")
-
-            VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-                HStack(spacing: ReasiSpacing.s4) {
-                    Image(systemName: presentation.symbol)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color.reasi.text)
-                        .frame(width: 40, height: 40)
-                        .background(Color.reasi.surfaceHigh, in: Circle())
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(presentation.title)
-                            .font(ReasiTypography.bodyMedium)
-                            .foregroundStyle(Color.reasi.text)
-                        Text(presentation.detail)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    }
-
-                    Spacer()
-
-                    if revenueCat.isLoading {
-                        ProgressView().tint(Color.reasi.textMuted)
-                    }
+        Section {
+            if revenueCat.isReasiProActive || revenueCat.serverAccess?.isPro == true {
+                Link(destination: revenueCat.managementURLWithFallback) {
+                    profileRow("Reasi Pro", value: subscriptionPresentation.detail,
+                               symbol: "crown", accessory: .externalLink)
                 }
-
-                if revenueCat.isReasiProActive || revenueCat.serverAccess?.isPro == true {
-                    Link(destination: revenueCat.managementURLWithFallback) {
-                        Label("Manage subscription", systemImage: "arrow.up.right")
-                            .font(ReasiTypography.callout)
-                            .foregroundStyle(Color.reasi.text)
-                    }
-                }
+                .accessibilityHint("Manage your subscription")
+            } else {
+                profileRow(subscriptionPresentation.title, value: subscriptionPresentation.detail,
+                           symbol: "crown")
             }
-            .padding(ReasiSpacing.s4)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+            if revenueCat.isLoading {
+                ProgressView("Updating subscription")
+                    .font(ReasiTypography.callout)
             }
         }
+        .listRowBackground(Color.reasi.surface)
     }
 
     private var accountActionsSection: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionTitle("Account")
-
-            VStack(spacing: 1) {
-                Button {
-                    runAuthAction(mode: .signOut)
-                } label: {
-                    profileRow(
-                        "Sign out",
-                        symbol: "rectangle.portrait.and.arrow.right"
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-                .disabled(authIsBusy)
-
-                Button {
-                    showDeleteConfirmation = true
-                } label: {
-                    HStack(spacing: ReasiSpacing.s4) {
-                        Image(systemName: "trash")
-                            .frame(width: 22)
-                            .foregroundStyle(Color.reasi.danger)
-                        Text("Delete account")
-                            .font(ReasiTypography.bodyMedium)
-                            .foregroundStyle(Color.reasi.danger)
-                        Spacer()
-                    }
-                    .padding(ReasiSpacing.s4)
-                    .frame(minHeight: 54)
-                    .background(Color.reasi.surface)
-                    .accessibilityElement(children: .combine)
-                }
-                .buttonStyle(ReasiPressStyle())
-                .disabled(authIsBusy)
+        Section {
+            Button {
+                runAuthAction(mode: .signOut)
+            } label: {
+                profileRow("Sign out", symbol: "rectangle.portrait.and.arrow.right")
             }
-            .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+            .disabled(authIsBusy)
+
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete account", systemImage: "trash")
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.danger)
+                    .padding(.vertical, ReasiSpacing.s2)
             }
+            .disabled(authIsBusy)
         }
+        .listRowBackground(Color.reasi.surface)
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(ReasiTypography.caption)
-            .foregroundStyle(Color.reasi.muted)
-            .textCase(.uppercase)
-            .padding(.leading, ReasiSpacing.s1)
+    private func settingsButton(
+        _ title: String,
+        value: String? = nil,
+        symbol: String,
+        destination: ProfileSettingsDestination
+    ) -> some View {
+        Button {
+            ReasiHaptics.light()
+            activeSettingsDestination = destination
+        } label: {
+            profileRow(title, value: value, symbol: symbol, accessory: .chevron)
+        }
+        .accessibilityIdentifier("settings-\(destination.rawValue)")
     }
 
-    private var foodStylesSummary: String {
-        let titles = onboarding.preferences.foodStyles
-            .map(\.title)
-            .sorted()
-        guard !titles.isEmpty else { return "Not set" }
-        if titles.count <= 2 { return titles.joined(separator: ", ") }
-        return "\(titles.prefix(2).joined(separator: ", ")) +\(titles.count - 2)"
-    }
-
-    private var planningProfileSummary: String {
-        let household = onboarding.preferences.household?.title ?? "Two"
-        return "\(onboarding.preferences.purposeSummary) · \(household)"
+    private func settingsLabel(_ title: String, symbol: String) -> some View {
+        Label {
+            Text(title)
+                .font(ReasiTypography.body)
+                .foregroundStyle(Color.reasi.text)
+        } icon: {
+            Image(systemName: symbol)
+                .font(.system(size: 17))
+                .foregroundStyle(Color.reasi.textMuted)
+                .frame(width: 22)
+        }
+        .padding(.vertical, ReasiSpacing.s2)
     }
 
     private var appVersion: String {
@@ -733,9 +584,9 @@ struct ProfileView: View {
 
     private var spendingPreferenceSummary: String {
         guard let budget = onboarding.preferences.weeklyGroceryBudgetAud else {
-            return "Tone and optional weekly target"
+            return "No target"
         }
-        return "\(budget.formatted(.currency(code: "AUD"))) weekly target"
+        return "\(budget.formatted(.currency(code: "AUD").precision(.fractionLength(0...2)))) / week"
     }
 
     private func updateHaptics(_ enabled: Bool) {
@@ -769,24 +620,22 @@ struct ProfileView: View {
         }
     }
 
-    private var subscriptionPresentation: (title: String, detail: String, symbol: String) {
+    private var subscriptionPresentation: (title: String, detail: String) {
         if revenueCat.serverAccess?.isPro == true {
-            return ("Reasi Pro", "Unlimited week planning is active.", "sparkles")
+            return ("Reasi Pro", "Active")
         }
         if revenueCat.isReasiProActive || revenueCat.accessRefreshPending {
-            return ("Reasi Pro", "Purchase found. Updating your plan access.", "arrow.triangle.2.circlepath")
+            return ("Reasi Pro", "Updating")
         }
         switch revenueCat.serverAccess?.freePreviewStatus {
-        case .unavailable:
-            return ("Reasi Pro", "Subscribe to create a new week.", "lock.fill")
-        case .available:
-            return ("Reasi Pro", "Subscribe to create a new week.", "lock.fill")
+        case .unavailable, .available:
+            return ("Reasi Pro", "Not subscribed")
         case .reserved:
-            return ("Reasi Pro", "Your plan is still being prepared.", "clock")
+            return ("Plan access", "Preparing")
         case .completed:
-            return ("Existing plan", "Your saved plan and shopping list remain available.", "checkmark.circle")
+            return ("Plan access", "Saved plan")
         case nil:
-            return ("Plan access", "Access status will refresh when you're connected.", "wifi.exclamationmark")
+            return ("Plan access", "Connect to refresh")
         }
     }
 
@@ -885,43 +734,50 @@ struct ProfileView: View {
     private func profileRow(
         _ title: String,
         value: String? = nil,
-        subtitle: String? = nil,
         symbol: String,
         accessory: ProfileRowAccessory = .none
     ) -> some View {
-        HStack(spacing: ReasiSpacing.s4) {
+        HStack(spacing: ReasiSpacing.s3) {
             Image(systemName: symbol)
+                .font(.system(size: 17))
                 .frame(width: 22)
-                .foregroundStyle(Color.reasi.muted)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                        .lineLimit(2)
+                .foregroundStyle(Color.reasi.textMuted)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: ReasiSpacing.s3) {
+                    Text(title)
+                        .font(ReasiTypography.body)
+                        .foregroundStyle(Color.reasi.text)
+                        .fixedSize()
+                    Spacer(minLength: 0)
+                    if let value {
+                        Text(value)
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.muted)
+                            .fixedSize()
+                    }
                 }
-            }
-            Spacer()
-            if let value, !value.isEmpty {
-                Text(value)
-                    .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.muted)
-                    .multilineTextAlignment(.trailing)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+                    Text(title)
+                        .font(ReasiTypography.body)
+                        .foregroundStyle(Color.reasi.text)
+                    if let value {
+                        Text(value)
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.muted)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let accessorySymbol = accessory.symbol {
                 Image(systemName: accessorySymbol)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.reasi.dim)
             }
         }
-        .padding(ReasiSpacing.s4)
-        .frame(minHeight: subtitle == nil ? 54 : 66)
-        .background(Color.reasi.surface)
+        .padding(.vertical, ReasiSpacing.s2)
+        .frame(minHeight: 36)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(value ?? "")
@@ -989,6 +845,11 @@ struct ProfileView: View {
             return
         }
 
+        var presentingController = rootViewController
+        while let presented = presentingController.presentedViewController {
+            presentingController = presented
+        }
+
         authIsBusy = true
         authMessage = nil
         ReasiHaptics.light()
@@ -1001,7 +862,7 @@ struct ProfileView: View {
                 let nonce = try randomNonce()
                 let hashedNonce = sha256(nonce)
                 let result = try await GIDSignIn.sharedInstance.signIn(
-                    withPresenting: rootViewController,
+                    withPresenting: presentingController,
                     hint: nil,
                     additionalScopes: nil,
                     nonce: hashedNonce
@@ -1289,12 +1150,16 @@ private extension UIApplication {
 }
 
 #Preview {
-    ProfileView()
+    NavigationStack {
+        ProfileView()
+    }
         .environment(AppState())
         .environment(CoreLoopStore())
         .environment(SupabaseService())
         .environment(AnalyticsService())
         .environment(OnboardingStore())
         .environment(UserSettingsStore())
+        .environment(RevenueCatService())
+        .environment(SpendingStore())
         .preferredColorScheme(.dark)
 }

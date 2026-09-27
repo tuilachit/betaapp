@@ -14,15 +14,17 @@ struct AppShellView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            FloatingTabBar(
-                selectedTab: Binding(
-                    get: { appState.selectedTab },
-                    set: { appState.selectedTab = $0 }
-                ),
-                primaryActionSymbol: primaryActionSymbol,
-                primaryActionLabel: primaryActionLabel,
-                primaryAction: performPrimaryAction
-            )
+            if appState.router(for: appState.selectedTab).path.last != .profile {
+                FloatingTabBar(
+                    selectedTab: Binding(
+                        get: { appState.selectedTab },
+                        set: { appState.selectedTab = $0 }
+                    ),
+                    primaryActionSymbol: primaryActionSymbol,
+                    primaryActionLabel: primaryActionLabel,
+                    primaryAction: performPrimaryAction
+                )
+            }
         }
         .background(Color.reasi.background.ignoresSafeArea())
         .fullScreenCover(item: Binding(

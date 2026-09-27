@@ -78,7 +78,7 @@ final class ReasiOnboardingUITests: XCTestCase {
                 }
             }
             app.buttons["reasi-profile-button"].tap()
-            XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
             assertAppearance(style, in: app, name: "Account \(name)")
             app.terminate()
 
@@ -106,12 +106,14 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["reasi-profile-button"].waitForExistence(timeout: 8))
         app.buttons["reasi-profile-button"].tap()
 
-        let picker = app.segmentedControls["reasi-appearance-picker"]
+        let picker = app.buttons["reasi-appearance-picker"]
         reveal(picker, in: app)
-        picker.buttons["Dark"].tap()
+        picker.tap()
+        app.buttons["Dark"].tap()
         assertAppearance(.dark, in: app, name: "Profile Dark")
-        picker.buttons["Light"].tap()
-        XCTAssertTrue(picker.buttons["Light"].isSelected)
+        picker.tap()
+        app.buttons["Light"].tap()
+        XCTAssertTrue(picker.label.contains("Light"))
         assertAppearance(.light, in: app, name: "Profile Light")
 
         let listSettings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "List behavior")).firstMatch
@@ -134,13 +136,114 @@ final class ReasiOnboardingUITests: XCTestCase {
         assertAppearance(.light, in: app, name: "Relaunch Light")
         app.buttons["reasi-profile-button"].tap()
         reveal(picker, in: app)
-        XCTAssertTrue(picker.buttons["Light"].isSelected)
-        picker.buttons["Dark"].tap()
+        XCTAssertTrue(picker.label.contains("Light"))
+        picker.tap()
+        app.buttons["Dark"].tap()
         assertAppearance(.dark, in: app, name: "Profile Restored Dark")
         app.terminate()
         app.launch()
         XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
         assertAppearance(.dark, in: app, name: "Relaunch Dark")
+    }
+
+    @MainActor
+    func testSettingsDraftsDiscardAndSave() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                               "-reasi.settings.appearance", "dark"]
+        app.launch()
+        XCTAssertTrue(app.buttons["reasi-profile-button"].waitForExistence(timeout: 8))
+        app.buttons["reasi-profile-button"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Create a plan"].exists, "Settings should not have the floating add button")
+        XCTAssertFalse(app.textFields["Email"].exists, "Sign-in fields belong in the sign-in sheet")
+        app.buttons["settings-sign-in"].tap()
+        XCTAssertTrue(app.textFields["Email"].waitForExistence(timeout: 3))
+        app.buttons["Close"].tap()
+
+        app.buttons["settings-planning"].tap()
+        XCTAssertTrue(app.navigationBars["Meal preferences"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["settings-save"].exists)
+        let foodStyle = app.buttons["Vietnamese"]
+        let initialValue = foodStyle.value as? String
+        foodStyle.tap()
+        XCTAssertTrue(app.buttons["settings-save"].exists)
+        app.buttons["Close"].tap()
+        app.buttons["Discard changes"].tap()
+        app.buttons["settings-planning"].tap()
+        XCTAssertEqual(foodStyle.value as? String, initialValue, "Discard must leave preferences unchanged")
+
+        foodStyle.tap()
+        let changedValue = foodStyle.value as? String
+        app.buttons["settings-save"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        app.buttons["settings-planning"].tap()
+        XCTAssertEqual(foodStyle.value as? String, changedValue, "Saved preferences must reopen with the edited value")
+        foodStyle.tap()
+        app.buttons["settings-save"].tap()
+
+        app.buttons["settings-spending"].tap()
+        XCTAssertTrue(app.navigationBars["Budget & coaching"].waitForExistence(timeout: 3))
+        let budget = app.textFields["settings-weekly-budget"]
+        budget.tap()
+        if let value = budget.value as? String, value != "No target" {
+            budget.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        budget.typeText("10001")
+        app.buttons["settings-save"].tap()
+        XCTAssertTrue(app.staticTexts["Enter an amount above zero, up to A$10,000."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Budget & coaching"].exists)
+        app.buttons["Close"].tap()
+        app.buttons["Discard changes"].tap()
+
+        app.buttons["settings-store"].tap()
+        XCTAssertTrue(app.navigationBars["Preferred store"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["settings-save"].exists)
+        app.buttons["Close"].tap()
+        app.buttons["settings-reminders"].tap()
+        XCTAssertTrue(app.navigationBars["Weekly reminder"].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+    }
+
+    @MainActor
+    func testSettingsLargeTextAndListPreferencePersistence() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                               "-reasi.settings.appearance", "light",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["reasi-profile-button"].waitForExistence(timeout: 8))
+        app.buttons["reasi-profile-button"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        try app.performAccessibilityAudit(for: .textClipped)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Settings large text"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let list = app.buttons["settings-shopping"]
+        for _ in 0..<5 where !list.isHittable { app.swipeUp() }
+        list.tap()
+        XCTAssertTrue(app.navigationBars["List behavior"].waitForExistence(timeout: 3))
+        try app.performAccessibilityAudit(for: .textClipped)
+        let toggle = app.switches["settings-hide-bought"]
+        let initialValue = toggle.value as? String
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let changed = NSPredicate(format: "value != %@", initialValue ?? "")
+        expectation(for: changed, evaluatedWith: toggle)
+        waitForExpectations(timeout: 3)
+        let editedValue = toggle.value as? String
+        XCTAssertNotEqual(initialValue, editedValue)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["reasi-profile-button"].waitForExistence(timeout: 8))
+        app.buttons["reasi-profile-button"].tap()
+        for _ in 0..<5 where !list.isHittable { app.swipeUp() }
+        list.tap()
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        XCTAssertEqual(toggle.value as? String, editedValue)
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
     }
 
     @MainActor
@@ -249,7 +352,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         let profile = app.buttons["reasi-profile-button"]
         XCTAssertTrue(profile.exists)
         profile.tap()
-        XCTAssertTrue(app.staticTexts["Profile"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
         app.buttons["Back"].tap()
 
         let chart = app.otherElements["spend-category-chart"]
