@@ -4,12 +4,28 @@ Current app metadata:
 
 - Bundle ID: `ai.reasi.ios`
 - Version: `1.0.0`
-- Build: `1`
+- Build being prepared: `12` (not uploaded)
+- Latest upload verified in App Store Connect on 2026-09-27: `1.0.0 (11)`
 - Deployment target: iOS 26.0
 - Privacy URL: `https://www.reasiai.com/privacy`
 - Terms URL: `https://www.reasiai.com/terms`
-- Sign-in: Apple, Google, and email after the Apple-auth PR is merged and configured
+- Sign-in: Apple, Google, and email; native Apple auth is enabled in Release
 - Subscription products: `ai.reasi.pro.weekly`, `ai.reasi.pro.monthly`, and `ai.reasi.pro.annual`
+
+## Current Release Evidence (2026-09-27)
+
+- The unsigned device Release build for build 12 and its release preflight passed.
+  Privacy and Terms returned HTTP 200; fixture/guest mode and bundled server
+  secrets checks passed. This is not a signed archive or TestFlight upload.
+- RevenueCat's server API key and signed webhook were verified. Physical-device
+  purchases, trial eligibility, restores and backend unlock remain unverified.
+- Merge the reviewed input, security and Pro-enforcement changes, deploy the
+  backend from fresh `main`, and then archive the app from fresh `main`.
+- The latest full simulator run passed 80/81 tests. Onboarding intermittently
+  remained on Food style after Skip at the largest accessibility text size.
+  This remains a release blocker; see `PLAN_INPUT_RELIABILITY.md` for evidence.
+- Production leaked-password protection remains disabled. The security advisor
+  still has three warnings and two informational findings, not a clean result.
 
 ## Before Archiving
 
@@ -22,7 +38,7 @@ Current app metadata:
 7. Confirm the Release configuration contains only public client values: Supabase URL/publishable key, PostHog public project key, RevenueCat public iOS SDK key, and Google client ID/scheme.
 8. Merge the backend generation, store/state, Reasi Pro, and release-security PRs in dependency order, then run the documented backend TestFlight release workflow.
 9. In Xcode, select the Reasi target, choose the registered team, and confirm automatic signing resolves an Apple Distribution profile.
-10. Increment `CURRENT_PROJECT_VERSION` for every upload after build 1.
+10. Check the latest App Store Connect upload and use a strictly higher `CURRENT_PROJECT_VERSION` for every upload.
 11. Run `scripts/testflight-release-preflight.sh` against the built Release app with `REQUIRE_APPLE_AUTH=1` and `CHECK_LIVE_LEGAL_URLS=1`.
 12. Build and run the Release configuration on a physical iPhone, then choose Product > Archive with Any iOS Device selected.
 13. In Organizer, run Validate App before Distribute App > App Store Connect > Upload.
@@ -54,12 +70,14 @@ Current app metadata:
 3. In RevenueCat, configure entitlement `reasi_pro`, offering `default`, all three App Store products, and the public iOS SDK key used by the app.
 4. Configure and sign the RevenueCat-to-Supabase webhook; keep that secret server-side only.
 5. With sandbox accounts, test the weekly purchase (no trial), the monthly 3-day trial, the annual 14-day trial, cancellation, expiration, billing failure, restore, and offline entitlement behavior.
-6. Confirm each account receives exactly one complete free-preview plan and can keep using that plan after the preview is claimed.
+6. With backend Pro enforcement deployed, confirm a new account cannot generate without an active subscription, eligible trial, or valid access grant. There is no free-preview plan. Existing saved plans, manual list management, check-off and store regrouping must remain usable without Pro.
+7. Confirm the paywall displays the selected product's actual eligibility and localized price: weekly has no trial, monthly has 3 days, and annual has 14 days for eligible customers. An ineligible customer must not see a promised free trial.
+8. Confirm cancellation grants access until the entitlement expires, a completed restore refreshes backend access, and account deletion clearly explains that App Store subscription cancellation is separate.
 
 ## App Store Connect
 
 1. Open My Apps > Reasi > TestFlight.
-2. Wait for build `1.0.0 (1)` to finish processing.
+2. Wait for the newly uploaded build to finish processing, then verify its exact version and build number before assigning testers. Build 12 is only prepared locally at present.
 3. Complete the export-compliance question. Reasi currently uses standard HTTPS transport and declares no non-exempt encryption.
 4. Add internal testers under Users and Access if they are not already App Store Connect users.
 5. Create an Internal Testing group, add the processed build, then add the testers.
@@ -71,19 +89,19 @@ Current app metadata:
 
 The hosted policy must explain:
 
-- Account data handled by Supabase and the Google/email authentication methods.
+- Account data handled by Supabase and Apple/Google/email authentication methods.
 - Meal preferences, generated plans, shopping lists, product imports, uploaded product/list photos, and assistant chat data stored for the user.
 - OpenAI processing performed only through Supabase Edge Functions for meal generation, vision/OCR, product resolution, comparison, and shopping assistance.
 - PostHog analytics, including the categories of events collected and the fact that raw grocery lists, photos, and full chat content are not intentionally sent to analytics.
-- RevenueCat and Apple purchase processing, free-preview access, subscription state, renewal, and restore behavior.
+- RevenueCat and Apple purchase processing, eligible introductory trials, subscription state, renewal, and restore behavior.
 - Retention periods, security measures, user rights, contact details, and how account deletion removes the account, owned rows, and uploaded images.
 
-## External Setup Still Required
+## External Configuration Checks
 
 - Apple Account Holder/Admin: enable Sign in with Apple, approve agreements, banking, tax, subscription products, prices, and trial.
 - Supabase Pro: enable leaked-password protection, set a ten-character password minimum, disable anonymous sign-ins, and deploy the reviewed migrations/functions.
-- RevenueCat: create the products/offering/entitlement and install the signed webhook secret in Supabase.
-- Reasi website: publish the final privacy and terms pages before upload.
+- RevenueCat: server key and signed webhook are verified; confirm the products/offering/entitlement through real sandbox purchase and restore tests.
+- Reasi website: Privacy and Terms returned HTTP 200 on 2026-09-27; recheck their availability and policy content before upload.
 
 ## Apple Account Setup
 

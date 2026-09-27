@@ -102,17 +102,25 @@ struct OnboardingPlaceholderView: View {
             Spacer(minLength: ReasiSpacing.s3)
 
             if onboarding.currentStep.isSurvey {
-                Button("Skip") {
+                Button {
                     onboarding.skipCurrentSurvey(analytics: analytics)
+                } label: {
+                    Text("Skip")
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
                 .buttonStyle(ReasiPressStyle())
                 .accessibilityHint("Skips this question")
             } else if onboarding.currentStep == .storeGuide {
-                Button("Skip") {
+                Button {
                     analytics.capture(.storeGuideSkipped, properties: ["store_id": .string(onboarding.preferences.resolvedStore.id.rawValue)])
                     onboarding.advance()
+                } label: {
+                    Text("Skip")
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)

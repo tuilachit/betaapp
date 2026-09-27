@@ -277,6 +277,79 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(idea.productRole, .useInPlan)
     }
 
+    func testPlanBriefRetainsImportedEvidenceAndConstraintLocks() throws {
+        let recipe = RecipeInfo(ingredients: [RecipeIngredient(name: "Pasta", quantity: "200 g", category: "Pasta")], instructionsBrief: "Boil and drain", prepTimeMin: 2, cookTimeMin: 10, method: ["Boil for 10 minutes", "Drain"], serves: 2)
+        let original = PlanBrief(kind: .occasion, entryMethod: .build, ideas: [PlanIdea(id: "recipe", type: .dish, title: "Pasta")])
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        payload["explicitFields"] = ["serves", "budgetTargetAud"]
+        var ideas = try XCTUnwrap(payload["ideas"] as? [[String: Any]])
+        ideas[0]["quantity"] = "2 packs"
+        ideas[0]["recipe"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(recipe))
+        ideas[0]["confidence"] = "medium"
+        ideas[0]["confidenceReason"] = "Read from screenshot"
+        payload["ideas"] = ideas
+        let decoded = try JSONDecoder().decode(PlanBrief.self, from: JSONSerialization.data(withJSONObject: payload))
+        let roundTrip = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+        XCTAssertEqual(roundTrip["explicitFields"] as? [String], ["serves", "budgetTargetAud"])
+        let idea = try XCTUnwrap((roundTrip["ideas"] as? [[String: Any]])?.first)
+        XCTAssertEqual(idea["quantity"] as? String, "2 packs")
+        XCTAssertEqual((idea["recipe"] as? [String: Any])?["method"] as? [String], ["Boil for 10 minutes", "Drain"])
+        XCTAssertEqual(idea["confidence"] as? String, "medium")
+    }
+
+    func testInterpretationCannotChangeExplicitIdeaIdentityOrRole() {
+        let original = PlanBrief(kind: .week, entryMethod: .build, ideas: [PlanIdea(id: "milk", type: .product, title: "Chosen milk", productRole: .addToList)])
+        let interpreted = PlanBrief(kind: .week, entryMethod: .build, ideas: [PlanIdea(id: "milk", type: .dish, title: "Milk dessert")])
+        let result = interpreted.mergingClientMetadata(from: original)
+        XCTAssertEqual(result.ideas.first?.title, "Chosen milk")
+        XCTAssertEqual(result.ideas.first?.type, .product)
+        XCTAssertEqual(result.ideas.first?.productRole, .addToList)
+    }
+
+    func testPhotoReviewKeepsListQuantityAndRequiresOptInForUncertainItems() {
+        let clear = ListExtractionCandidate(extractedName: "Milk", quantity: "2 L", group: .needsReview, confidence: .high, confidenceReason: "Visible", productCandidate: nil)
+        let unclear = ListExtractionCandidate(extractedName: "chicken thing", quantity: nil, group: .uncertain, confidence: .medium, confidenceReason: "Blurry", productCandidate: nil)
+        let ideas = [clear, unclear].map { PlanIdea.photographedListItem($0, uploadPath: "user/list/image.jpg") }
+        var review = PlanPhotoReview(ideas: ideas)
+        XCTAssertEqual(review.confirmedIdeas.count, 1)
+        XCTAssertEqual(review.confirmedIdeas.first?.quantity, "2 L")
+        XCTAssertEqual(review.confirmedIdeas.first?.productRole, .addToList)
+        XCTAssertEqual(review.confirmedIdeas.first?.type, .listItem)
+        review.toggle(ideas[1].id)
+        XCTAssertEqual(review.confirmedIdeas.count, 2)
+        review.ideas[1].title = "  "
+        XCTAssertEqual(review.confirmedIdeas.count, 1)
+    }
+
+    func testPhotoProductAlternativesAreMutuallyExclusive() {
+        let ideas = [PlanIdea(type: .product, title: "First", confidence: .medium), PlanIdea(type: .product, title: "Second", confidence: .medium)]
+        var review = PlanPhotoReview(ideas: ideas, singleSelection: true)
+        XCTAssertEqual(review.confirmedIdeas.map(\.title), ["First"])
+        review.toggle(ideas[1].id)
+        XCTAssertEqual(review.confirmedIdeas.map(\.title), ["Second"])
+        review.toggle(ideas[1].id)
+        XCTAssertTrue(review.confirmedIdeas.isEmpty)
+    }
+
+    func testServerIdentityOnlyProductDecodesAndRoundTripsWithoutInventingPrice() throws {
+        let data = Data(#"{"id":"p","type":"product","title":"Chosen pasta","selectedProduct":{"sku":"123","retailer":"coles","name":"Chosen pasta"},"quantity":"2 packs"}"#.utf8)
+        let idea = try JSONDecoder().decode(PlanIdea.self, from: data)
+        XCTAssertNil(idea.product)
+        XCTAssertEqual(idea.productReference?.sku, "123")
+        let decoded = try JSONDecoder().decode(PlanIdea.self, from: JSONEncoder().encode(idea))
+        XCTAssertEqual(decoded.productReference, idea.productReference)
+        XCTAssertEqual(decoded.quantity, "2 packs")
+    }
+
+    func testRecipeImportRetainsFullRecipeBeyondEightIngredients() throws {
+        let recipe = RecipeInfo(ingredients: (1...12).map { RecipeIngredient(name: "Ingredient \($0)", quantity: "\($0) g", category: "Recipe") }, instructionsBrief: "Cook", prepTimeMin: 5, cookTimeMin: 20, method: ["First step", "Second step", "Last step"], serves: 4)
+        let resolved = ResolvedMealIdea(title: "Recipe", description: "From a screenshot", cuisine: nil, sourceURL: nil, imageURL: nil, confidence: .medium, confidenceReason: "Read from text", recipe: recipe, product: nil)
+        let idea = PlanIdea.resolvedMeal(resolved, uploadPath: "user/product-photo/recipe.jpg")
+        let decoded = try JSONDecoder().decode(PlanIdea.self, from: JSONEncoder().encode(idea))
+        XCTAssertEqual(decoded.recipe, recipe)
+        XCTAssertEqual(decoded.imageUploadPath, "user/product-photo/recipe.jpg")
+    }
+
     func testPreviouslyCachedWeekPlanDecodesWithoutNewMetadata() throws {
         let data = try JSONEncoder().encode(FixtureWeekPlan.current)
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -311,6 +384,16 @@ final class ReasiCoreTests: XCTestCase {
         XCTAssertEqual(coverage.pricedProductCount, 1)
         XCTAssertEqual(coverage.eligibleProductCount, 2)
         XCTAssertEqual(coverage.fraction, 0.5, accuracy: 0.001)
+    }
+
+    func testPlanBudgetCoverageCountsRequestedPacksAndDoesNotGuessVagueQuantities() {
+        let product = fixtureProduct(name: "Pasta", price: 4)
+        let coverage = PlanBudgetCoverage(ideas: [
+            PlanIdea(type: .product, title: "Pasta", product: product, quantity: "2 packs"),
+            PlanIdea(type: .product, title: "More pasta", product: product, quantity: "some")
+        ])
+        XCTAssertEqual(coverage.knownSubtotalAud, 8)
+        XCTAssertEqual(coverage.pricedProductCount, 1)
     }
 
     func testInterpretationCapsAlternativeSwapsAtTwo() {
