@@ -473,7 +473,13 @@ struct PlanBuilderView: View {
     @State private var showsDiscardConfirmation = false
     @State private var showsPlanDetails = false
     @State private var showsAlternativeSuggestions = false
-    @FocusState private var briefFieldFocused: Bool
+    @State private var showsInputPicker = false
+    @State private var pendingInput: PlanInputAction?
+    @FocusState private var focusedField: BuilderField?
+
+    private enum BuilderField: Hashable {
+        case brief, budget, clarification
+    }
 
     init(entryMethod: EntryMethod) {
         self.entryMethod = entryMethod
@@ -493,24 +499,41 @@ struct PlanBuilderView: View {
                     planDetails
                     if !brief.ideas.isEmpty { ideasSection }
                     if let interpretation { interpretationSection(interpretation) }
-                    submitButton
                 }
+                .disabled(isInterpreting)
                 .padding(.horizontal, ReasiSpacing.s5)
                 .padding(.top, ReasiSpacing.s4)
-                .padding(.bottom, ReasiSpacing.s10)
+                .padding(.bottom, ReasiSpacing.s6)
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.reasi.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                submitButton
+                    .padding(.horizontal, ReasiSpacing.s5)
+                    .padding(.vertical, ReasiSpacing.s3)
+                    .background(Color.reasi.background)
+            }
             .navigationTitle("Build your plan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color.reasi.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+                    Button("Close plan builder", systemImage: "xmark") { dismiss() }
+                        .labelStyle(.iconOnly)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Discard", role: .destructive) { showsDiscardConfirmation = true }
-                        .foregroundStyle(Color.reasi.warning)
+                    Menu {
+                        Button("Discard draft", systemImage: "trash", role: .destructive) {
+                            showsDiscardConfirmation = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("Plan options")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
                 }
             }
         }
@@ -519,7 +542,7 @@ struct PlanBuilderView: View {
             if let restored = appState.planBuilder.draft {
                 brief = restored
             }
-            if entryMethod == .describe { briefFieldFocused = true }
+            if entryMethod == .describe { focusedField = .brief }
         }
         .onChange(of: brief) { _, updated in
             appState.planBuilder.update(updated)
@@ -546,6 +569,11 @@ struct PlanBuilderView: View {
             Button("Keep editing", role: .cancel) {}
         } message: {
             Text("Your ideas will be removed from this device.")
+        }
+        .sheet(isPresented: $showsInputPicker, onDismiss: openSelectedInput) {
+            PlanInputPicker { action in
+                pendingInput = action
+            }
         }
         .fullScreenCover(item: $productSearchContext) { context in
             ProductSearchView(
@@ -596,15 +624,10 @@ struct PlanBuilderView: View {
     }
 
     private var intro: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text("What should Reasi plan?")
-                .font(ReasiTypography.title)
-                .foregroundStyle(Color.reasi.text)
-            Text("Say what matters in your own words. Specific dishes, budget, timing and dislikes all count.")
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        Text("What are you cooking?")
+            .font(ReasiTypography.title)
+            .foregroundStyle(Color.reasi.text)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var planKindPicker: some View {
@@ -630,7 +653,8 @@ struct PlanBuilderView: View {
                 TextEditor(text: $brief.briefText)
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.text)
-                    .focused($briefFieldFocused)
+                    .focused($focusedField, equals: .brief)
+                    .accessibilityLabel("Your meal ideas")
                     .scrollContentBackground(.hidden)
                     .padding(ReasiSpacing.s3)
                     .frame(minHeight: 148)
@@ -638,34 +662,31 @@ struct PlanBuilderView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(briefFieldFocused ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
+                    .stroke(focusedField == .brief ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
             }
 
             HStack {
-                Menu {
-                    Button("Search product or link", systemImage: "magnifyingglass") {
-                        productSearchContext = ProductSearchContext(
-                            targetItemID: nil,
-                            targetItemName: nil,
-                            initialQuery: ""
-                        )
-                    }
-                    Button("Food or recipe photo", systemImage: "fork.knife") { pickPhoto(.meal) }
-                    Button("Product photo", systemImage: "shippingbox") { pickPhoto(.product) }
-                    Button("Handwritten list", systemImage: "text.viewfinder") { pickPhoto(.handwrittenList) }
+                Button {
+                    focusedField = nil
+                    pendingInput = nil
+                    showsInputPicker = true
                 } label: {
-                    Label("Add inspiration", systemImage: "plus")
+                    Label("Add", systemImage: "plus.circle")
                         .font(ReasiTypography.bodyMedium)
                         .foregroundStyle(Color.reasi.text)
                         .frame(minHeight: 44)
                 }
-                .disabled(isResolving)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("plan-builder-add")
+                .accessibilityHint("Add a meal photo, product, or photographed list to your plan")
+                .disabled(isResolving || isInterpreting)
 
                 Spacer()
 
                 if isResolving {
                     ProgressView()
                         .tint(Color.reasi.textMuted)
+                        .accessibilityLabel("Reading photo")
                 }
             }
 
@@ -701,16 +722,19 @@ struct PlanBuilderView: View {
                     .foregroundStyle(Color.reasi.text)
                 }
 
-                HStack {
-                    Text("Budget")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-                    Spacer()
-                    TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 124)
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        Text("Budget").fixedSize()
+                        Spacer()
+                        budgetField.frame(width: 124)
+                    }
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                        Text("Budget")
+                        budgetField
+                    }
                 }
+                .font(ReasiTypography.bodyMedium)
+                .foregroundStyle(Color.reasi.text)
 
                 if let target = brief.budgetTargetAud {
                     Text(budgetMessage(target: target))
@@ -721,40 +745,45 @@ struct PlanBuilderView: View {
             }
             .padding(.top, ReasiSpacing.s4)
         } label: {
-            HStack {
-                Label("Plan details", systemImage: "slider.horizontal.3")
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                Spacer()
-                Text(planDetailsSummary)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(1)
-            }
+            Text(planDetailsSummary)
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 44, alignment: .leading)
         }
         .tint(Color.reasi.textMuted)
-        .padding(ReasiSpacing.s4)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .padding(.bottom, ReasiSpacing.s3)
+        .overlay(alignment: .bottom) { Color.reasi.border.frame(height: 0.5) }
+        .accessibilityIdentifier("plan-builder-details")
+    }
+
+    private var budgetField: some View {
+        TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
+            .keyboardType(.decimalPad)
+            .focused($focusedField, equals: .budget)
+            .multilineTextAlignment(.trailing)
+            .accessibilityLabel("Budget in Australian dollars")
     }
 
     private var briefPlaceholder: String {
         if brief.kind == .occasion {
-            return "Romantic dinner for two. Keep salmon pasta and flan, suggest a light starter, and stay near $80."
+            return "Salmon pasta and flan for two. Help me choose a starter."
         }
-        return "Quick dinners for two. Use chicken twice, avoid mushrooms, keep prep under 30 minutes, and reuse ingredients."
+        return "Quick dinners for two, under 30 minutes. No mushrooms."
     }
 
     private var planDetailsSummary: String {
         let count = brief.kind == .week ? "7 dinners" : "\(brief.desiredCount) courses"
         let people = brief.serves == 1 ? "1 person" : "\(brief.serves) people"
-        return "\(people) · \(count)"
+        let budget = brief.budgetTargetAud.map { $0.formatted(.currency(code: "AUD")) }
+        return [people, count, budget].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var ideasSection: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Text("Pinned to this plan")
-                .font(ReasiTypography.headline)
-                .foregroundStyle(Color.reasi.text)
+            Text("In your plan")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
             ForEach(brief.ideas) { idea in
                 PlanIdeaRow(
                     idea: idea,
@@ -792,6 +821,7 @@ struct PlanBuilderView: View {
                         }
                     }
                     TextField("Your answer", text: $clarificationAnswer)
+                        .focused($focusedField, equals: .clarification)
                         .textFieldStyle(.plain)
                         .padding(ReasiSpacing.s3)
                         .background(Color.reasi.surfaceHigh, in: RoundedRectangle(cornerRadius: ReasiRadius.md))
@@ -858,17 +888,19 @@ struct PlanBuilderView: View {
 
     private var submitButton: some View {
         Button {
+            focusedField = nil
             Task { await reviewOrGenerate() }
         } label: {
             if isInterpreting {
-                HStack { ProgressView().tint(Color.reasi.background); Text("Understanding your plan") }
+                HStack { ProgressView().tint(Color.reasi.background); Text("Preparing plan") }
             } else if hasUnansweredClarification {
-                Label("Choose an answer", systemImage: "arrow.up")
+                Text("Choose an answer")
             } else {
-                Label("Create plan", systemImage: "sparkles")
+                Text("Create plan")
             }
         }
-        .buttonStyle(ReasiPrimaryButtonStyle())
+        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
+        .accessibilityIdentifier("plan-builder-submit")
         .disabled(!canSubmit)
         .opacity(canSubmit ? 1 : 0.58)
     }
@@ -879,7 +911,7 @@ struct PlanBuilderView: View {
     }
 
     private var canSubmit: Bool {
-        guard !isInterpreting else { return false }
+        guard !isInterpreting, !isResolving else { return false }
         guard !brief.briefText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !brief.ideas.isEmpty else {
             return false
         }
@@ -977,6 +1009,19 @@ struct PlanBuilderView: View {
         photoMode = mode
         selectedPhoto = nil
         isPhotoPickerPresented = true
+    }
+
+    private func openSelectedInput() {
+        // Present the destination only after the native options sheet has dismissed.
+        guard let action = pendingInput else { return }
+        pendingInput = nil
+        switch action {
+        case .mealPhoto: pickPhoto(.meal)
+        case .findProduct:
+            productSearchContext = ProductSearchContext(targetItemID: nil, targetItemName: nil, initialQuery: "")
+        case .productPhoto: pickPhoto(.product)
+        case .listPhoto: pickPhoto(.handwrittenList)
+        }
     }
 
     private func processPhoto(_ item: PhotosPickerItem) async {
@@ -1096,43 +1141,66 @@ private struct PlanIdeaRow: View {
     let idea: PlanIdea
     let updateRole: (ProductRole) -> Void
     let remove: () -> Void
+    @State private var showsDetail = false
 
     var body: some View {
         HStack(spacing: ReasiSpacing.s3) {
-            Image(systemName: idea.type == .product ? "shippingbox.fill" : (idea.type == .dish ? "fork.knife" : "checklist"))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(idea.type == .product ? Color.reasi.warning : Color.reasi.textMuted)
-                .frame(width: 36, height: 36)
-                .background(Color.reasi.surfaceHigh, in: Circle())
-
             VStack(alignment: .leading, spacing: 3) {
                 Text(idea.title)
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(Color.reasi.text)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if idea.type == .product {
-                    Menu(idea.productRole?.title ?? ProductRole.useInPlan.title) {
-                        ForEach(ProductRole.allCases, id: \.self) { role in
-                            Button(role.title) { updateRole(role) }
+                    Menu {
+                        Picker("Use this product", selection: Binding(
+                            get: { idea.productRole ?? .useInPlan },
+                            set: { updateRole($0) }
+                        )) {
+                            ForEach(ProductRole.allCases, id: \.self) { role in
+                                Text(roleTitle(role)).tag(role)
+                            }
                         }
+                    } label: {
+                        HStack(spacing: ReasiSpacing.s1) {
+                            Text(roleTitle(idea.productRole ?? .useInPlan))
+                            Image(systemName: "chevron.down").imageScale(.small)
+                        }
+                        .frame(minHeight: 44)
                     }
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.warning)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .accessibilityLabel("Use \(idea.title)")
+                    .accessibilityValue(roleTitle(idea.productRole ?? .useInPlan))
                 } else if let detail = idea.detail, !detail.isEmpty {
-                    Text(detail).font(ReasiTypography.caption).foregroundStyle(Color.reasi.muted).lineLimit(2)
+                    DisclosureGroup("Details", isExpanded: $showsDetail) {
+                        Text(detail)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, ReasiSpacing.s2)
+                    }
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .tint(Color.reasi.textMuted)
                 }
             }
             Spacer()
             Button(action: remove) {
-                Image(systemName: "xmark.circle.fill").foregroundStyle(Color.reasi.dim)
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Remove \(idea.title)")
         }
-        .padding(ReasiSpacing.s3)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(idea.type == .product ? Color.reasi.warning.opacity(0.35) : Color.reasi.border, lineWidth: 1)
+        .padding(.vertical, ReasiSpacing.s2)
+        .overlay(alignment: .bottom) { Color.reasi.border.frame(height: 0.5) }
+    }
+
+    private func roleTitle(_ role: ProductRole) -> String {
+        switch role {
+        case .useInPlan: "Use in meals"
+        case .alreadyHave: "Already have"
+        case .addToList: "Just buy"
         }
     }
 }
