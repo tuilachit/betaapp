@@ -772,6 +772,16 @@ enum ProductRole: String, Codable, Hashable, CaseIterable {
     }
 }
 
+struct PlanProductReference: Codable, Hashable {
+    let sku: String
+    let retailer: String?
+    let name: String
+}
+
+enum PlanConstraint: String, Codable, Hashable {
+    case serves, budgetTargetAud, occasionAt, desiredMealCount
+}
+
 struct PlanIdea: Identifiable, Codable, Hashable {
     let id: String
     var type: IdeaType
@@ -783,9 +793,14 @@ struct PlanIdea: Identifiable, Codable, Hashable {
     var productRole: ProductRole?
     var isRequired: Bool
     var courseHint: String?
+    var quantity: String?
+    var recipe: RecipeInfo?
+    var confidence: ProductConfidence?
+    var confidenceReason: String?
+    var productReference: PlanProductReference?
 
     enum CodingKeys: String, CodingKey {
-        case id, type, title, detail, product, productRole, courseHint
+        case id, type, title, detail, product, selectedProduct, productRole, courseHint, quantity, recipe, confidence, confidenceReason
         case sourceURL = "sourceUrl"
         case legacySourceURL = "sourceURL"
         case imageUploadPath = "uploadPath"
@@ -804,7 +819,11 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         product: ProductCandidate? = nil,
         productRole: ProductRole? = nil,
         isRequired: Bool = true,
-        courseHint: String? = nil
+        courseHint: String? = nil,
+        quantity: String? = nil,
+        recipe: RecipeInfo? = nil,
+        confidence: ProductConfidence? = nil,
+        confidenceReason: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -816,6 +835,11 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         self.productRole = type == .product ? (productRole ?? .useInPlan) : productRole
         self.isRequired = isRequired
         self.courseHint = courseHint
+        self.quantity = quantity
+        self.recipe = recipe
+        self.confidence = confidence
+        self.confidenceReason = confidenceReason
+        self.productReference = product?.sku.map { PlanProductReference(sku: $0, retailer: product?.retailer, name: product?.name ?? title) }
     }
 
     init(from decoder: Decoder) throws {
@@ -828,13 +852,21 @@ struct PlanIdea: Identifiable, Codable, Hashable {
             ?? container.decodeIfPresent(URL.self, forKey: .legacySourceURL)
         imageUploadPath = try container.decodeIfPresent(String.self, forKey: .imageUploadPath)
             ?? container.decodeIfPresent(String.self, forKey: .legacyImageUploadPath)
-        product = try container.decodeIfPresent(ProductCandidate.self, forKey: .product)
+        // The server returns identity only; full local catalog snapshots remain
+        // optional. Never require a client price to decode the selected SKU.
+        product = try? container.decode(ProductCandidate.self, forKey: .product)
+        productReference = (try? container.decode(PlanProductReference.self, forKey: .selectedProduct))
+            ?? (try? container.decode(PlanProductReference.self, forKey: .product))
         productRole = try container.decodeIfPresent(ProductRole.self, forKey: .productRole)
             ?? (type == .product ? .useInPlan : nil)
         isRequired = try container.decodeIfPresent(Bool.self, forKey: .isRequired)
             ?? container.decodeIfPresent(Bool.self, forKey: .legacyIsRequired)
             ?? true
         courseHint = try container.decodeIfPresent(String.self, forKey: .courseHint)
+        quantity = try container.decodeIfPresent(String.self, forKey: .quantity)
+        recipe = try container.decodeIfPresent(RecipeInfo.self, forKey: .recipe)
+        confidence = try container.decodeIfPresent(ProductConfidence.self, forKey: .confidence)
+        confidenceReason = try container.decodeIfPresent(String.self, forKey: .confidenceReason)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -846,9 +878,29 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         try container.encodeIfPresent(sourceURL, forKey: .sourceURL)
         try container.encodeIfPresent(imageUploadPath, forKey: .imageUploadPath)
         try container.encodeIfPresent(product, forKey: .product)
+        try container.encodeIfPresent(productReference, forKey: .selectedProduct)
         try container.encodeIfPresent(productRole, forKey: .productRole)
         try container.encode(isRequired, forKey: .isRequired)
         try container.encodeIfPresent(courseHint, forKey: .courseHint)
+        try container.encodeIfPresent(quantity, forKey: .quantity)
+        try container.encodeIfPresent(recipe, forKey: .recipe)
+        try container.encodeIfPresent(confidence, forKey: .confidence)
+        try container.encodeIfPresent(confidenceReason, forKey: .confidenceReason)
+    }
+
+    static func photographedListItem(_ item: ListExtractionCandidate, uploadPath: String) -> PlanIdea {
+        PlanIdea(type: item.productCandidate == nil ? .listItem : .product,
+                 title: item.extractedName, imageUploadPath: uploadPath,
+                 product: item.productCandidate, productRole: .addToList,
+                 quantity: item.quantity, confidence: item.group == .uncertain ? .low : item.confidence,
+                 confidenceReason: item.confidenceReason)
+    }
+
+    static func resolvedMeal(_ resolved: ResolvedMealIdea, uploadPath: String? = nil) -> PlanIdea {
+        PlanIdea(type: .dish, title: resolved.title, detail: resolved.description,
+                 sourceURL: resolved.sourceURL, imageUploadPath: uploadPath,
+                 recipe: resolved.recipe, confidence: resolved.confidence,
+                 confidenceReason: resolved.confidenceReason)
     }
 }
 
@@ -864,10 +916,11 @@ struct PlanBrief: Codable, Hashable {
     var budgetTargetAud: Double?
     var desiredCount: Int
     var ideas: [PlanIdea]
+    var explicitFields: [PlanConstraint]?
 
     enum CodingKeys: String, CodingKey {
         case version, kind, entryMethod, briefText, serves, occasionAt
-        case budgetTargetAud, ideas
+        case budgetTargetAud, ideas, explicitFields
         case desiredCount = "desiredMealCount"
         case legacyDesiredCount = "desiredCount"
     }
@@ -890,6 +943,7 @@ struct PlanBrief: Codable, Hashable {
         self.budgetTargetAud = budgetTargetAud
         self.desiredCount = desiredCount ?? kind.defaultDesiredCount
         self.ideas = ideas
+        self.explicitFields = []
     }
 
     init(from decoder: Decoder) throws {
@@ -909,6 +963,7 @@ struct PlanBrief: Codable, Hashable {
             ?? container.decodeIfPresent(Int.self, forKey: .legacyDesiredCount)
             ?? kind.defaultDesiredCount
         ideas = try container.decodeIfPresent([PlanIdea].self, forKey: .ideas) ?? []
+        explicitFields = try container.decodeIfPresent([PlanConstraint].self, forKey: .explicitFields)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -922,21 +977,34 @@ struct PlanBrief: Codable, Hashable {
         try container.encodeIfPresent(budgetTargetAud, forKey: .budgetTargetAud)
         try container.encode(desiredCount, forKey: .desiredCount)
         try container.encode(ideas, forKey: .ideas)
+        try container.encodeIfPresent(explicitFields, forKey: .explicitFields)
     }
 
     func mergingClientMetadata(from original: PlanBrief) -> PlanBrief {
         var merged = self
-        let originalByID = Dictionary(uniqueKeysWithValues: original.ideas.map { ($0.id, $0) })
+        merged.explicitFields = original.explicitFields
+        let originalByID = Dictionary(original.ideas.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         merged.ideas = ideas.map { interpreted in
             guard let local = originalByID[interpreted.id] else { return interpreted }
             var value = interpreted
+            value.type = local.type
+            value.title = local.title
+            value.productRole = local.productRole
+            value.isRequired = local.isRequired
             value.detail = local.detail ?? interpreted.detail
             value.product = local.product
+            value.productReference = local.productReference ?? interpreted.productReference
+            value.quantity = local.quantity
+            value.recipe = local.recipe
+            value.confidence = local.confidence
+            value.confidenceReason = local.confidenceReason
             value.sourceURL = local.sourceURL ?? interpreted.sourceURL
             value.imageUploadPath = local.imageUploadPath ?? interpreted.imageUploadPath
             value.courseHint = local.courseHint ?? interpreted.courseHint
             return value
         }
+        let returnedIDs = Set(merged.ideas.map(\.id))
+        merged.ideas.append(contentsOf: original.ideas.filter { !returnedIDs.contains($0.id) })
         return merged
     }
 
@@ -958,7 +1026,12 @@ struct PlanBudgetCoverage: Hashable {
 
     init(ideas: [PlanIdea]) {
         let eligible = ideas.filter { $0.type == .product && $0.productRole != .alreadyHave }
-        let prices = eligible.compactMap { $0.product?.priceAud }
+        let prices = eligible.compactMap { idea -> Double? in
+            guard let product = idea.product, let price = product.priceAud, price.isFinite, price > 0 else { return nil }
+            guard let quantity = idea.quantity else { return price }
+            guard let count = ProductPurchaseEstimate(quantity: quantity)?.packCount(for: product) else { return nil }
+            return (price * 100).rounded() * Double(count) / 100
+        }
         knownSubtotalAud = prices.reduce(0, +)
         pricedProductCount = prices.count
         eligibleProductCount = eligible.count

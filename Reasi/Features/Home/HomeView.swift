@@ -475,6 +475,7 @@ struct PlanBuilderView: View {
     @State private var showsAlternativeSuggestions = false
     @State private var showsInputPicker = false
     @State private var pendingInput: PlanInputAction?
+    @State private var photoReview: PlanPhotoReview?
     @FocusState private var focusedField: BuilderField?
 
     private enum BuilderField: Hashable {
@@ -573,6 +574,17 @@ struct PlanBuilderView: View {
         .sheet(isPresented: $showsInputPicker, onDismiss: openSelectedInput) {
             PlanInputPicker { action in
                 pendingInput = action
+            }
+        }
+        .sheet(item: $photoReview) { review in
+            PlanPhotoReviewSheet(review: review) { ideas in
+                let available = max(0, 30 - brief.ideas.count)
+                brief.ideas.append(contentsOf: ideas.prefix(available))
+                if ideas.count > available { errorMessage = "A plan can hold 30 ideas. Remove one to add more." }
+                for idea in ideas.prefix(available) {
+                    analytics.capture(.planIdeaAdded, properties: ["idea_type": .string(idea.type.rawValue)])
+                }
+                ReasiHaptics.success()
             }
         }
         .fullScreenCover(item: $productSearchContext) { context in
@@ -701,12 +713,12 @@ struct PlanBuilderView: View {
     private var planDetails: some View {
         DisclosureGroup(isExpanded: $showsPlanDetails) {
             VStack(spacing: ReasiSpacing.s4) {
-                Stepper("Cooking for \(brief.serves)", value: $brief.serves, in: 1...12)
+                Stepper("Cooking for \(brief.serves)", value: constraintBinding(\.serves, field: .serves), in: 1...12)
                     .font(ReasiTypography.bodyMedium)
                     .foregroundStyle(Color.reasi.text)
 
                 if brief.kind == .occasion {
-                    Stepper("\(brief.desiredCount) courses", value: $brief.desiredCount, in: 2...5)
+                    Stepper("\(brief.desiredCount) courses", value: constraintBinding(\.desiredCount, field: .desiredMealCount), in: 2...5)
                         .font(ReasiTypography.bodyMedium)
                         .foregroundStyle(Color.reasi.text)
 
@@ -714,7 +726,7 @@ struct PlanBuilderView: View {
                         "When",
                         selection: Binding(
                             get: { brief.occasionAt ?? Date() },
-                            set: { brief.occasionAt = $0 }
+                            set: { constraintBinding(\.occasionAt, field: .occasionAt).wrappedValue = $0 }
                         ),
                         displayedComponents: [.date, .hourAndMinute]
                     )
@@ -758,7 +770,7 @@ struct PlanBuilderView: View {
     }
 
     private var budgetField: some View {
-        TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
+        TextField("Optional", value: constraintBinding(\.budgetTargetAud, field: .budgetTargetAud), format: .currency(code: "AUD"))
             .keyboardType(.decimalPad)
             .focused($focusedField, equals: .budget)
             .multilineTextAlignment(.trailing)
@@ -973,12 +985,7 @@ struct PlanBuilderView: View {
             addProduct(product)
             return
         }
-        brief.ideas.append(PlanIdea(
-            type: .dish,
-            title: resolved.title,
-            detail: resolvedIdeaDetail(resolved),
-            sourceURL: resolved.sourceURL
-        ))
+        brief.ideas.append(.resolvedMeal(resolved))
         analytics.capture(.planIdeaAdded, properties: ["idea_type": .string(IdeaType.dish.rawValue)])
     }
 
@@ -989,15 +996,14 @@ struct PlanBuilderView: View {
         ReasiHaptics.selection()
     }
 
-    private func resolvedIdeaDetail(_ resolved: ResolvedMealIdea) -> String? {
-        var parts = [resolved.description].compactMap { $0 }
-        if let recipe = resolved.recipe {
-            let ingredients = recipe.ingredients.prefix(8).map(\.name).joined(separator: ", ")
-            if !ingredients.isEmpty { parts.append("Ingredients: \(ingredients)") }
-            if let totalTime = recipe.totalTimeMin { parts.append("About \(totalTime) minutes") }
-        }
-        let joined = parts.joined(separator: ". ")
-        return joined.isEmpty ? nil : String(joined.prefix(800))
+    private func constraintBinding<Value>(_ keyPath: WritableKeyPath<PlanBrief, Value>, field: PlanConstraint) -> Binding<Value> {
+        Binding(get: { brief[keyPath: keyPath] }, set: { value in
+            brief[keyPath: keyPath] = value
+            // Old drafts used explicit form semantics. Keep them until edited.
+            var fields = brief.explicitFields ?? [.serves, .budgetTargetAud, .occasionAt]
+            if !fields.contains(field) { fields.append(field) }
+            brief.explicitFields = fields
+        })
     }
 
     private func removeIdea(_ id: String) {
@@ -1006,6 +1012,12 @@ struct PlanBuilderView: View {
     }
 
     private func pickPhoto(_ mode: BuilderPhotoMode) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ReasiPlanPhotoReviewFixture") {
+            photoReview = .uiTestFixture
+            return
+        }
+        #endif
         photoMode = mode
         selectedPhoto = nil
         isPhotoPickerPresented = true
@@ -1042,7 +1054,7 @@ struct PlanBuilderView: View {
                     storeId: appState.selectedStore.id,
                     uploadPath: path
                 )
-                addResolvedIdea(resolved)
+                photoReview = PlanPhotoReview(ideas: [.resolvedMeal(resolved, uploadPath: path)])
             case .product:
                 let path = try await supabase.uploadUserImage(data, kind: .productPhoto)
                 let result = try await supabase.resolveProduct(
@@ -1054,15 +1066,19 @@ struct PlanBuilderView: View {
                         uploadPath: path
                     )
                 )
-                if let candidate = result.candidates.first { addProduct(candidate) }
-                else { errorMessage = "No reliable product match was found. Try scanning its barcode." }
+                if result.candidates.isEmpty { errorMessage = "No product could be read. Try scanning its barcode." }
+                else {
+                    photoReview = PlanPhotoReview(ideas: result.candidates.map { candidate in
+                        PlanIdea(type: .product, title: candidate.displayName, imageUploadPath: path,
+                                 product: candidate, productRole: .useInPlan,
+                                 confidence: candidate.confidence, confidenceReason: candidate.confidenceReason)
+                    }, singleSelection: true)
+                }
             case .handwrittenList:
                 let path = try await supabase.uploadUserImage(data, kind: .shoppingListPhoto)
                 let result = try await supabase.extractShoppingListPhoto(storeId: appState.selectedStore.id, uploadPath: path)
-                for item in result.items {
-                    if let candidate = item.productCandidate { addProduct(candidate) }
-                    else { addIdea(title: item.extractedName, type: .listItem, detail: item.quantity) }
-                }
+                if result.items.isEmpty { errorMessage = "No readable items were found. Try a clearer photo." }
+                else { photoReview = PlanPhotoReview(ideas: result.items.map { .photographedListItem($0, uploadPath: path) }) }
             }
         } catch {
             errorMessage = supabase.userFacingMessage(for: error, fallback: "That photo could not be read. Try a clearer, well-lit image.")

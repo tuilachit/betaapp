@@ -120,3 +120,161 @@ struct PlanInputPicker: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 }
+
+struct PlanPhotoReview: Identifiable {
+    let id = UUID()
+    var ideas: [PlanIdea]
+    let singleSelection: Bool
+    var selectedIDs: Set<String>
+
+    init(ideas: [PlanIdea], singleSelection: Bool = false) {
+        self.ideas = ideas
+        self.singleSelection = singleSelection
+        let clear = ideas.filter { $0.confidence != .low }.map(\.id)
+        selectedIDs = Set(singleSelection ? Array(clear.prefix(1)) : clear)
+    }
+
+    var confirmedIdeas: [PlanIdea] {
+        ideas.filter { selectedIDs.contains($0.id) && !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    mutating func toggle(_ id: String) {
+        if selectedIDs.contains(id) { selectedIDs.remove(id) }
+        else if singleSelection { selectedIDs = [id] }
+        else { selectedIDs.insert(id) }
+    }
+
+    #if DEBUG
+    static var uiTestFixture: PlanPhotoReview {
+        PlanPhotoReview(ideas: [
+            PlanIdea.photographedListItem(ListExtractionCandidate(extractedName: "Milk", quantity: "2 L", group: .needsReview, confidence: .high, confidenceReason: "Check the amount against your photo.", productCandidate: nil), uploadPath: "fixture/list.jpg"),
+            PlanIdea.photographedListItem(ListExtractionCandidate(extractedName: "Chicken thing", quantity: nil, group: .uncertain, confidence: .low, confidenceReason: "The handwriting is unclear.", productCandidate: nil), uploadPath: "fixture/list.jpg")
+        ])
+    }
+    #endif
+}
+
+struct PlanPhotoReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var review: PlanPhotoReview
+    @State private var didAdd = false
+    let onConfirm: ([PlanIdea]) -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: ReasiSpacing.s5) {
+                    ForEach(review.ideas.indices, id: \.self) { index in
+                        reviewRow(index)
+                        Divider()
+                    }
+                }
+                .padding(ReasiSpacing.s5)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Color.reasi.background)
+            .navigationTitle("Check your photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    guard !didAdd else { return }
+                    didAdd = true
+                    onConfirm(review.confirmedIdeas)
+                    dismiss()
+                } label: {
+                    Text("Add \(review.confirmedIdeas.count)")
+                        .font(ReasiTypography.bodyMedium)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.reasi.text)
+                .foregroundStyle(Color.reasi.background)
+                .disabled(review.confirmedIdeas.isEmpty || didAdd)
+                .accessibilityIdentifier("photo-review-add")
+                .padding(ReasiSpacing.s5)
+                .background(Color.reasi.background)
+            }
+        }
+        .foregroundStyle(Color.reasi.text)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func reviewRow(_ index: Int) -> some View {
+        let idea = review.ideas[index]
+        return HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+            Button { review.toggle(idea.id) } label: {
+                Image(systemName: review.selectedIDs.contains(idea.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Include \(idea.title)")
+            .accessibilityValue(review.selectedIDs.contains(idea.id) ? "Selected" : "Not selected")
+            .accessibilityIdentifier("photo-review-select-\(index)")
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                TextField("Item name", text: Binding(get: { review.ideas[index].title }, set: { value in
+                    review.ideas[index].title = value
+                    review.ideas[index].product = nil
+                    review.ideas[index].productReference = nil
+                }), axis: .vertical)
+                .font(ReasiTypography.bodyMedium)
+                .accessibilityIdentifier("photo-review-name-\(index)")
+
+                if idea.type != .dish {
+                    TextField("Quantity", text: Binding(get: { review.ideas[index].quantity ?? "" }, set: {
+                        review.ideas[index].quantity = $0.isEmpty ? nil : $0
+                    }))
+                    .font(ReasiTypography.callout)
+                    .accessibilityIdentifier("photo-review-quantity-\(index)")
+
+                    Picker("Use", selection: Binding(get: { review.ideas[index].productRole ?? .addToList }, set: { role in
+                        review.ideas[index].productRole = role
+                        review.ideas[index].type = role == .addToList && idea.product == nil ? .listItem : .product
+                    })) {
+                        ForEach(ProductRole.allCases, id: \.self) { role in
+                            Text(role == .addToList ? "Just buy" : role.title).tag(role)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Color.reasi.text)
+                }
+
+                if idea.confidence == .low {
+                    Label("Check this item", systemImage: "exclamationmark.circle")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.warning)
+                } else if idea.type == .dish && idea.recipe == nil {
+                    Text("Meal inspiration")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+
+                DisclosureGroup(idea.recipe == nil ? "Details" : "Recipe") {
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                        if let reason = idea.confidenceReason { Text(reason.reasiUserFacingCopy) }
+                        if let recipe = idea.recipe {
+                            ForEach(recipe.ingredients) { ingredient in
+                                Text([ingredient.quantity, ingredient.name].filter { !$0.isEmpty }.joined(separator: " "))
+                            }
+                            ForEach(Array(recipe.steps.enumerated()), id: \.offset) { index, step in
+                                Text("\(index + 1). \(step)")
+                            }
+                        }
+                    }
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.textMuted)
+                }
+                .font(ReasiTypography.caption)
+                .tint(Color.reasi.textMuted)
+            }
+            .padding(.top, ReasiSpacing.s2)
+        }
+    }
+}

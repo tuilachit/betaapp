@@ -3,6 +3,70 @@ import UIKit
 
 final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
+    func testPlanPhotoReviewCancelsSafelyAndOnlyAddsConfirmedItems() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated", "-ReasiPlanPhotoReviewFixture", "-reasi.settings.appearance", "light"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 8))
+        app.buttons["Home"].tap()
+        app.buttons["Create a plan"].firstMatch.tap()
+        let add = app.buttons["plan-builder-add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 3))
+        reveal(add, in: app)
+        add.tap()
+        app.buttons["List photo"].tap()
+        XCTAssertTrue(app.navigationBars["Check your photo"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.buttons["photo-review-select-1"].value as? String, "Not selected")
+        XCTAssertEqual(app.textFields["photo-review-quantity-0"].value as? String, "2 L")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Photo review before confirmation"
+        screenshot.lifetime = .keepAlways
+        self.add(screenshot)
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.staticTexts["Milk"].exists)
+        add.tap()
+        app.buttons["List photo"].tap()
+        XCTAssertTrue(app.buttons["photo-review-add"].waitForExistence(timeout: 3))
+        app.buttons["photo-review-add"].tap()
+        XCTAssertFalse(app.navigationBars["Check your photo"].exists)
+        XCTAssertTrue(app.staticTexts["Milk"].exists)
+        XCTAssertFalse(app.staticTexts["Chicken thing"].exists)
+        app.buttons["Close plan builder"].tap()
+        app.buttons["Create a plan"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Milk"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testPlanPhotoReviewLargeTextHasReachableControls() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated", "-ReasiPlanPhotoReviewFixture", "-reasi.settings.appearance", "dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 8))
+        app.buttons["Home"].tap()
+        app.buttons["Create a plan"].firstMatch.tap()
+        let add = app.buttons["plan-builder-add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 3))
+        reveal(add, in: app)
+        add.tap()
+        let photo = app.buttons["List photo"]
+        reveal(photo, in: app)
+        photo.tap()
+        XCTAssertTrue(app.navigationBars["Check your photo"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["photo-review-add"].isHittable)
+        let uncertain = app.buttons["photo-review-select-1"]
+        reveal(uncertain, in: app)
+        uncertain.tap()
+        XCTAssertEqual(uncertain.value as? String, "Selected")
+        try app.performAccessibilityAudit(for: .textClipped)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Photo review accessibility dark"
+        screenshot.lifetime = .keepAlways
+        self.add(screenshot)
+    }
+
+    @MainActor
     func testPlanBuilderPickerPreservesDraftAndOpensProductSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
