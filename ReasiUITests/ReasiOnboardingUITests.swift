@@ -3,6 +3,97 @@ import UIKit
 
 final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
+    func testPlanBuilderPickerPreservesDraftAndOpensProductSearch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                               "-reasi.settings.appearance", "light"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 8))
+        app.buttons["Home"].tap()
+        app.buttons["Create a plan"].firstMatch.tap()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        editor.tap()
+        editor.typeText("Salmon pasta and flan for two.")
+        let add = app.buttons["plan-builder-add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 3))
+        reveal(add, in: app)
+        add.tap()
+        XCTAssertTrue(app.staticTexts["Add to your plan"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
+            XCTAssertTrue(app.buttons[option].isHittable)
+        }
+        let pickerScreenshot = XCTAttachment(screenshot: app.screenshot())
+        pickerScreenshot.name = "Plan add options light"
+        pickerScreenshot.lifetime = .keepAlways
+        self.add(pickerScreenshot)
+        app.buttons["Find product"].tap()
+        XCTAssertTrue(app.textFields["Search products"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Scan product barcode"].exists)
+        app.buttons["Close product search"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
+        add.tap()
+        app.buttons["Close add options"].tap()
+        XCTAssertFalse(app.staticTexts["Add to your plan"].exists)
+        XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
+        let composerScreenshot = XCTAttachment(screenshot: app.screenshot())
+        composerScreenshot.name = "Plan composer light"
+        composerScreenshot.lifetime = .keepAlways
+        self.add(composerScreenshot)
+        for option in ["Meal photo", "Product photo", "List photo"] {
+            add.tap()
+            XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 3))
+            app.buttons[option].tap()
+            let cancel = app.buttons["Cancel"]
+            XCTAssertTrue(cancel.waitForExistence(timeout: 8), "\(option) must open the photo library")
+            cancel.tap()
+            XCTAssertTrue(add.waitForExistence(timeout: 3))
+            XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
+        }
+        app.buttons["Close plan builder"].tap()
+        app.buttons["Create a plan"].firstMatch.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
+    }
+
+    @MainActor
+    func testPlanBuilderPickerSupportsLargeTextAndBothAppearances() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for appearance in ["light", "dark"] {
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                                   "-reasi.settings.appearance", appearance,
+                                   "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+            app.launch()
+            XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 8))
+            app.buttons["Home"].tap()
+            app.buttons["Create a plan"].firstMatch.tap()
+            XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 3))
+            let add = app.buttons["plan-builder-add"]
+            reveal(add, in: app)
+            add.tap()
+            XCTAssertTrue(app.buttons["Meal photo"].waitForExistence(timeout: 3))
+            for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
+                let button = app.buttons[option]
+                for _ in 0..<5 where !button.isHittable { app.swipeUp() }
+                XCTAssertTrue(button.isHittable)
+                XCTAssertGreaterThanOrEqual(button.frame.minX, app.frame.minX)
+                XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX)
+            }
+            try app.performAccessibilityAudit(for: .textClipped)
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "Plan add options large text \(appearance)"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            app.buttons["Close add options"].tap()
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testOnboardingHasNoClippedTextAtAccessibilitySizes() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
