@@ -21,7 +21,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         reveal(add, in: app)
         add.tap()
         XCTAssertTrue(app.staticTexts["Add to your plan"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
         for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
             XCTAssertTrue(app.buttons[option].isHittable)
         }
@@ -37,7 +37,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
         add.tap()
         app.buttons["Close add options"].tap()
-        XCTAssertFalse(app.staticTexts["Add to your plan"].exists)
+        XCTAssertTrue(app.staticTexts["Add to your plan"].waitForNonExistence(timeout: 3))
         XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
         let composerScreenshot = XCTAttachment(screenshot: app.screenshot())
         composerScreenshot.name = "Plan composer light"
@@ -101,6 +101,8 @@ final class ReasiOnboardingUITests: XCTestCase {
             for appearance in ["light", "dark"] {
                 app.launchArguments = [
                     "-ReasiForceOnboarding", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
+                    "-reasi.onboarding.preferences.v1", "",
+                    "-reasi.onboarding.completed.v1", "NO",
                     "-reasi.settings.appearance", appearance,
                     "-UIPreferredContentSizeCategoryName", size,
                 ]
@@ -139,7 +141,10 @@ final class ReasiOnboardingUITests: XCTestCase {
                     screen.name = "\(title) \(size) \(appearance)"
                     screen.lifetime = .keepAlways
                     add(screen)
-                    if !action.isEmpty { app.buttons[action].tap() }
+                    if !action.isEmpty {
+                        app.buttons[action].tap()
+                        XCTAssertTrue(titleElement.waitForNonExistence(timeout: 3), "Each tap must leave exactly one onboarding step")
+                    }
                 }
                 app.terminate()
             }
@@ -156,8 +161,9 @@ final class ReasiOnboardingUITests: XCTestCase {
             app.launchArguments = fixtures + appearance
             app.launch()
             XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 8))
-            for tab in ["Home", "Plans", "List", "Spend"] {
+            for (tab, title) in [("Home", "Home"), ("Plans", "Your week"), ("List", "Shopping list"), ("Spend", "Spend")] {
                 app.buttons[tab].tap()
+                waitForSettledHeading(title, in: app)
                 assertAppearance(style, in: app, name: "\(tab) \(name)")
                 if tab == "Plans" {
                     let meal = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Miso salmon rice bowls")).firstMatch
@@ -207,7 +213,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(picker.label.contains("Light"))
         assertAppearance(.light, in: app, name: "Profile Light")
 
-        let listSettings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "List behavior")).firstMatch
+        let listSettings = app.buttons["settings-shopping"]
         reveal(listSettings, in: app)
         listSettings.tap()
         XCTAssertTrue(app.navigationBars["List behavior"].waitForExistence(timeout: 3))
@@ -340,10 +346,29 @@ final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<8 {
-            if element.isHittable && element.frame.maxY <= app.frame.maxY - 150 { break }
-            app.swipeUp()
+            let frame = element.frame
+            if element.isHittable && frame.minY >= app.frame.minY + 100 && frame.maxY <= app.frame.maxY - 150 { break }
+            if element.exists && frame.minY < app.frame.minY + 100 { app.swipeDown() }
+            else { app.swipeUp() }
         }
         XCTAssertTrue(element.isHittable)
+    }
+
+    @MainActor
+    private func waitForSettledHeading(_ title: String, in app: XCUIApplication) {
+        let heading = app.staticTexts[title].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        var previousFrame = CGRect.null
+        // A tab tap can return while its slide transition is still drawing.
+        let settled = NSPredicate { _, _ in
+            guard heading.exists, heading.isHittable else { return false }
+            let frame = heading.frame
+            let isSettled = app.frame.contains(frame) && frame == previousFrame
+            previousFrame = frame
+            return isSettled
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed, "\(title) must settle before sampling its background")
     }
 
     @MainActor
@@ -377,6 +402,8 @@ final class ReasiOnboardingUITests: XCTestCase {
             "-ReasiForceOnboarding",
             "-ReasiSkipBrandIntro",
             "-ReasiUITestUnauthenticated",
+            "-reasi.onboarding.preferences.v1", "",
+            "-reasi.onboarding.completed.v1", "NO",
         ]
         app.launch()
         return app
@@ -537,13 +564,17 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(weeklyPlan.exists)
         XCTAssertFalse((weeklyPlan.value as? String ?? "").localizedCaseInsensitiveContains("free"))
         XCTAssertTrue((weeklyPlan.value as? String ?? "").contains("A$7.99"))
-        app.buttons["More paywall details"].tap()
+        let paywallDetails = app.buttons["More paywall details"]
+        reveal(paywallDetails, in: app)
+        paywallDetails.tap()
         XCTAssertTrue(app.buttons["Why Reasi Pro?"].waitForExistence(timeout: 3))
         app.buttons["Why Reasi Pro?"].tap()
         XCTAssertTrue(app.staticTexts["Why you're seeing this"].waitForExistence(timeout: 3))
         app.buttons["Done"].tap()
 
-        app.buttons["Close paywall"].tap()
+        let closePaywall = app.buttons["Close paywall"]
+        reveal(closePaywall, in: app)
+        closePaywall.tap()
         XCTAssertTrue(app.staticTexts["Not ready yet?"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Keep my plan"].exists)
         XCTAssertTrue(app.buttons["View plans"].exists)
@@ -693,7 +724,9 @@ final class ReasiOnboardingUITests: XCTestCase {
         shelfPrice.tap()
         let field = app.textFields["Shelf price per pack"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        reveal(field, in: app)
         field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         field.typeText("1.50")
         XCTAssertTrue(useProduct.isEnabled, "Recalculate the full basket when the shelf price is corrected")
     }
@@ -828,6 +861,7 @@ final class ReasiOnboardingUITests: XCTestCase {
 
         let foundFirst = first.waitForExistence(timeout: 3)
         XCTAssertTrue(foundFirst)
+        XCTAssertTrue(app.staticTexts["0/3"].exists, "A new user must start without inherited survey answers")
         first.tap()
         second.tap()
         third.tap()
