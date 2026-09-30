@@ -89,6 +89,44 @@ final class ReasiAppearanceTests: XCTestCase {
 }
 
 final class ReasiCoreTests: XCTestCase {
+    func testListPhotoKeepsLowConfidenceAndMissingQuantityEditable() {
+        let extracted = ListExtractionCandidate(
+            extractedName: "chicken thing", quantity: nil, group: .uncertain,
+            confidence: .low, confidenceReason: "Messy writing", productCandidate: nil
+        )
+        var item = ListPhotoItemDraft(extracted)
+        let originalID = item.id
+        XCTAssertTrue(item.canAdd)
+        XCTAssertTrue(item.needsCheck)
+        XCTAssertEqual(item.cleanedQuantity, "")
+        item.name = "  chicken thighs  "
+        item.quantity = " 500 g "
+        XCTAssertEqual(item.id, originalID)
+        XCTAssertEqual(item.candidate.name, "chicken thighs")
+        XCTAssertEqual(item.cleanedQuantity, "500 g")
+        XCTAssertNil(item.candidate.priceAud)
+        XCTAssertNil(item.candidate.sku)
+        XCTAssertNil(item.candidate.aisleLabel)
+        item.isSelected = false
+        XCTAssertFalse(item.canAdd)
+        item.isSelected = true
+        item.name = "  \n "
+        XCTAssertFalse(item.canAdd)
+    }
+
+    func testListPhotoDraftKeepsDuplicateLinesDistinctAndPreservesListIdentity() {
+        let item = ListExtractionCandidate(
+            extractedName: "Milk", quantity: "2 L", group: .needsReview,
+            confidence: .high, confidenceReason: "", productCandidate: nil
+        )
+        let result = ListExtractionResult(batchId: "batch", matched: [], needsReview: [item, item], uncertain: [], items: [item, item])
+        let draft = ListPhotoDraft(result: result, shoppingListID: "list-a")
+        XCTAssertEqual(draft.shoppingListID, "list-a")
+        XCTAssertEqual(draft.items.count, 2)
+        XCTAssertNotEqual(draft.items[0].id, draft.items[1].id)
+        XCTAssertTrue(draft.items.allSatisfy { $0.canAdd && !$0.needsCheck })
+    }
+
     func testPurposeSelectionKeepsPriorityOrderAndCapsAtThree() {
         let normalized = OnboardingPreferences.normalizedPurposeSelection([
             .saveMoney,

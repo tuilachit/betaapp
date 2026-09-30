@@ -37,6 +37,7 @@
 		BF31CA224CD74E09B6265001 /* PlanInputPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */; };
 		B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* WeekPlanPlaceholderView.swift */; };
 		B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* ShoppingListPlaceholderView.swift */; };
+		B31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */; };
 		B00000000000000000000028 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000028 /* ProfileView.swift */; };
 		B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000029 /* OnboardingPlaceholderView.swift */; };
 		B00000000000000000000030 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* Assets.xcassets */; };
@@ -112,6 +113,7 @@
 		AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanInputPicker.swift; sourceTree = "<group>"; };
 		A00000000000000000000026 /* WeekPlanPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekPlanPlaceholderView.swift; sourceTree = "<group>"; };
 		A00000000000000000000027 /* ShoppingListPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListPlaceholderView.swift; sourceTree = "<group>"; };
+		A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListPhotoReviewSheet.swift; sourceTree = "<group>"; };
 		A00000000000000000000028 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A00000000000000000000029 /* OnboardingPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPlaceholderView.swift; sourceTree = "<group>"; };
 		A00000000000000000000030 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -343,6 +345,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000027 /* ShoppingListPlaceholderView.swift */,
+				A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */,
 				A00000000000000000000044 /* ProductSearchView.swift */,
 			);
 			path = ShoppingList;
@@ -609,6 +612,7 @@
 				BF31CA224CD74E09B6265001 /* PlanInputPicker.swift in Sources */,
 				B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */,
 				B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */,
+				B31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift in Sources */,
 				B00000000000000000000047 /* ProductSearchView.swift in Sources */,
 				B00000000000000000000028 /* ProfileView.swift in Sources */,
 				B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */,
