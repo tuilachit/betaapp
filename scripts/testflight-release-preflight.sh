@@ -87,14 +87,14 @@ if [[ -n "$APP_PATH" ]]; then
 
   executable="$APP_PATH/$(plist_value "$BUILT_INFO" "CFBundleExecutable")"
   [[ -f "$executable" ]] || fail "Built app executable is missing"
-  if strings "$executable" | rg -q 'Continue for testing|-ReasiUITestUnauthenticated|-ReasiSkipBrandIntro'; then
+  if strings "$executable" | rg 'Continue for testing|-ReasiUITestUnauthenticated|-ReasiSkipBrandIntro|-ReasiListPhotoReviewFixture|-reasi-ui-test-product-link-failure' >/dev/null; then
     fail "Debug-only UI/test behavior is present in the Release executable"
   fi
   pass "Debug-only UI and launch hooks are absent from Release"
 
   if find "$APP_PATH" -type f -maxdepth 5 -print0 \
     | xargs -0 strings 2>/dev/null \
-    | rg -q 'sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{32,}|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|REVENUECAT_(SECRET|WEBHOOK_SECRET)'; then
+    | rg 'sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{32,}|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|REVENUECAT_(SECRET|WEBHOOK_SECRET)' >/dev/null; then
     fail "A server-secret pattern was found in the app bundle"
   fi
   pass "No OpenAI, service-role, or RevenueCat secret pattern was found in the bundle"

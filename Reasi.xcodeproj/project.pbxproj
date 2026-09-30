@@ -7,7 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		17AADC63A6D79465AEF049D9 /* ReasiInputReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA7F3373573932281ED26AF /* ReasiInputReliabilityTests.swift */; };
+		182BC6EE8D64FE1F2ECFCA06 /* ReasiSpendingIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69FBA93F0BDEB1815D9539E /* ReasiSpendingIdentityTests.swift */; };
 		A7FB770F66AD4D68A982FE23 /* ReasiCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */; };
+		A92D41A7F1DB75B6FDF9781C /* ReasiPreferenceIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68B8634774F3B8967ECC612C /* ReasiPreferenceIdentityTests.swift */; };
 		AF02F667DA24D58CA0075C40 /* ReasiOnboardingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */; };
 		B00000000000000000000001 /* ReasiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* ReasiApp.swift */; };
 		B00000000000000000000002 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* AppShellView.swift */; };
@@ -34,10 +37,8 @@
 		B00000000000000000000023 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* AnalyticsService.swift */; };
 		B00000000000000000000024 /* RevenueCatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000024 /* RevenueCatService.swift */; };
 		B00000000000000000000025 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* HomeView.swift */; };
-		BF31CA224CD74E09B6265001 /* PlanInputPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */; };
 		B00000000000000000000026 /* WeekPlanPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* WeekPlanPlaceholderView.swift */; };
 		B00000000000000000000027 /* ShoppingListPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* ShoppingListPlaceholderView.swift */; };
-		B31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */; };
 		B00000000000000000000028 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000028 /* ProfileView.swift */; };
 		B00000000000000000000029 /* OnboardingPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000029 /* OnboardingPlaceholderView.swift */; };
 		B00000000000000000000030 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* Assets.xcassets */; };
@@ -63,6 +64,11 @@
 		B00000000000000000000054 /* ReasiProfileButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000051 /* ReasiProfileButton.swift */; };
 		B00000000000000000000055 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000052 /* SpendView.swift */; };
 		B00000000000000000000056 /* SpendCategoryBreakdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000053 /* SpendCategoryBreakdown.swift */; };
+		B31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */; };
+		B86F2BB7A5D9C694129B27B8 /* ReasiInputReliabilityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D5CF3BD48C276C6FAB37839 /* ReasiInputReliabilityUITests.swift */; };
+		BBD4EFDA8013C049EA8B327C /* CoreLoopReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0C69B36715178DC492F5BE /* CoreLoopReliabilityTests.swift */; };
+		BF31CA224CD74E09B6265001 /* PlanInputPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */; };
+		F8D7F543ADD6FC6D0F8C126F /* ReasiAccountIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07796968EF16E4DFB78A0998 /* ReasiAccountIdentityTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,6 +90,11 @@
 
 /* Begin PBXFileReference section */
 		0415F5A1394E9DEB8D41AD23 /* ReasiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReasiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		07796968EF16E4DFB78A0998 /* ReasiAccountIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiAccountIdentityTests.swift; sourceTree = "<group>"; };
+		0D5CF3BD48C276C6FAB37839 /* ReasiInputReliabilityUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiInputReliabilityUITests.swift; sourceTree = "<group>"; };
+		2A0C69B36715178DC492F5BE /* CoreLoopReliabilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreLoopReliabilityTests.swift; sourceTree = "<group>"; };
+		3DA7F3373573932281ED26AF /* ReasiInputReliabilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiInputReliabilityTests.swift; sourceTree = "<group>"; };
+		68B8634774F3B8967ECC612C /* ReasiPreferenceIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiPreferenceIdentityTests.swift; sourceTree = "<group>"; };
 		717BE143951CFFE6E20FB96F /* ReasiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReasiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000001 /* ReasiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiApp.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
@@ -110,10 +121,8 @@
 		A00000000000000000000023 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
 		A00000000000000000000024 /* RevenueCatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevenueCatService.swift; sourceTree = "<group>"; };
 		A00000000000000000000025 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
-		AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanInputPicker.swift; sourceTree = "<group>"; };
 		A00000000000000000000026 /* WeekPlanPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekPlanPlaceholderView.swift; sourceTree = "<group>"; };
 		A00000000000000000000027 /* ShoppingListPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListPlaceholderView.swift; sourceTree = "<group>"; };
-		A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListPhotoReviewSheet.swift; sourceTree = "<group>"; };
 		A00000000000000000000028 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A00000000000000000000029 /* OnboardingPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPlaceholderView.swift; sourceTree = "<group>"; };
 		A00000000000000000000030 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -141,7 +150,10 @@
 		A00000000000000000000052 /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
 		A00000000000000000000053 /* SpendCategoryBreakdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendCategoryBreakdown.swift; sourceTree = "<group>"; };
 		A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiCoreTests.swift; sourceTree = "<group>"; };
+		A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListPhotoReviewSheet.swift; sourceTree = "<group>"; };
+		AF31CA224CD74E09B6265001 /* PlanInputPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanInputPicker.swift; sourceTree = "<group>"; };
 		B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiOnboardingUITests.swift; sourceTree = "<group>"; };
+		E69FBA93F0BDEB1815D9539E /* ReasiSpendingIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReasiSpendingIdentityTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +189,11 @@
 			isa = PBXGroup;
 			children = (
 				A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */,
+				2A0C69B36715178DC492F5BE /* CoreLoopReliabilityTests.swift */,
+				3DA7F3373573932281ED26AF /* ReasiInputReliabilityTests.swift */,
+				07796968EF16E4DFB78A0998 /* ReasiAccountIdentityTests.swift */,
+				68B8634774F3B8967ECC612C /* ReasiPreferenceIdentityTests.swift */,
+				E69FBA93F0BDEB1815D9539E /* ReasiSpendingIdentityTests.swift */,
 			);
 			name = ReasiTests;
 			path = ReasiTests;
@@ -193,6 +210,7 @@
 			isa = PBXGroup;
 			children = (
 				B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */,
+				0D5CF3BD48C276C6FAB37839 /* ReasiInputReliabilityUITests.swift */,
 			);
 			name = ReasiUITests;
 			path = ReasiUITests;
@@ -568,6 +586,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF02F667DA24D58CA0075C40 /* ReasiOnboardingUITests.swift in Sources */,
+				B86F2BB7A5D9C694129B27B8 /* ReasiInputReliabilityUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -576,6 +595,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				A7FB770F66AD4D68A982FE23 /* ReasiCoreTests.swift in Sources */,
+				BBD4EFDA8013C049EA8B327C /* CoreLoopReliabilityTests.swift in Sources */,
+				17AADC63A6D79465AEF049D9 /* ReasiInputReliabilityTests.swift in Sources */,
+				F8D7F543ADD6FC6D0F8C126F /* ReasiAccountIdentityTests.swift in Sources */,
+				A92D41A7F1DB75B6FDF9781C /* ReasiPreferenceIdentityTests.swift in Sources */,
+				182BC6EE8D64FE1F2ECFCA06 /* ReasiSpendingIdentityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -849,9 +873,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ai.reasi.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REASI_ENABLE_APPLE_AUTH = YES;
-				REASI_ENABLE_REVENUECAT = YES;
 				REASI_ENABLE_DEBUG_FIXTURES = NO;
 				REASI_ENABLE_DEBUG_GUEST_AUTH = NO;
+				REASI_ENABLE_REVENUECAT = YES;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

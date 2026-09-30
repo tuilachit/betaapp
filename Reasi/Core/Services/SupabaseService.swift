@@ -18,6 +18,7 @@ final class SupabaseService {
     private(set) var authLabel: String = "Not signed in"
     private(set) var hasActiveSession = false
     private(set) var currentUserId: String?
+    private(set) var authIdentityRevision = 0
     private(set) var currentUserEmail: String?
     private(set) var currentAuthMethod: AuthMethod?
     private(set) var emailIsVerified = false
@@ -90,6 +91,15 @@ final class SupabaseService {
         hasActiveSession
     }
 
+    var authenticatedUserId: String? {
+        hasActiveSession ? currentUserId : nil
+    }
+
+    func requireCurrentIdentity(_ userId: String, revision: Int) throws {
+        guard !Task.isCancelled, authenticatedUserId == userId,
+              authIdentityRevision == revision else { throw CancellationError() }
+    }
+
     var hasPendingEmailVerification: Bool {
         !hasActiveSession && currentAuthMethod == .email && !emailIsVerified && currentUserEmail != nil
     }
@@ -157,6 +167,7 @@ final class SupabaseService {
     }
 
     private func clearSessionState() {
+        if authenticatedUserId != nil { authIdentityRevision += 1 }
         authLabel = "Not signed in"
         hasActiveSession = false
         currentUserId = nil
@@ -645,6 +656,7 @@ final class SupabaseService {
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             return nil
         }
+        let revision = authIdentityRevision
 
         let rows: [OnboardingPreferencesRow] = try await client
             .from("user_preferences")
@@ -656,6 +668,7 @@ final class SupabaseService {
             .execute()
             .value
 
+        try requireCurrentIdentity(userId, revision: revision)
         guard let row = rows.first else { return nil }
 
         let profileRows: [ProfileStoreRow] = try await client
@@ -666,6 +679,7 @@ final class SupabaseService {
             .execute()
             .value
 
+        try requireCurrentIdentity(userId, revision: revision)
         var preferences = row.preferences
         if let selectedStoreId = profileRows.first?.selectedStoreId,
            let storeId = StoreID(rawValue: selectedStoreId) {
@@ -684,6 +698,7 @@ final class SupabaseService {
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             throw AuthFlowError.notSignedIn
         }
+        let revision = authIdentityRevision
 
         let row = OnboardingPreferencesUpsert(
             userId: userId,
@@ -708,7 +723,9 @@ final class SupabaseService {
             .upsert(row, onConflict: "user_id")
             .execute()
 
+        try requireCurrentIdentity(userId, revision: revision)
         try await saveSelectedStore(preferences.resolvedStore.id)
+        try requireCurrentIdentity(userId, revision: revision)
         #else
         throw AuthFlowError.notSignedIn
         #endif
@@ -868,6 +885,7 @@ final class SupabaseService {
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             throw AuthFlowError.notSignedIn
         }
+        let revision = authIdentityRevision
 
         try await client
             .from("user_preferences")
@@ -881,6 +899,7 @@ final class SupabaseService {
                 onConflict: "user_id"
             )
             .execute()
+        try requireCurrentIdentity(userId, revision: revision)
         #else
         throw AuthFlowError.notConfigured
         #endif
@@ -1303,6 +1322,11 @@ final class SupabaseService {
         }
     }
 
+    static func userImageUploadPath(userId: String, kind: UploadKind, imageId: UUID = UUID()) throws -> String {
+        guard let userUUID = UUID(uuidString: userId) else { throw AuthFlowError.notSignedIn }
+        return "\(userUUID.uuidString.lowercased())/\(kind.rawValue)/\(imageId.uuidString.lowercased()).jpg"
+    }
+
     func uploadUserImage(_ data: Data, kind: UploadKind) async throws -> String {
         guard config.hasSupabase else { throw AuthFlowError.notSignedIn }
 
@@ -1311,7 +1335,8 @@ final class SupabaseService {
             throw AuthFlowError.notSignedIn
         }
 
-        let path = "\(userId)/\(kind.rawValue)/\(UUID().uuidString).jpg"
+        let revision = authIdentityRevision
+        let path = try Self.userImageUploadPath(userId: userId, kind: kind)
         _ = try await client.storage
             .from("user-uploads")
             .upload(
@@ -1323,6 +1348,7 @@ final class SupabaseService {
                     upsert: false
                 )
             )
+        try requireCurrentIdentity(userId, revision: revision)
         return path
         #else
         throw AuthFlowError.notSignedIn
@@ -1574,6 +1600,19 @@ final class SupabaseService {
         guard let client = try authenticatedClientOrNil(), let userId = currentUserId else {
             throw AuthFlowError.notSignedIn
         }
+        let revision = authIdentityRevision
+        let quantities: [ProductSelectionQuantity] = try await client
+            .from("shopping_list_items")
+            .select("quantity,quantity_label")
+            .eq("id", value: item.id)
+            .eq("shopping_list_id", value: shoppingListId)
+            .eq("user_id", value: userId)
+            .limit(1)
+            .execute()
+            .value
+        try requireCurrentIdentity(userId, revision: revision)
+        guard let storedQuantity = quantities.first,
+              storedQuantity.displayQuantity == item.quantity else { return false }
 
         let now = Self.isoTimestamp(Date())
         let resolvedSectionLabel = candidate.sectionLabel ?? sectionLabel
@@ -1607,6 +1646,18 @@ final class SupabaseService {
             .eq("id", value: item.id)
             .eq("shopping_list_id", value: shoppingListId)
             .eq("user_id", value: userId)
+        // Compare both raw columns, including NULL/empty legacy labels. The
+        // prior read only establishes equivalence; these predicates are atomic.
+        if let label = storedQuantity.quantityLabel {
+            update = update.eq("quantity_label", value: label)
+        } else {
+            update = update.is("quantity_label", value: nil)
+        }
+        if let quantity = storedQuantity.quantity {
+            update = update.eq("quantity", value: quantity)
+        } else {
+            update = update.is("quantity", value: nil)
+        }
         if onlyIfUnselected {
             // Atomic guard: a background suggestion must never replace a choice
             // the customer made while the catalogue request was in flight.
@@ -1616,7 +1667,8 @@ final class SupabaseService {
             .select("id")
             .execute()
             .value
-        if onlyIfUnselected, updated.isEmpty { return false }
+        try requireCurrentIdentity(userId, revision: revision)
+        if updated.isEmpty { return false }
         guard updated.first?.id == item.id else { throw ReasiServiceError.invalidResponse }
         return true
         #else
@@ -1813,6 +1865,7 @@ private extension SupabaseService {
         }
         #endif
 
+        if authenticatedUserId != session.user.id.uuidString { authIdentityRevision += 1 }
         hasActiveSession = true
         currentAccessToken = session.accessToken
         currentUserId = session.user.id.uuidString
@@ -2080,7 +2133,7 @@ private struct OnboardingPreferencesRow: Decodable {
     }
 }
 
-private struct OnboardingPreferencesUpsert: Encodable {
+struct OnboardingPreferencesUpsert: Encodable {
     let userId: String
     let purposeTags: [String]
     let primaryPurpose: String?
@@ -2114,9 +2167,28 @@ private struct OnboardingPreferencesUpsert: Encodable {
         case spendingCoachTone = "spending_coach_tone"
         case updatedAt = "updated_at"
     }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(userId, forKey: .userId)
+        try values.encode(purposeTags, forKey: .purposeTags)
+        try values.encodeIfPresent(primaryPurpose, forKey: .primaryPurpose)
+        try values.encodeIfPresent(householdChoice, forKey: .householdChoice)
+        try values.encode(householdSize, forKey: .householdSize)
+        try values.encode(cuisines, forKey: .cuisines)
+        try values.encode(favoriteCuisines, forKey: .favoriteCuisines)
+        try values.encode(foodStyles, forKey: .foodStyles)
+        try values.encode(dietaryConstraints, forKey: .dietaryConstraints)
+        try values.encode(dietaryRestrictions, forKey: .dietaryRestrictions)
+        try values.encode(preferredStore, forKey: .preferredStore)
+        try values.encodeIfPresent(onboardingCompletedAt, forKey: .onboardingCompletedAt)
+        try values.encode(weeklyGroceryBudgetAud, forKey: .weeklyGroceryBudgetAud)
+        try values.encode(spendingCoachTone, forKey: .spendingCoachTone)
+        try values.encode(updatedAt, forKey: .updatedAt)
+    }
 }
 
-private struct SpendingPreferencesUpsert: Encodable {
+struct SpendingPreferencesUpsert: Encodable {
     let userId: String
     let weeklyGroceryBudgetAud: Double?
     let spendingCoachTone: String
@@ -2127,6 +2199,14 @@ private struct SpendingPreferencesUpsert: Encodable {
         case weeklyGroceryBudgetAud = "weekly_grocery_budget_aud"
         case spendingCoachTone = "spending_coach_tone"
         case updatedAt = "updated_at"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(userId, forKey: .userId)
+        try values.encode(weeklyGroceryBudgetAud, forKey: .weeklyGroceryBudgetAud)
+        try values.encode(spendingCoachTone, forKey: .spendingCoachTone)
+        try values.encode(updatedAt, forKey: .updatedAt)
     }
 }
 
@@ -2743,6 +2823,22 @@ private struct PersistedShoppingListRow: Decodable {
     }
 }
 
+struct ProductSelectionQuantity: Decodable {
+    let quantity: Double?
+    let quantityLabel: String?
+
+    enum CodingKeys: String, CodingKey {
+        case quantity
+        case quantityLabel = "quantity_label"
+    }
+
+    var displayQuantity: String {
+        if let quantityLabel, !quantityLabel.isEmpty { return quantityLabel }
+        guard let quantity else { return "1" }
+        return quantity.rounded() == quantity ? String(Int(quantity)) : String(format: "%.2f", quantity)
+    }
+}
+
 private struct PersistedShoppingItemRow: Decodable {
     let id: String
     let clientId: String?
@@ -2811,16 +2907,7 @@ private struct PersistedShoppingItemRow: Decodable {
     }
 
     var shoppingListItem: ShoppingListItem {
-        let quantityText: String
-        if let quantityLabel, !quantityLabel.isEmpty {
-            quantityText = quantityLabel
-        } else if let quantity {
-            quantityText = quantity.rounded() == quantity
-                ? String(Int(quantity))
-                : String(format: "%.2f", quantity)
-        } else {
-            quantityText = "1"
-        }
+        let quantityText = ProductSelectionQuantity(quantity: quantity, quantityLabel: quantityLabel).displayQuantity
 
         let resolvedProduct: ProductSnapshot?
         if let productSnapshot {

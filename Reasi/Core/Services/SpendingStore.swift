@@ -2,6 +2,28 @@ import Foundation
 import Observation
 
 @MainActor
+protocol SpendingService: AnyObject, Sendable {
+    var authenticatedUserId: String? { get }
+    var authIdentityRevision: Int { get }
+    var isSignedIn: Bool { get }
+    func fetchSpendingDashboard(period: SpendingPeriod, anchorDate: String?) async throws -> SpendingDashboard
+    func fetchSpendingTripDetail(tripId: String) async throws -> SpendingTripDetail
+    func correctShoppingTotal(tripId: String, totalAud: Double) async throws -> SpendingTotalCorrection
+    func retrySpendingInsight(tripId: String) async throws
+    func userFacingMessage(for error: Error, fallback: String) -> String
+}
+
+extension SupabaseService: SpendingService {}
+
+enum SpendingInsightLoadState {
+    static func canRetry(_ status: String?) -> Bool { status == "failed" || status == "stale" }
+    static func isPending(_ status: String?) -> Bool {
+        status == "pending" || status == "in_progress" || status == "missing"
+    }
+    static func isTerminal(_ status: String?) -> Bool { status == "completed" || canRetry(status) }
+}
+
+@MainActor
 @Observable
 final class SpendingStore {
     var period: SpendingPeriod = .week
@@ -13,8 +35,15 @@ final class SpendingStore {
     private(set) var dashboardMessage: String?
     private(set) var tripMessage: String?
 
-    @ObservationIgnored private let cache = SpendingLocalCache()
+    @ObservationIgnored private let cache: SpendingLocalCache
     @ObservationIgnored private var activeUserId: String?
+    @ObservationIgnored private var identityRevision = 0
+    @ObservationIgnored private var dashboardRequest: UUID?
+    @ObservationIgnored private var tripRequest: UUID?
+
+    init(cache: SpendingLocalCache = SpendingLocalCache()) {
+        self.cache = cache
+    }
 
     func activate(userId: String?) {
         #if DEBUG
@@ -31,6 +60,12 @@ final class SpendingStore {
 
         guard activeUserId != userId else { return }
         activeUserId = userId
+        identityRevision += 1
+        dashboardRequest = nil
+        tripRequest = nil
+        isLoadingDashboard = false
+        isLoadingTrip = false
+        isRetryingInsights = false
         period = .week
         selectedTrip = nil
         tripMessage = nil
@@ -40,7 +75,7 @@ final class SpendingStore {
 
     func selectPeriod(
         _ newPeriod: SpendingPeriod,
-        supabase: SupabaseService,
+        supabase: any SpendingService,
         analytics: AnalyticsService
     ) async {
         guard period != newPeriod else { return }
@@ -57,7 +92,7 @@ final class SpendingStore {
         await refresh(supabase: supabase)
     }
 
-    func refresh(supabase: SupabaseService) async {
+    func refresh(supabase: any SpendingService) async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ReasiShowSpendFixture") {
             dashboard = .uiTestFixture(for: period)
@@ -66,23 +101,33 @@ final class SpendingStore {
         }
         #endif
 
-        guard let userId = activeUserId, supabase.isSignedIn else {
+        guard let userId = activeUserId, supabase.authenticatedUserId == userId else {
             dashboard = nil
             dashboardMessage = "Sign in to keep your shopping history and spending insights together."
             return
         }
 
+        let identity = identityRevision
+        let authIdentity = supabase.authIdentityRevision
+        let requestedPeriod = period
+        let request = UUID()
+        dashboardRequest = request
+        func isCurrent() -> Bool {
+            !Task.isCancelled && activeUserId == userId && identityRevision == identity
+                && supabase.authenticatedUserId == userId && supabase.authIdentityRevision == authIdentity
+                && dashboardRequest == request && period == requestedPeriod
+        }
         isLoadingDashboard = dashboard == nil
         dashboardMessage = nil
-        defer { isLoadingDashboard = false }
+        defer { if dashboardRequest == request { isLoadingDashboard = false } }
 
         do {
-            let loaded = try await supabase.fetchSpendingDashboard(period: period)
-            guard activeUserId == userId, loaded.period == period else { return }
+            let loaded = try await supabase.fetchSpendingDashboard(period: requestedPeriod, anchorDate: nil)
+            guard isCurrent(), loaded.period == requestedPeriod else { return }
             dashboard = loaded
             cache.saveDashboard(loaded, userId: userId)
         } catch {
-            guard activeUserId == userId else { return }
+            guard isCurrent() else { return }
             if dashboard == nil {
                 dashboard = cache.loadDashboard(userId: userId, period: period)
             }
@@ -97,7 +142,7 @@ final class SpendingStore {
 
     func loadTrip(
         id: String,
-        supabase: SupabaseService,
+        supabase: any SpendingService,
         pollForInsights: Bool = true
     ) async {
         #if DEBUG
@@ -108,34 +153,44 @@ final class SpendingStore {
         }
         #endif
 
-        guard let userId = activeUserId, supabase.isSignedIn else {
+        guard let userId = activeUserId, supabase.authenticatedUserId == userId else {
             selectedTrip = nil
             tripMessage = "Sign in to view this shop."
             return
         }
 
+        let identity = identityRevision
+        let authIdentity = supabase.authIdentityRevision
+        let request = UUID()
+        tripRequest = request
+        func isCurrent() -> Bool {
+            !Task.isCancelled && activeUserId == userId && identityRevision == identity
+                && supabase.authenticatedUserId == userId && supabase.authIdentityRevision == authIdentity
+                && tripRequest == request
+        }
         if selectedTrip?.trip.id != id {
             selectedTrip = cache.loadTrip(userId: userId, tripId: id)
         }
         isLoadingTrip = selectedTrip == nil
         tripMessage = nil
-        defer { isLoadingTrip = false }
+        defer { if tripRequest == request { isLoadingTrip = false } }
 
         let maximumAttempts = pollForInsights ? 4 : 1
         for attempt in 0..<maximumAttempts {
-            guard !Task.isCancelled, activeUserId == userId else { return }
+            guard isCurrent() else { return }
             do {
                 let detail = try await supabase.fetchSpendingTripDetail(tripId: id)
-                guard activeUserId == userId, detail.trip.id == id else { return }
+                guard isCurrent(), detail.trip.id == id else { return }
                 selectedTrip = detail
                 cache.saveTrip(detail, userId: userId)
 
-                let insightIsReady = detail.insightStatus == "completed" || detail.insightStatus == "failed"
+                let insightIsReady = SpendingInsightLoadState.isTerminal(detail.insightStatus)
                 if insightIsReady || attempt == maximumAttempts - 1 { return }
                 try await Task.sleep(for: .seconds(2))
             } catch is CancellationError {
                 return
             } catch {
+                guard isCurrent() else { return }
                 if selectedTrip == nil {
                     selectedTrip = cache.loadTrip(userId: userId, tripId: id)
                 }
@@ -152,7 +207,7 @@ final class SpendingStore {
 
     func refreshAfterCompletedTrip(
         tripId: String,
-        supabase: SupabaseService
+        supabase: any SpendingService
     ) async {
         async let dashboardRefresh: Void = refresh(supabase: supabase)
         async let tripRefresh: Void = loadTrip(id: tripId, supabase: supabase)
@@ -162,19 +217,29 @@ final class SpendingStore {
     func correctTotal(
         tripId: String,
         totalAud: Double,
-        supabase: SupabaseService,
+        supabase: any SpendingService,
         analytics: AnalyticsService
     ) async -> Bool {
+        guard let userId = activeUserId, supabase.authenticatedUserId == userId else { return false }
+        let identity = identityRevision
+        let authIdentity = supabase.authIdentityRevision
+        func isCurrent() -> Bool {
+            !Task.isCancelled && activeUserId == userId && identityRevision == identity
+                && supabase.authenticatedUserId == userId && supabase.authIdentityRevision == authIdentity
+        }
         tripMessage = nil
         do {
             _ = try await supabase.correctShoppingTotal(tripId: tripId, totalAud: totalAud)
+            guard isCurrent() else { return false }
             analytics.capture(.spendingTotalCorrected, properties: [
                 "trip_id": .string(tripId)
             ])
             await refreshAfterCompletedTrip(tripId: tripId, supabase: supabase)
+            guard isCurrent() else { return false }
             ReasiHaptics.success()
             return true
         } catch {
+            guard isCurrent() else { return false }
             tripMessage = supabase.userFacingMessage(
                 for: error,
                 fallback: "The checkout total could not be updated. Please try again."
@@ -186,21 +251,30 @@ final class SpendingStore {
 
     func retryInsights(
         tripId: String,
-        supabase: SupabaseService
+        supabase: any SpendingService
     ) async {
-        guard !isRetryingInsights else { return }
+        guard !isRetryingInsights, let userId = activeUserId,
+              supabase.authenticatedUserId == userId else { return }
+        let identity = identityRevision
+        let authIdentity = supabase.authIdentityRevision
+        func isCurrent() -> Bool {
+            !Task.isCancelled && activeUserId == userId && identityRevision == identity
+                && supabase.authenticatedUserId == userId && supabase.authIdentityRevision == authIdentity
+        }
         isRetryingInsights = true
         dashboardMessage = nil
         tripMessage = nil
-        defer { isRetryingInsights = false }
+        defer { if identityRevision == identity { isRetryingInsights = false } }
 
         do {
             try await supabase.retrySpendingInsight(tripId: tripId)
             try await Task.sleep(for: .milliseconds(500))
+            guard isCurrent() else { return }
             await refreshAfterCompletedTrip(tripId: tripId, supabase: supabase)
         } catch is CancellationError {
             return
         } catch {
+            guard isCurrent() else { return }
             let message = supabase.userFacingMessage(
                 for: error,
                 fallback: "Your insights could not refresh yet. Please try again."

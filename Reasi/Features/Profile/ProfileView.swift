@@ -529,6 +529,7 @@ struct ProfileView: View {
     }
 
     private func savePlanningPreferences(_ preferences: OnboardingPreferences) async {
+        let expectedUserId = supabase.authenticatedUserId
         onboarding.updateProfilePreferences(preferences)
         preferenceSyncMessage = nil
         analytics.capture(.settingsUpdated, properties: [
@@ -542,27 +543,26 @@ struct ProfileView: View {
 
         guard supabase.isSignedIn else { return }
         do {
-            try await supabase.saveOnboardingPreferences(preferences)
-            onboarding.markPreferencesSynced()
+            try await onboarding.syncPendingPreferences(supabase: supabase)
+            guard supabase.authenticatedUserId == expectedUserId else { return }
             ReasiHaptics.success()
         } catch {
+            guard supabase.authenticatedUserId == expectedUserId else { return }
             preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
             ReasiHaptics.warning()
         }
     }
 
     private func saveSpendingPreferences(_ preferences: OnboardingPreferences) async {
+        let expectedUserId = supabase.authenticatedUserId
         let previousBudget = onboarding.preferences.weeklyGroceryBudgetAud
         onboarding.updateProfilePreferences(preferences)
         preferenceSyncMessage = nil
 
         guard supabase.isSignedIn else { return }
         do {
-            try await supabase.saveSpendingPreferences(
-                weeklyBudgetAud: preferences.weeklyGroceryBudgetAud,
-                coachTone: preferences.spendingCoachTone
-            )
-            onboarding.markPreferencesSynced()
+            try await onboarding.syncPendingPreferences(supabase: supabase)
+            guard supabase.authenticatedUserId == expectedUserId else { return }
             analytics.capture(.settingsUpdated, properties: [
                 "setting": .string("spending_preferences"),
                 "coach_tone": .string(preferences.spendingCoachTone.rawValue),
@@ -577,6 +577,7 @@ struct ProfileView: View {
             await spending.refresh(supabase: supabase)
             ReasiHaptics.success()
         } catch {
+            guard supabase.authenticatedUserId == expectedUserId else { return }
             preferenceSyncMessage = "Saved on this iPhone. Preference sync will retry when you're online."
             ReasiHaptics.warning()
         }

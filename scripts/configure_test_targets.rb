@@ -44,8 +44,10 @@ unit_target.add_dependency(app_target) unless unit_target.dependencies.any? { |d
 configure_test_target(unit_target, bundle_id: "ai.reasi.ios.tests", test_host: true)
 
 unit_group = ensure_group(project, "ReasiTests")
-unit_file = ensure_file(unit_group, "ReasiCoreTests.swift")
-unit_target.add_file_references([unit_file]) unless unit_target.source_build_phase.files_references.include?(unit_file)
+Dir.glob(File.join(root, "ReasiTests", "*.swift")).sort.each do |path|
+  unit_file = ensure_file(unit_group, File.basename(path))
+  unit_target.add_file_references([unit_file]) unless unit_target.source_build_phase.files_references.include?(unit_file)
+end
 
 ui_target = project.targets.find { |target| target.name == "ReasiUITests" }
 ui_target ||= project.new_target(:ui_test_bundle, "ReasiUITests", :ios, "26.0")
@@ -56,8 +58,10 @@ ui_target.build_configurations.each do |configuration|
 end
 
 ui_group = ensure_group(project, "ReasiUITests")
-ui_file = ensure_file(ui_group, "ReasiOnboardingUITests.swift")
-ui_target.add_file_references([ui_file]) unless ui_target.source_build_phase.files_references.include?(ui_file)
+Dir.glob(File.join(root, "ReasiUITests", "*.swift")).sort.each do |path|
+  ui_file = ensure_file(ui_group, File.basename(path))
+  ui_target.add_file_references([ui_file]) unless ui_target.source_build_phase.files_references.include?(ui_file)
+end
 
 # xcodeproj adds an SDK-pinned Foundation reference when creating a test target.
 # Swift imports Foundation through SDK auto-linking, so remove the stale path and
@@ -73,9 +77,12 @@ project.files
 
 project.save
 
-scheme = Xcodeproj::XCScheme.new
-scheme.add_build_target(app_target)
-scheme.add_test_target(unit_target)
-scheme.add_test_target(ui_target)
-scheme.set_launch_target(app_target)
-scheme.save_as(project_path, "Reasi", true)
+scheme_path = File.join(project_path, "xcshareddata", "xcschemes", "Reasi.xcscheme")
+unless File.exist?(scheme_path)
+  scheme = Xcodeproj::XCScheme.new
+  scheme.add_build_target(app_target)
+  scheme.add_test_target(unit_target)
+  scheme.add_test_target(ui_target)
+  scheme.set_launch_target(app_target)
+  scheme.save_as(project_path, "Reasi", true)
+end

@@ -170,3 +170,20 @@ struct ListPhotoReviewSheet: View {
         .interactiveDismissDisabled(isAdding)
     }
 }
+
+#if DEBUG
+extension ListPhotoReviewSheet {
+    static var fixtureExtraction: ListExtractionResult {
+        let items = [
+            ListExtractionCandidate(extractedName: "Oat milk", quantity: "2 L", group: .needsReview,
+                                    confidence: .high, confidenceReason: "", productCandidate: nil),
+            ListExtractionCandidate(extractedName: "chicken thing", quantity: nil, group: .uncertain,
+                                    confidence: .low, confidenceReason: "Partly readable", productCandidate: nil),
+            ListExtractionCandidate(extractedName: "Coriander", quantity: "1 bunch", group: .needsReview,
+                                    confidence: .high, confidenceReason: "", productCandidate: nil),
+        ]
+        return ListExtractionResult(batchId: "ui-photo-review", matched: [], needsReview: Array(items.prefix(1)),
+                                    uncertain: [items[1]], items: items)
+    }
+}
+#endif

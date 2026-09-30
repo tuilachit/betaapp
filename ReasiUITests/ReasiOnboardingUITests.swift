@@ -103,6 +103,7 @@ final class ReasiOnboardingUITests: XCTestCase {
                     "-ReasiForceOnboarding", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
                     "-reasi.onboarding.preferences.v1", "",
                     "-reasi.onboarding.completed.v1", "NO",
+                    "-reasi.preferences.v2.anonymous", "",
                     "-reasi.settings.appearance", appearance,
                     "-UIPreferredContentSizeCategoryName", size,
                 ]
@@ -404,6 +405,7 @@ final class ReasiOnboardingUITests: XCTestCase {
             "-ReasiUITestUnauthenticated",
             "-reasi.onboarding.preferences.v1", "",
             "-reasi.onboarding.completed.v1", "NO",
+            "-reasi.preferences.v2.anonymous", "",
         ]
         app.launch()
         return app

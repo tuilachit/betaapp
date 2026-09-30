@@ -472,9 +472,14 @@ struct SpendView: View {
                     .font(ReasiTypography.title2)
                     .foregroundStyle(Color.reasi.text)
                 Spacer()
-                if dashboard.insightStatus == "failed",
+                if SpendingInsightLoadState.canRetry(dashboard.insightStatus),
                    let tripId = dashboard.recentTrips.first?.tripId {
                     retryInsightButton(tripId: tripId)
+                } else if primary != nil, SpendingInsightLoadState.isPending(dashboard.insightStatus) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.reasi.textMuted)
+                        .accessibilityLabel("Refreshing insights")
                 }
             }
 
@@ -487,7 +492,7 @@ struct SpendView: View {
                 .onAppear {
                     trackInsight(primary, period: dashboard.period)
                 }
-            } else if dashboard.insightStatus == "pending" || dashboard.insightStatus == "in_progress" {
+            } else if SpendingInsightLoadState.isPending(dashboard.insightStatus) {
                 HStack(spacing: ReasiSpacing.s3) {
                     ProgressView()
                         .controlSize(.small)
@@ -771,15 +776,13 @@ struct SpendView: View {
     }
 
     private func saveBudget(_ value: Double?) async -> Bool {
+        let expectedUserId = supabase.authenticatedUserId
         var updated = onboarding.preferences
         updated.weeklyGroceryBudgetAud = value
+        onboarding.updateProfilePreferences(updated)
         do {
-            try await supabase.saveSpendingPreferences(
-                weeklyBudgetAud: value,
-                coachTone: updated.spendingCoachTone
-            )
-            onboarding.updateProfilePreferences(updated)
-            onboarding.markPreferencesSynced()
+            try await onboarding.syncPendingPreferences(supabase: supabase)
+            guard supabase.authenticatedUserId == expectedUserId else { return false }
             analytics.capture(.weeklyBudgetSet, properties: [
                 "has_budget": .bool(value != nil),
                 "source": .string("spend")
@@ -788,6 +791,7 @@ struct SpendView: View {
             ReasiHaptics.success()
             return true
         } catch {
+            guard supabase.authenticatedUserId == expectedUserId else { return false }
             ReasiHaptics.warning()
             return false
         }
@@ -1015,12 +1019,12 @@ struct SpendingTripDetailView: View {
                     .font(ReasiTypography.title2)
                     .foregroundStyle(Color.reasi.text)
                 Spacer()
-                if detail.insightStatus == "pending" || detail.insightStatus == "missing" {
+                if SpendingInsightLoadState.isPending(detail.insightStatus) {
                     ProgressView()
                         .controlSize(.small)
                         .tint(Color.reasi.textMuted)
                         .accessibilityLabel("Refreshing insights")
-                } else if detail.insightStatus == "failed" {
+                } else if SpendingInsightLoadState.canRetry(detail.insightStatus) {
                     retryInsightButton(tripId: detail.trip.id)
                 }
             }

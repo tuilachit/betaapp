@@ -2,7 +2,9 @@ name: iOS Release build
 
 on:
   pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ios-release-${{ github.event.pull_request.number || github.ref }}
@@ -33,3 +35,65 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  test:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Prepare isolated test configuration
+        run: cp Reasi/Config/ReasiConfig.example.xcconfig Reasi/Config/ReasiConfig.xcconfig
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test account and preference isolation
+        run: |
+          node scripts/test-account-identity.mjs
+          node scripts/test-product-selection-guard.mjs
+          bash scripts/test-preference-reliability.sh
+          bash scripts/test-spending-identity.sh
+          node scripts/test-store-guide-route.mjs
+
+      - name: Test core-loop asynchronous races with controlled services
+        run: bash ReasiTests/CoreLoopReliabilityHost/run.sh
+
+      - name: Select an available iPhone simulator
+        id: simulator
+        run: |
+          simulator_id=$(xcrun simctl list devices available --json | ruby -rjson -e '
+            devices = JSON.parse(STDIN.read).fetch("devices")
+            candidates = devices.keys.grep(/iOS/).sort_by { |runtime| runtime.scan(/\d+/).map(&:to_i) }.reverse.flat_map { |runtime| devices.fetch(runtime) }
+            phone = candidates.find { |device| device.fetch("name").start_with?("iPhone") && device.fetch("isAvailable", false) }
+            abort "No available iPhone simulator" unless phone
+            puts phone.fetch("udid")
+          ')
+          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit and UI regression tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Reasi.xcodeproj \
+            -scheme Reasi \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -parallel-testing-enabled NO \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Keep test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-regression-results
+          path: TestResults.xcresult
+          if-no-files-found: ignore
