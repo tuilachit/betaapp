@@ -18,7 +18,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         editor.typeText("Salmon pasta and flan for two.")
         let add = app.buttons["plan-builder-add"]
         XCTAssertTrue(add.waitForExistence(timeout: 3))
-        reveal(add, in: app)
+        revealPlanInput(add, in: app)
         XCTAssertGreaterThanOrEqual(add.frame.height, 44, "The Add action must expose its full touch target")
         // Exercise the padded area, not only the visible text or plus symbol.
         add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
@@ -75,7 +75,7 @@ final class ReasiOnboardingUITests: XCTestCase {
             app.buttons["Create a plan"].firstMatch.tap()
             XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 3))
             let add = app.buttons["plan-builder-add"]
-            reveal(add, in: app)
+            revealPlanInput(add, in: app)
             XCTAssertGreaterThanOrEqual(add.frame.height, 44)
             add.tap()
             XCTAssertTrue(app.buttons["Meal photo"].waitForExistence(timeout: 3))
@@ -345,6 +345,32 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         XCTAssertEqual(toggle.value as? String, editedValue)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+    }
+
+    @MainActor
+    private func revealPlanInput(_ element: XCUIElement, in app: XCUIApplication) {
+        let navigation = app.navigationBars["Build your plan"]
+        let submit = app.buttons["plan-builder-submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 3))
+        for _ in 0..<8 {
+            let top = navigation.frame.maxY + 8
+            let bottom = submit.frame.minY - 12
+            let frame = element.frame
+            if element.isHittable && frame.minY >= top && frame.maxY <= bottom { break }
+
+            // The keyboard/footer can cover a nominally hittable element. Drag the
+            // outer scroll view's margin, clear of both the editor and keyboard.
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let x = app.frame.width - 8
+            let startY = frame.minY < top ? top + 8 : bottom - 8
+            let endY = frame.minY < top ? bottom - 8 : top + 8
+            origin.withOffset(CGVector(dx: x, dy: startY))
+                .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: x, dy: endY)))
+        }
+        XCTAssertTrue(element.isHittable)
+        XCTAssertGreaterThanOrEqual(element.frame.minY, navigation.frame.maxY + 8)
+        XCTAssertLessThanOrEqual(element.frame.maxY, submit.frame.minY - 12,
+                                 "The input action must be fully visible above the fixed submit action")
     }
 
     @MainActor
