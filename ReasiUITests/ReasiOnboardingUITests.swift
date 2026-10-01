@@ -19,7 +19,9 @@ final class ReasiOnboardingUITests: XCTestCase {
         let add = app.buttons["plan-builder-add"]
         XCTAssertTrue(add.waitForExistence(timeout: 3))
         reveal(add, in: app)
-        add.tap()
+        XCTAssertGreaterThanOrEqual(add.frame.height, 44, "The Add action must expose its full touch target")
+        // Exercise the padded area, not only the visible text or plus symbol.
+        add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
         XCTAssertTrue(app.staticTexts["Add to your plan"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
         for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
@@ -74,6 +76,7 @@ final class ReasiOnboardingUITests: XCTestCase {
             XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 3))
             let add = app.buttons["plan-builder-add"]
             reveal(add, in: app)
+            XCTAssertGreaterThanOrEqual(add.frame.height, 44)
             add.tap()
             XCTAssertTrue(app.buttons["Meal photo"].waitForExistence(timeout: 3))
             for option in ["Meal photo", "Find product", "Product photo", "List photo"] {

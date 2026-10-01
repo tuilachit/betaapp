@@ -682,6 +682,7 @@ struct PlanBuilderView: View {
                         .font(ReasiTypography.bodyMedium)
                         .foregroundStyle(Color.reasi.text)
                         .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("plan-builder-add")
