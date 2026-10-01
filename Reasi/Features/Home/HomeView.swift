@@ -475,6 +475,7 @@ struct PlanBuilderView: View {
     @State private var showsAlternativeSuggestions = false
     @State private var showsInputPicker = false
     @State private var pendingInput: PlanInputAction?
+    @State private var listPhotoDraft: ListPhotoDraft?
     @FocusState private var focusedField: BuilderField?
 
     private enum BuilderField: Hashable {
@@ -573,6 +574,12 @@ struct PlanBuilderView: View {
         .sheet(isPresented: $showsInputPicker, onDismiss: openSelectedInput) {
             PlanInputPicker { action in
                 pendingInput = action
+            }
+        }
+        .sheet(item: $listPhotoDraft) { draft in
+            ListPhotoReviewSheet(draft: draft) { item in
+                addIdea(title: item.cleanedName, type: .listItem, detail: item.cleanedQuantity.isEmpty ? nil : item.cleanedQuantity)
+                return true
             }
         }
         .fullScreenCover(item: $productSearchContext) { context in
@@ -1059,10 +1066,7 @@ struct PlanBuilderView: View {
             case .handwrittenList:
                 let path = try await supabase.uploadUserImage(data, kind: .shoppingListPhoto)
                 let result = try await supabase.extractShoppingListPhoto(storeId: appState.selectedStore.id, uploadPath: path)
-                for item in result.items {
-                    if let candidate = item.productCandidate { addProduct(candidate) }
-                    else { addIdea(title: item.extractedName, type: .listItem, detail: item.quantity) }
-                }
+                listPhotoDraft = ListPhotoDraft(result: result)
             }
         } catch {
             errorMessage = supabase.userFacingMessage(for: error, fallback: "That photo could not be read. Try a clearer, well-lit image.")

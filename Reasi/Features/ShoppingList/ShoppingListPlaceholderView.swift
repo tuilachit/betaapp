@@ -165,14 +165,14 @@ struct ShoppingListPlaceholderView: View {
                 Button("Take product photo") {
                     showProductCamera = true
                 }
-                Button("Take handwritten list photo") {
+                Button("Take list photo") {
                     showListCamera = true
                 }
             }
             Button("Choose product photo") {
                 showProductPhotoPicker = true
             }
-            Button("Choose handwritten list photo") {
+            Button("Choose list photo") {
                 showListPhotoPicker = true
             }
             Button("Cancel", role: .cancel) {}
@@ -272,6 +272,21 @@ struct ShoppingListPlaceholderView: View {
                         ])
                     }
                 )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            case .listPhoto(let draft):
+                ListPhotoReviewSheet(draft: draft) { item in
+                    guard coreLoop.plan.shoppingList.id == draft.shoppingListID,
+                          !coreLoop.isSwitchingStore else { return false }
+                    return await coreLoop.addImportedCandidate(
+                        item.candidate,
+                        quantity: item.cleanedQuantity,
+                        idempotencyKey: item.id,
+                        analyticsMethod: "list_photo",
+                        supabase: supabase,
+                        analytics: analytics
+                    )
+                }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             case .comparison(let result):
@@ -1126,6 +1141,8 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private func extractListPhoto(_ item: PhotosPickerItem) async {
+        guard !inputIsBusy else { return }
+        defer { selectedListPhoto = nil }
         await withImageData(from: item, method: "list_photo") { data in
             try await extractListImageSheet(data)
         }
@@ -1158,40 +1175,16 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private func extractListImageSheet(_ data: Data) async throws -> ShoppingListSheet {
+        let shoppingListID = coreLoop.plan.shoppingList.id
+        let storeID = coreLoop.plan.storeId
         let uploadPath = try await supabase.uploadUserImage(data, kind: .shoppingListPhoto)
-        let result = try await supabase.extractShoppingListPhoto(storeId: coreLoop.plan.storeId, uploadPath: uploadPath)
+        let result = try await supabase.extractShoppingListPhoto(storeId: storeID, uploadPath: uploadPath)
         analytics.capture(.shoppingListPhotoExtracted, properties: [
             "candidate_count": .int(result.items.count),
             "matched_count": .int(result.matched.count),
             "uncertain_count": .int(result.uncertain.count)
         ])
-        let rows = result.items.map { item in
-            ReviewCandidateRow(
-                candidate: item.productCandidate ?? ProductCandidate(
-                    observationId: nil,
-                    name: item.extractedName,
-                    brand: nil,
-                    size: nil,
-                    priceAud: nil,
-                    unitPriceAud: nil,
-                    unitQuantity: nil,
-                    unitMeasure: nil,
-                    comparablePrice: nil,
-                    imageUrl: nil,
-                    productUrl: nil,
-                    sourceName: "Handwritten list",
-                    sourceUrl: nil,
-                    capturedAt: nil,
-                    freshnessLabel: "Freshness unknown",
-                    confidence: item.confidence,
-                    confidenceReason: item.confidenceReason,
-                    uncertaintyText: "I'm not certain of the current price for this."
-                ),
-                quantity: item.quantity ?? "1",
-                group: item.group.rawValue
-            )
-        }
-        return .review(ReviewContext(method: "list_photo", rows: rows))
+        return .listPhoto(ListPhotoDraft(result: result, shoppingListID: shoppingListID))
     }
 
     private func withImageData(
@@ -1215,10 +1208,10 @@ struct ShoppingListPlaceholderView: View {
 
             let sheet = try await work(data)
             let candidateCount: Int
-            if case .review(let context) = sheet {
-                candidateCount = context.rows.count
-            } else {
-                candidateCount = 0
+            switch sheet {
+            case .review(let context): candidateCount = context.rows.count
+            case .listPhoto(let draft): candidateCount = draft.items.count
+            default: candidateCount = 0
             }
             analytics.capture(.productInputSucceeded, properties: [
                 "method": .string(method),
@@ -1252,10 +1245,10 @@ struct ShoppingListPlaceholderView: View {
         do {
             let sheet = try await work(data)
             let candidateCount: Int
-            if case .review(let context) = sheet {
-                candidateCount = context.rows.count
-            } else {
-                candidateCount = 0
+            switch sheet {
+            case .review(let context): candidateCount = context.rows.count
+            case .listPhoto(let draft): candidateCount = draft.items.count
+            default: candidateCount = 0
             }
             analytics.capture(.productInputSucceeded, properties: [
                 "method": .string(method),
@@ -1346,6 +1339,7 @@ struct ShoppingListPlaceholderView: View {
 private enum ShoppingListSheet: Identifiable {
     case textImport(targetItemID: String?, initialQuery: String)
     case review(ReviewContext)
+    case listPhoto(ListPhotoDraft)
     case comparison(ProductComparisonResult)
     case assistant
     case itemDetails(ShoppingListItem)
@@ -1357,6 +1351,8 @@ private enum ShoppingListSheet: Identifiable {
             "textImport-\(targetItemID ?? "new")"
         case .review(let context):
             context.id
+        case .listPhoto(let draft):
+            draft.id.uuidString
         case .comparison:
             "comparison"
         case .assistant:
