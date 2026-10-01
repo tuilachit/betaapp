@@ -420,6 +420,8 @@ struct ProductSearchView: View {
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.warning)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(message)
                     .accessibilityIdentifier("product-link-error")
             }
             Button {
