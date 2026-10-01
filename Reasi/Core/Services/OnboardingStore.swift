@@ -1,6 +1,39 @@
 import Foundation
 import Observation
 
+@MainActor
+protocol OnboardingPreferenceService: AnyObject, Sendable {
+    var currentUserId: String? { get }
+    var isSignedIn: Bool { get }
+    func fetchOnboardingPreferences() async throws -> OnboardingPreferences?
+    func saveOnboardingPreferences(_ preferences: OnboardingPreferences) async throws
+}
+
+extension SupabaseService: OnboardingPreferenceService {}
+
+struct PreferenceSyncToken: Equatable {
+    let userId: String
+    let identityRevision: Int
+    let editRevision: Int
+    let preferences: OnboardingPreferences
+}
+
+private enum PreferenceField: String, CaseIterable {
+    case purposes, household, foodStyles, store, budget, tone, completion
+
+    static func changed(from old: OnboardingPreferences, to new: OnboardingPreferences) -> Set<Self> {
+        var fields: Set<Self> = []
+        if old.selectedPurposes != new.selectedPurposes { fields.insert(.purposes) }
+        if old.household != new.household { fields.insert(.household) }
+        if old.foodStyles != new.foodStyles { fields.insert(.foodStyles) }
+        if old.selectedStoreId != new.selectedStoreId { fields.insert(.store) }
+        if old.weeklyGroceryBudgetAud != new.weeklyGroceryBudgetAud { fields.insert(.budget) }
+        if old.spendingCoachTone != new.spendingCoachTone { fields.insert(.tone) }
+        if old.completedAt != new.completedAt { fields.insert(.completion) }
+        return fields
+    }
+}
+
 enum OnboardingStep: Int, CaseIterable {
     case value
     case benefit
@@ -41,19 +74,50 @@ final class OnboardingStore {
     @ObservationIgnored private var didBootstrap = false
     @ObservationIgnored private var didCaptureStarted = false
     @ObservationIgnored private var didCapturePurpose = false
+    @ObservationIgnored private var activeUserId: String?
+    @ObservationIgnored private var identityRevision = 0
+    @ObservationIgnored private var editRevision = 0
+    @ObservationIgnored private var hydrationRevision = 0
+    @ObservationIgnored private var preferenceSaveID: UUID?
+    @ObservationIgnored private var pendingFields: Set<PreferenceField> = []
 
-    private let draftKey = "reasi.onboarding.preferences.v1"
-    private let completedKey = "reasi.onboarding.completed.v1"
-    private let pendingPreferenceSyncKey = "reasi.preferences.pendingSync.v1"
+    private var scope: String { activeUserId ?? "anonymous" }
+    private var draftKey: String { "reasi.preferences.v2.\(scope)" }
+    private var completedKey: String { "reasi.preferences.completed.v2.\(scope)" }
+    private var pendingPreferenceSyncKey: String { "reasi.preferences.pendingFields.v2.\(scope)" }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        preferences = Self.loadPreferences(defaults: defaults, key: draftKey) ?? .empty
-        hasCompleted = defaults.bool(forKey: completedKey)
+        preferences = Self.loadPreferences(defaults: defaults, key: "reasi.preferences.v2.anonymous") ?? .empty
+        // Legacy completed profiles have no owner. Never assign one to whichever
+        // account signs in next; retain the old keys untouched for recovery.
+        if defaults.data(forKey: "reasi.preferences.v2.anonymous") == nil,
+           let legacy = Self.loadPreferences(defaults: defaults, key: "reasi.onboarding.preferences.v1"),
+           legacy.completedAt == nil, !defaults.bool(forKey: "reasi.onboarding.completed.v1") {
+            preferences = legacy
+        }
+    }
+
+    func activateUser(_ userId: String?) {
+        guard activeUserId != userId else { return }
+        let continuingOnboarding = activeUserId == nil && !hasCompleted && userId != nil
+        let anonymousDraft = continuingOnboarding ? preferences : .empty
+        activeUserId = userId
+        identityRevision += 1
+        editRevision = 0
+        hydrationRevision += 1
+        preferenceSaveID = nil
+        preferences = Self.loadPreferences(defaults: defaults, key: draftKey)
+            ?? (userId == nil ? .empty : anonymousDraft)
+        hasCompleted = userId != nil && defaults.bool(forKey: completedKey)
+        pendingFields = Set((defaults.stringArray(forKey: pendingPreferenceSyncKey) ?? []).compactMap(PreferenceField.init(rawValue:)))
+        errorMessage = nil
+        isSaving = false
+        if !continuingOnboarding { currentStep = .value }
     }
 
     func bootstrap(
-        supabase: SupabaseService,
+        supabase: any OnboardingPreferenceService,
         appState: AppState,
         analytics: AnalyticsService
     ) async {
@@ -80,56 +144,7 @@ final class OnboardingStore {
         }
         #endif
 
-        if supabase.isSignedIn {
-            do {
-                if let remote = try await supabase.fetchOnboardingPreferences(), remote.completedAt != nil {
-                    preferences = remote
-                    markPreferencesSynced()
-                    applySelectedStore(to: appState)
-                    persistLocal(completed: true)
-                    hasCompleted = true
-                    isHydrating = false
-                    return
-                }
-
-                if defaults.bool(forKey: pendingPreferenceSyncKey), preferences.completedAt != nil {
-                    try await supabase.saveOnboardingPreferences(preferences)
-                    markPreferencesSynced()
-                    applySelectedStore(to: appState)
-                    persistLocal(completed: true)
-                    hasCompleted = true
-                    isHydrating = false
-                    return
-                }
-            } catch {
-                errorMessage = "Your saved preferences could not be loaded. Reasi is using the choices saved on this iPhone for now."
-                if hasCompleted {
-                    applySelectedStore(to: appState)
-                    isHydrating = false
-                    return
-                }
-            }
-        }
-
-        if hasCompleted, !supabase.isSignedIn {
-            hasCompleted = false
-            currentStep = .signIn
-            isHydrating = false
-            captureStartedIfNeeded(analytics: analytics)
-            return
-        }
-
-        if hasCompleted {
-            applySelectedStore(to: appState)
-            if supabase.isSignedIn {
-                do {
-                    try await supabase.saveOnboardingPreferences(preferences)
-                    markPreferencesSynced()
-                } catch {
-                    defaults.set(true, forKey: pendingPreferenceSyncKey)
-                }
-            }
-        }
+        await syncAfterAuthentication(supabase: supabase, appState: appState)
 
         isHydrating = false
         if !hasCompleted {
@@ -206,10 +221,10 @@ final class OnboardingStore {
     }
 
     func selectStore(_ store: StoreSummary) {
+        if hasCompleted, preferences.selectedStoreId != store.id { pendingFields.insert(.store) }
         preferences.selectedStoreId = store.id
         ReasiHaptics.selection()
         persistDraft()
-        markPreferencesPendingIfCompleted()
     }
 
     func applyConfirmedStore(_ store: StoreSummary) {
@@ -219,17 +234,53 @@ final class OnboardingStore {
     }
 
     func updateProfilePreferences(_ updated: OnboardingPreferences) {
+        if hasCompleted { pendingFields.formUnion(PreferenceField.changed(from: preferences, to: updated)) }
         preferences = updated
         persistDraft()
-        markPreferencesPendingIfCompleted()
     }
 
-    func markPreferencesSynced() {
-        defaults.set(false, forKey: pendingPreferenceSyncKey)
+    var pendingSyncToken: PreferenceSyncToken? {
+        guard let activeUserId else { return nil }
+        return PreferenceSyncToken(userId: activeUserId, identityRevision: identityRevision,
+                                   editRevision: editRevision, preferences: preferences)
+    }
+
+    func markPreferencesSynced(_ token: PreferenceSyncToken?) {
+        // A caller without an account/revision receipt cannot acknowledge edits.
+        guard let token, token == pendingSyncToken else { return }
+        hydrationRevision += 1
+        pendingFields = []
+        defaults.set([], forKey: pendingPreferenceSyncKey)
+    }
+
+    func syncPendingPreferences(supabase: any OnboardingPreferenceService) async throws {
+        guard let token = pendingSyncToken, supabase.isSignedIn,
+              supabase.currentUserId == token.userId else { throw CancellationError() }
+        guard !pendingFields.isEmpty else { return }
+        // One full-snapshot write per account at a time. A concurrent edit stays
+        // pending instead of letting an older network write finish after it.
+        guard preferenceSaveID == nil else { throw CancellationError() }
+        let saveID = UUID()
+        preferenceSaveID = saveID
+        defer { if preferenceSaveID == saveID { preferenceSaveID = nil } }
+        hydrationRevision += 1
+        let hydration = hydrationRevision
+        let remote = try await supabase.fetchOnboardingPreferences()
+        guard !Task.isCancelled, supabase.isSignedIn,
+              supabase.currentUserId == token.userId, pendingSyncToken == token,
+              preferenceSaveID == saveID, hydrationRevision == hydration else { throw CancellationError() }
+        // Reconcile the write only; hydration owns publishing remote fields
+        // and applying the selected store to AppState together.
+        let payload = remote.map { mergingPendingFields(into: $0) } ?? token.preferences
+        try await supabase.saveOnboardingPreferences(payload)
+        guard !Task.isCancelled, supabase.isSignedIn,
+              supabase.currentUserId == token.userId, activeUserId == token.userId,
+              identityRevision == token.identityRevision else { throw CancellationError() }
+        markPreferencesSynced(token)
     }
 
     func complete(
-        supabase: SupabaseService,
+        supabase: any OnboardingPreferenceService,
         appState: AppState,
         analytics: AnalyticsService
     ) async -> Bool {
@@ -240,16 +291,24 @@ final class OnboardingStore {
             ReasiHaptics.warning()
             return false
         }
+        activateUser(supabase.currentUserId)
+        let expectedIdentity = identityRevision
         isSaving = true
         errorMessage = nil
 
         preferences.completedAt = Date()
+        pendingFields = Set(PreferenceField.allCases)
+        persistDraft()
+        let token = pendingSyncToken
         applySelectedStore(to: appState)
 
         do {
             try await supabase.saveOnboardingPreferences(preferences)
-            markPreferencesSynced()
+            guard !Task.isCancelled, identityRevision == expectedIdentity,
+                  supabase.currentUserId == activeUserId else { return false }
+            markPreferencesSynced(token)
         } catch {
+            guard identityRevision == expectedIdentity, supabase.currentUserId == activeUserId else { return false }
             preferences.completedAt = nil
             isSaving = false
             errorMessage = "We couldn't save your choices. Check your connection and try again."
@@ -276,27 +335,59 @@ final class OnboardingStore {
         return true
     }
 
-    func syncAfterAuthentication(supabase: SupabaseService, appState: AppState) async {
-        guard supabase.isSignedIn else { return }
-
-        if hasCompleted {
-            do {
-                try await supabase.saveOnboardingPreferences(preferences)
-                markPreferencesSynced()
-            } catch {
-                defaults.set(true, forKey: pendingPreferenceSyncKey)
+    func syncAfterAuthentication(supabase: any OnboardingPreferenceService, appState: AppState) async {
+        activateUser(supabase.isSignedIn ? supabase.currentUserId : nil)
+        guard let userId = activeUserId else { return }
+        let identity = identityRevision
+        hydrationRevision += 1
+        let hydration = hydrationRevision
+        func isCurrent() -> Bool {
+            !Task.isCancelled && identityRevision == identity && hydrationRevision == hydration
+                && supabase.isSignedIn && supabase.currentUserId == userId
+        }
+        do {
+            let remote = try await supabase.fetchOnboardingPreferences()
+            guard isCurrent() else { return }
+            let hasLocalDraft = !hasCompleted && preferences.completedAt == nil
+                && (preferences != .empty || currentStep != .value)
+            // The signup trigger creates an incomplete default row. It is not
+            // an authoritative completed profile that can replace the survey.
+            if let remote, remote.completedAt != nil || !hasLocalDraft {
+                let merged = mergingPendingFields(into: remote)
+                preferences = merged
+                hasCompleted = merged.completedAt != nil
+                persistLocal(completed: hasCompleted)
             }
+            applySelectedStore(to: appState)
+        } catch {
+            guard isCurrent() else { return }
+            errorMessage = "Your saved preferences could not be loaded. Reasi is using the choices saved on this iPhone for now."
+            if hasCompleted { applySelectedStore(to: appState) }
             return
         }
-
-        guard let remote = try? await supabase.fetchOnboardingPreferences(), remote.completedAt != nil else {
-            return
+        do {
+            try await syncPendingPreferences(supabase: supabase)
+        } catch {
+            guard !Task.isCancelled, identityRevision == identity, supabase.isSignedIn,
+                  supabase.currentUserId == userId else { return }
+            errorMessage = "Your preference changes are saved on this iPhone and will sync when you reconnect."
         }
+    }
 
-        preferences = remote
-        applySelectedStore(to: appState)
-        persistLocal(completed: true)
-        hasCompleted = true
+    private func mergingPendingFields(into remote: OnboardingPreferences) -> OnboardingPreferences {
+        var merged = remote
+        for field in pendingFields {
+            switch field {
+            case .purposes: merged.selectedPurposes = preferences.selectedPurposes
+            case .household: merged.household = preferences.household
+            case .foodStyles: merged.foodStyles = preferences.foodStyles
+            case .store: merged.selectedStoreId = preferences.selectedStoreId
+            case .budget: merged.weeklyGroceryBudgetAud = preferences.weeklyGroceryBudgetAud
+            case .tone: merged.spendingCoachTone = preferences.spendingCoachTone
+            case .completion: merged.completedAt = preferences.completedAt
+            }
+        }
+        return merged
     }
 
     private func applySelectedStore(to appState: AppState) {
@@ -304,18 +395,15 @@ final class OnboardingStore {
     }
 
     private func persistDraft() {
+        editRevision += 1
         guard let data = try? JSONEncoder().encode(preferences) else { return }
         defaults.set(data, forKey: draftKey)
+        defaults.set(pendingFields.map(\.rawValue).sorted(), forKey: pendingPreferenceSyncKey)
     }
 
     private func persistLocal(completed: Bool) {
         persistDraft()
         defaults.set(completed, forKey: completedKey)
-    }
-
-    private func markPreferencesPendingIfCompleted() {
-        guard hasCompleted else { return }
-        defaults.set(true, forKey: pendingPreferenceSyncKey)
     }
 
     private func purposeAnalyticsProperties() -> [String: AnalyticsProperty] {

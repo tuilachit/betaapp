@@ -72,21 +72,25 @@ struct ReasiApp: App {
                 .tint(Color.reasi.text)
                 .task {
                     await supabase.restoreSession()
+                    let expectedUserId = supabase.authenticatedUserId
+                    activateUserData(expectedUserId: expectedUserId)
+                    didFinishStartup = true
                     await onboarding.bootstrap(
                         supabase: supabase,
                         appState: appState,
                         analytics: analytics
                     )
-                    let expectedUserId = supabase.hasActiveSession ? supabase.currentUserId : nil
                     await restoreUserData(expectedUserId: expectedUserId)
                     analytics.capture(.appOpened)
                     didFinishStartup = true
                 }
-                .onChange(of: supabase.hasActiveSession) { _, hasActiveSession in
+                .onChange(of: supabase.authenticatedUserId) { _, expectedUserId in
                     guard didFinishStartup else { return }
                     authenticationRestoreTask?.cancel()
-                    let expectedUserId = hasActiveSession ? supabase.currentUserId : nil
+                    activateUserData(expectedUserId: expectedUserId)
                     authenticationRestoreTask = Task {
+                        await revenueCat.syncUser(userId: expectedUserId)
+                        guard !Task.isCancelled, supabase.authenticatedUserId == expectedUserId else { return }
                         await onboarding.syncAfterAuthentication(
                             supabase: supabase,
                             appState: appState
@@ -154,6 +158,14 @@ struct ReasiApp: App {
                     }
                 }
         }
+    }
+
+    private func activateUserData(expectedUserId: String?) {
+        onboarding.activateUser(expectedUserId)
+        appState.selectStore(onboarding.preferences.resolvedStore)
+        appState.planBuilder.activate(userId: expectedUserId)
+        coreLoop.activateUser(expectedUserId, selectedStore: appState.selectedStore)
+        spending.activate(userId: expectedUserId)
     }
 
     private func restoreUserData(expectedUserId: String?) async {

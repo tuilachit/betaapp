@@ -55,11 +55,23 @@ struct ProductSearchView: View {
         self.budgetTargetAud = budgetTargetAud
         self.recentCandidates = recentCandidates
         self.searchProducts = searchProducts
+        let initialQuery: String
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-reasi-ui-test-product-link-failure") {
+            initialQuery = "https://example.com/product"
+            self.importProductLink = { _ in throw URLError(.cannotConnectToHost) }
+        } else {
+            initialQuery = context.initialQuery
+            self.importProductLink = importProductLink
+        }
+        #else
+        initialQuery = context.initialQuery
         self.importProductLink = importProductLink
+        #endif
         self.resolveBarcode = resolveBarcode
         self.addCandidate = addCandidate
         self.addManualItem = addManualItem
-        _query = State(initialValue: context.initialQuery)
+        _query = State(initialValue: initialQuery)
         _addedIDs = State(
             initialValue: context.targetItemID == nil
                 ? Set(recentCandidates.map(\.id))
@@ -403,13 +415,27 @@ struct ProductSearchView: View {
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
                 .lineLimit(2)
+            if case .failed(let message) = phase {
+                Label(message, systemImage: "exclamationmark.circle")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(message)
+                    .accessibilityIdentifier("product-link-error")
+            }
             Button {
                 Task { await loadProductLink() }
             } label: {
-                Label(phase.isLoading ? "Checking link" : "Import product", systemImage: "arrow.down.circle")
+                if case .failed = phase {
+                    Label("Try again", systemImage: "arrow.clockwise")
+                } else {
+                    Label(phase.isLoading ? "Checking link" : "Import product", systemImage: "arrow.down.circle")
+                }
             }
             .buttonStyle(ReasiPrimaryButtonStyle())
             .disabled(phase.isLoading)
+            .accessibilityIdentifier("product-link-import")
 
             if !results.isEmpty {
                 ForEach(results) { candidate in

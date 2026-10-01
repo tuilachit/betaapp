@@ -131,7 +131,9 @@ enum WeekPlanGenerationStage: String, Equatable {
 @MainActor
 @Observable
 final class CoreLoopStore {
-    var plan: WeekPlan
+    var plan: WeekPlan {
+        didSet { planContentRevision &+= 1 }
+    }
     var hasPlan: Bool
     var isRestoringPlan = false
     var planRestoreMessage: String?
@@ -156,6 +158,11 @@ final class CoreLoopStore {
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
     @ObservationIgnored private var progressMilestones: Set<Int> = []
     @ObservationIgnored private var activeUserId: String?
+    @ObservationIgnored private var userSessionID = UUID()
+    @ObservationIgnored private var planContentRevision: UInt64 = 0
+    @ObservationIgnored private var recentPlansRequestID: UUID?
+    @ObservationIgnored private var pendingChecksByList: [String: CachedCheckState] = [:]
+    @ObservationIgnored private var importSyncKeys: Set<String> = []
     @ObservationIgnored private var checkedStates: [String: Bool] = [:]
     @ObservationIgnored private var pendingCheckItemIDs: Set<String> = []
     @ObservationIgnored private var pendingImports: [PendingImportedItem] = []
@@ -312,9 +319,11 @@ final class CoreLoopStore {
                     sectionLabel: section.label, sectionSortKey: section.sortKey, sectionType: section.type
                 ))
                 guard isCurrent() else { return }
+                guard let latest = allShoppingItems.first(where: { $0.id == item.id }),
+                      latest.quantity == current.quantity else { continue }
                 attemptedProductItemIDs.insert(item.id)
                 guard saved, !manualProductItemIDs.contains(item.id),
-                      let latest = allShoppingItems.first(where: { $0.id == item.id }), latest.product == nil else { continue }
+                      latest.product == nil else { continue }
                 // Read the latest checked state after the await. Selecting a
                 // suggestion never means the customer has bought/unbought it.
                 let selected = ShoppingListItem(
@@ -386,12 +395,15 @@ final class CoreLoopStore {
             return
         }
 
+        let sessionID = userSessionID
         storeSwitchTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                self.storeSwitchTask = nil
-                self.isSwitchingStore = false
-                self.switchingStoreName = nil
+                if self.userSessionID == sessionID {
+                    self.storeSwitchTask = nil
+                    self.isSwitchingStore = false
+                    self.switchingStoreName = nil
+                }
             }
             let outcome = await self.performStoreSwitch(
                 to: store,
@@ -399,7 +411,7 @@ final class CoreLoopStore {
                 supabase: supabase,
                 analytics: analytics
             )
-            completion?(outcome.succeeded, outcome.confirmedStore)
+            if self.userSessionID == sessionID { completion?(outcome.succeeded, outcome.confirmedStore) }
         }
     }
 
@@ -441,12 +453,25 @@ final class CoreLoopStore {
             storeSwitchMessage = "Sign in again to update this list for \(store.shortName)."
             return (false, previousStore)
         }
+        guard manualProductItemIDs.isEmpty, !isFinishingShopping, plan.shoppingList.status == .active else {
+            storeSwitchMessage = "Finish the current list update before changing stores."
+            return (false, previousStore)
+        }
 
         isSwitchingStore = true
+        let sessionID = userSessionID
+        let listID = plan.shoppingList.id
         switchingStoreName = store.name
         let matchingTask = productMatchingTask
         cancelProductMatching()
         await matchingTask?.value
+        guard userSessionID == sessionID, plan.shoppingList.id == listID else { return (false, previousStore) }
+        await flushPendingShoppingChanges(supabase: supabase)
+        guard userSessionID == sessionID, plan.shoppingList.id == listID else { return (false, previousStore) }
+        guard !pendingImports.contains(where: { $0.shoppingListId == listID }) else {
+            storeSwitchMessage = "An added item is still syncing. Stay online and try again."
+            return (false, previousStore)
+        }
         let existingPlan = plan
 
         do {
@@ -455,6 +480,7 @@ final class CoreLoopStore {
                 from: existingPlan.shoppingList.storeId,
                 to: store.id
             )
+            guard userSessionID == sessionID, plan.shoppingList.id == listID else { return (false, previousStore) }
             guard refreshed.storeId == store.id, refreshed.shoppingList.storeId == store.id else {
                 throw ReasiServiceError.invalidResponse
             }
@@ -465,6 +491,15 @@ final class CoreLoopStore {
             }
             for itemId in pendingCheckItemIDs {
                 setItemChecked(itemId, checked: checkedStates[itemId] ?? false, in: &refreshed)
+            }
+            if previousStore.retailer != store.retailer {
+                localCache.saveSelectionHistory(existingPlan, userId: activeUserId)
+                for sectionIndex in refreshed.shoppingList.sections.indices {
+                    refreshed.shoppingList.sections[sectionIndex].items = refreshed.shoppingList.sections[sectionIndex].items.map {
+                        Self.withoutProductSelection($0)
+                    }
+                }
+                attemptedProductItemIDs = []
             }
 
             withAnimation(ReasiMotion.base) {
@@ -479,6 +514,7 @@ final class CoreLoopStore {
             ReasiHaptics.success()
             return (true, store)
         } catch {
+            guard userSessionID == sessionID, plan.shoppingList.id == listID else { return (false, previousStore) }
             appState.selectStore(previousStore)
             failedStoreSwitch = store
             let reason = supabase.userFacingMessage(
@@ -498,13 +534,23 @@ final class CoreLoopStore {
 
     func activateUser(_ userId: String?, selectedStore: StoreSummary) {
         guard activeUserId != userId else { return }
+        persistPlanCache()
+        persistCheckCache()
         cancelOutstandingWork()
+        userSessionID = UUID()
         activeUserId = userId
+        importSyncKeys = []
+        let outbox = userId.flatMap { localCache.loadOutbox(userId: $0) }
+        pendingImports = outbox?.imports ?? []
+        pendingChecksByList = outbox?.checks ?? [:]
         recentPlans = []
+        recentPlansRequestID = nil
+        isLoadingRecentPlans = false
         lastShoppingTrip = nil
         shoppingCompletionError = nil
         isFinishingShopping = false
-        pendingDeletions = userId.map { Set(localCache.loadDeletions(userId: $0)) } ?? []
+        pendingDeletions = Set(outbox?.deletions ?? userId.map { localCache.loadDeletions(userId: $0) } ?? [])
+        isRestoringPlan = false
 
         guard let userId,
               let cached = localCache.loadPlan(userId: userId),
@@ -516,7 +562,7 @@ final class CoreLoopStore {
 
         plan = cached.plan
         hasPlan = true
-        pendingImports = cached.pendingImports
+        if outbox == nil { pendingImports = cached.pendingImports }
         if pendingDeletions.isEmpty, !cached.pendingDeletionItemIDs.isEmpty {
             pendingDeletions = Set(cached.pendingDeletionItemIDs.map {
                 PendingShoppingListDeletion(shoppingListId: cached.plan.shoppingList.id, itemId: $0)
@@ -525,7 +571,7 @@ final class CoreLoopStore {
         }
         addedImportKeys = Set(cached.pendingImports.map(\.idempotencyKey))
 
-        let checkSnapshot = localCache.loadChecks(userId: userId)
+        let checkSnapshot = pendingChecksByList[cached.plan.shoppingList.id] ?? localCache.loadChecks(userId: userId)
         if checkSnapshot?.shoppingListId == cached.plan.shoppingList.id {
             checkedStates = checkSnapshot?.states ?? [:]
             pendingCheckItemIDs = Set(checkSnapshot?.pendingItemIDs ?? [])
@@ -544,11 +590,15 @@ final class CoreLoopStore {
     }
 
     func restoreLatestPlan(supabase: SupabaseService, selectedStore: StoreSummary) async {
-        guard supabase.isSignedIn, !isRestoringPlan else { return }
+        guard supabase.isSignedIn, !isRestoringPlan,
+              let userID = activeUserId, supabase.currentUserId == userID else { return }
+        let sessionID = userSessionID
+        let previousListID = plan.shoppingList.id
+        let contentRevision = planContentRevision
 
         isRestoringPlan = true
         planRestoreMessage = nil
-        defer { isRestoringPlan = false }
+        defer { if userSessionID == sessionID { isRestoringPlan = false } }
 
         do {
             let cachedPlan = activeUserId.flatMap { localCache.loadPlan(userId: $0) }
@@ -557,12 +607,16 @@ final class CoreLoopStore {
                 if let exactPlan = try await supabase.fetchWeekPlan(id: cachedPlan.plan.id) {
                     remotePlan = exactPlan
                 } else {
+                    guard userSessionID == sessionID, supabase.currentUserId == userID,
+                          planContentRevision == contentRevision else { return }
                     remotePlan = try await supabase.fetchLatestWeekPlan()
                 }
             } else {
                 remotePlan = try await supabase.fetchLatestWeekPlan()
             }
 
+            guard userSessionID == sessionID, activeUserId == userID, supabase.currentUserId == userID,
+                  plan.shoppingList.id == previousListID, planContentRevision == contentRevision else { return }
             guard var restored = remotePlan else {
                 if let activeUserId {
                     localCache.remove(userId: activeUserId)
@@ -571,12 +625,11 @@ final class CoreLoopStore {
                 return
             }
 
+            reconcileImportedItemIdentities(in: restored)
             if cachedPlan?.plan.shoppingList.id == restored.shoppingList.id {
-                pendingImports = cachedPlan?.pendingImports ?? []
                 addedImportKeys = Set(pendingImports.map(\.idempotencyKey))
                 mergePendingImportedItems(from: cachedPlan?.plan, into: &restored)
             } else {
-                pendingImports = []
                 addedImportKeys = []
             }
             for deletion in pendingDeletions where deletion.shoppingListId == restored.shoppingList.id {
@@ -585,7 +638,7 @@ final class CoreLoopStore {
 
             var restoredCheckedIDs = Self.checkedIDs(from: restored)
             if let activeUserId,
-               let localChecks = localCache.loadChecks(userId: activeUserId),
+               let localChecks = pendingChecksByList[restored.shoppingList.id] ?? localCache.loadChecks(userId: activeUserId),
                localChecks.shoppingListId == restored.shoppingList.id {
                 checkedStates = Dictionary(uniqueKeysWithValues: allItemIDs(in: restored).map {
                     ($0, restoredCheckedIDs.contains($0))
@@ -619,6 +672,8 @@ final class CoreLoopStore {
             persistCheckCache()
             await syncPendingChanges(supabase: supabase)
         } catch {
+            guard userSessionID == sessionID, activeUserId == userID, supabase.currentUserId == userID,
+                  planContentRevision == contentRevision else { return }
             planRestoreMessage = supabase.userFacingMessage(
                 for: error,
                 fallback: "Your saved plan could not be loaded yet. Pulling it in will work when Reasi reconnects."
@@ -632,7 +687,6 @@ final class CoreLoopStore {
         checkedItemIDs = []
         checkedStates = [:]
         pendingCheckItemIDs = []
-        pendingImports = []
         addedImportKeys = []
         progressMilestones = []
         generationState = .idle
@@ -826,7 +880,13 @@ final class CoreLoopStore {
         appState: AppState,
         network: NetworkMonitor?
     ) async {
-        guard var pending = pendingGeneration else { return }
+        guard let pending = pendingGeneration else { return }
+        let sessionID = userSessionID
+        let userID = activeUserId
+        func isCurrent() -> Bool {
+            !Task.isCancelled && userSessionID == sessionID && supabase.currentUserId == userID && generationRunID == runID
+                && pendingGeneration?.idempotencyKey == pending.idempotencyKey
+        }
 
         do {
             if network?.isConnected == false {
@@ -845,6 +905,7 @@ final class CoreLoopStore {
                         planBrief: pending.planBrief
                     )
                 )
+                guard isCurrent() else { return }
                 switch result {
                 case .fixture(let fixture):
                     completeGeneration(
@@ -856,20 +917,18 @@ final class CoreLoopStore {
                     return
                 case .request(let started):
                     request = started
-                    pending.requestId = started.requestId
-                    pending.stage = started.stage
-                    pendingGeneration = pending
-                    persistPendingGeneration()
+                    updatePendingGeneration(from: started)
                 }
             }
 
-            while !Task.isCancelled, generationRunID == runID {
+            while isCurrent() {
                 if pendingGeneration?.cancellationRequested == true,
                    request.status == .queued || request.status == .inProgress {
                     generationState = .cancelling
                     request = try await supabase.cancelWeekPlanGeneration(requestId: request.requestId)
                 }
 
+                guard isCurrent() else { return }
                 updatePendingGeneration(from: request)
                 switch request.status {
                 case .completed:
@@ -877,6 +936,7 @@ final class CoreLoopStore {
                           let generated = try await supabase.fetchWeekPlan(id: mealPlanId) else {
                         throw ReasiServiceError.invalidResponse
                     }
+                    guard isCurrent() else { return }
                     completeGeneration(
                         generated,
                         opensWhenReady: pendingGeneration?.opensWhenReady ?? false,
@@ -906,6 +966,7 @@ final class CoreLoopStore {
             // Signing out or switching accounts stops local polling. The server job and
             // user-scoped cache remain available for the next authenticated launch.
         } catch {
+            guard isCurrent() else { return }
             let message = supabase.userFacingMessage(
                 for: error,
                 fallback: "We couldn't check your plan just now. It may still be running; try again when you're connected."
@@ -949,6 +1010,8 @@ final class CoreLoopStore {
         analytics: AnalyticsService,
         appState: AppState
     ) {
+        persistPlanCache()
+        persistCheckCache()
         let completedBrief = pendingGeneration?.planBrief
         var resolvedPlan = generated
         if let completedBrief {
@@ -965,7 +1028,6 @@ final class CoreLoopStore {
                 ($0, checkedItemIDs.contains($0))
             })
             pendingCheckItemIDs = []
-            pendingImports = []
             addedImportKeys = []
             progressMilestones = []
             generationState = .succeeded
@@ -1059,15 +1121,18 @@ final class CoreLoopStore {
               allShoppingItems.contains(where: { $0.id == item.id }) else { return }
         let shoppingListId = plan.shoppingList.id
 
-        itemSyncTasks[item.id]?.cancel()
-        itemSyncTasks[item.id] = nil
+        itemSyncTasks.removeValue(forKey: "\(shoppingListId):\(item.id)")?.cancel()
         checkedItemIDs.remove(item.id)
         checkedStates.removeValue(forKey: item.id)
         pendingCheckItemIDs.remove(item.id)
 
         if item.id.hasPrefix("local-import-") {
             if let pending = pendingImports.first(where: { $0.localItemID == item.id }) {
-                pendingImports.removeAll { $0.localItemID == item.id }
+                // Retain the idempotent insert until its server ID can be deleted,
+                // including when the original response is lost during sign-out.
+                pendingDeletions.insert(PendingShoppingListDeletion(
+                    shoppingListId: shoppingListId, itemId: item.id
+                ))
                 addedImportKeys.remove(pending.idempotencyKey)
             }
         } else {
@@ -1155,6 +1220,7 @@ final class CoreLoopStore {
     ) async -> Bool {
         guard hasPlan,
               plan.shoppingList.status == .active,
+              !isSwitchingStore, !isFinishingShopping,
               let clientId = UUID(uuidString: idempotencyKey) else { return false }
         if addedImportKeys.contains(idempotencyKey) { return true }
         if allShoppingItems.contains(where: { item in
@@ -1234,6 +1300,7 @@ final class CoreLoopStore {
         defer { manualProductItemIDs.remove(item.id) }
         guard hasPlan,
               plan.shoppingList.status == .active,
+              !isSwitchingStore, !isFinishingShopping,
               !item.id.hasPrefix("local-import-"),
               let context = sectionContext(for: item.id, in: plan) else {
             throw ReasiServiceError.invalidResponse
@@ -1247,9 +1314,10 @@ final class CoreLoopStore {
         if let issue = basketPriceSummary.issueReplacing(item, with: selectedProduct, budget: plan.budgetTargetAud) {
             throw issue
         }
-        let selectingPlanID = plan.id
+        let selectingContext = shoppingProductContext
+        let sessionID = userSessionID
 
-        try await supabase.selectProduct(
+        let saved = try await supabase.selectProduct(
             candidate,
             for: item,
             shoppingListId: plan.shoppingList.id,
@@ -1259,7 +1327,12 @@ final class CoreLoopStore {
             actualPriceAud: selectedProduct.actualPriceAud,
             productSnapshot: selectedProduct
         )
-        guard plan.id == selectingPlanID, plan.shoppingList.status == .active else { return }
+        guard saved else {
+            throw ReasiServiceError.requestFailed("This item changed while the product was saving. Please try again.")
+        }
+        guard userSessionID == sessionID, shoppingProductContext == selectingContext,
+              plan.shoppingList.status == .active,
+              allShoppingItems.first(where: { $0.id == item.id })?.quantity == item.quantity else { return }
 
         let selectedItem = ShoppingListItem(
             id: item.id,
@@ -1324,11 +1397,23 @@ final class CoreLoopStore {
     }
 
     func refreshRecentPlans(supabase: SupabaseService?) async {
-        guard let supabase, supabase.isSignedIn else { return }
+        guard let supabase, supabase.isSignedIn,
+              let userID = activeUserId, supabase.currentUserId == userID else { return }
+        let sessionID = userSessionID
+        let requestID = UUID()
+        recentPlansRequestID = requestID
         isLoadingRecentPlans = true
-        defer { isLoadingRecentPlans = false }
+        defer {
+            if userSessionID == sessionID, recentPlansRequestID == requestID {
+                recentPlansRequestID = nil
+                isLoadingRecentPlans = false
+            }
+        }
         do {
-            recentPlans = try await supabase.fetchRecentPlans()
+            let fetched = try await supabase.fetchRecentPlans()
+            guard userSessionID == sessionID, activeUserId == userID, supabase.currentUserId == userID,
+                  recentPlansRequestID == requestID, !Task.isCancelled else { return }
+            recentPlans = fetched
         } catch {
             // The current plan remains usable when history cannot refresh.
         }
@@ -1382,18 +1467,31 @@ final class CoreLoopStore {
 
     func selectRecentPlan(id: String, supabase: SupabaseService) async {
         guard id != plan.id else { return }
+        let sessionID = userSessionID
+        let previousListID = plan.shoppingList.id
         do {
             await syncPendingChanges(supabase: supabase)
             let outstandingSyncTasks = Array(itemSyncTasks.values) + Array(deleteSyncTasks.values)
             for task in outstandingSyncTasks {
                 await task.value
             }
-            guard pendingImports.isEmpty, pendingCheckItemIDs.isEmpty, pendingDeletions.isEmpty else {
+            guard userSessionID == sessionID, plan.shoppingList.id == previousListID else { return }
+            guard !pendingImports.contains(where: { $0.shoppingListId == previousListID }),
+                  pendingCheckItemIDs.isEmpty,
+                  !pendingDeletions.contains(where: { $0.shoppingListId == previousListID }) else {
                 planRestoreMessage = "Your latest list changes are still syncing. Stay online and try again in a moment."
                 return
             }
 
             guard var selected = try await supabase.fetchWeekPlan(id: id) else { return }
+            guard userSessionID == sessionID, plan.shoppingList.id == previousListID else { return }
+            reconcileImportedItemIdentities(in: selected)
+            if let activeUserId {
+                mergePendingImportedItems(
+                    from: localCache.loadList(userId: activeUserId, listId: selected.shoppingList.id),
+                    into: &selected
+                )
+            }
             for deletion in pendingDeletions where deletion.shoppingListId == selected.shoppingList.id {
                 removeItem(deletion.itemId, from: &selected)
             }
@@ -1403,7 +1501,7 @@ final class CoreLoopStore {
             })
             var selectedPendingIDs: Set<String> = []
             if let activeUserId,
-               let localChecks = localCache.loadChecks(userId: activeUserId),
+               let localChecks = pendingChecksByList[selected.shoppingList.id] ?? localCache.loadChecks(userId: activeUserId),
                localChecks.shoppingListId == selected.shoppingList.id {
                 selectedPendingIDs = Set(localChecks.pendingItemIDs)
                     .intersection(Set(allItemIDs(in: selected)))
@@ -1427,13 +1525,13 @@ final class CoreLoopStore {
             shoppingCompletionError = nil
             checkedStates = selectedCheckedStates
             pendingCheckItemIDs = selectedPendingIDs
-            pendingImports = []
             addedImportKeys = []
             progressMilestones = []
             persistPlanCache()
             persistCheckCache()
             ReasiHaptics.selection()
         } catch {
+            guard userSessionID == sessionID else { return }
             planRestoreMessage = "That saved plan could not be opened yet. Please try again."
         }
     }
@@ -1537,43 +1635,61 @@ final class CoreLoopStore {
     }
 
     private func startItemSync(itemId: String, supabase: SupabaseService) {
-        guard !itemId.hasPrefix("local-import-"), itemSyncTasks[itemId] == nil else { return }
+        startItemSync(itemId: itemId, shoppingListId: plan.shoppingList.id, supabase: supabase)
+    }
 
-        itemSyncTasks[itemId] = Task { @MainActor [weak self] in
+    private func startItemSync(itemId: String, shoppingListId: String, supabase: SupabaseService) {
+        let key = "\(shoppingListId):\(itemId)"
+        let sessionID = userSessionID
+        let userID = activeUserId
+        guard !itemId.hasPrefix("local-import-"), itemSyncTasks[key] == nil else { return }
+        itemSyncTasks[key] = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.itemSyncTasks[itemId] = nil }
+            defer { if self.userSessionID == sessionID { self.itemSyncTasks[key] = nil } }
 
-            while self.pendingCheckItemIDs.contains(itemId), !Task.isCancelled {
-                let desiredState = self.checkedStates[itemId] ?? false
+            while self.userSessionID == sessionID, supabase.currentUserId == userID,
+                  self.pendingChecksByList[shoppingListId]?.pendingItemIDs.contains(itemId) == true,
+                  !Task.isCancelled {
+                let desiredState = self.pendingChecksByList[shoppingListId]?.states[itemId] ?? false
                 do {
                     try await supabase.updateShoppingListItemChecked(
                         itemId: itemId,
-                        shoppingListId: self.plan.shoppingList.id,
+                        shoppingListId: shoppingListId,
                         checked: desiredState
                     )
                 } catch {
                     return
                 }
 
-                guard self.checkedStates[itemId] == desiredState else { continue }
-                self.pendingCheckItemIDs.remove(itemId)
-                self.persistCheckCache()
+                guard self.userSessionID == sessionID, supabase.currentUserId == userID else { return }
+                guard self.pendingChecksByList[shoppingListId]?.states[itemId] == desiredState else { continue }
+                self.pendingChecksByList[shoppingListId]?.pendingItemIDs.removeAll { $0 == itemId }
+                if self.plan.shoppingList.id == shoppingListId {
+                    self.pendingCheckItemIDs.remove(itemId)
+                    self.persistCheckCache()
+                } else {
+                    self.persistOutbox()
+                }
             }
         }
     }
 
     private func syncPendingChanges(supabase: SupabaseService) async {
+        let sessionID = userSessionID
         reconcilePendingCheckState()
 
         for deletion in pendingDeletions {
             startDeleteSync(deletion: deletion, supabase: supabase)
         }
 
-        for itemId in pendingCheckItemIDs {
-            startItemSync(itemId: itemId, supabase: supabase)
+        for (listID, checks) in pendingChecksByList {
+            for itemId in checks.pendingItemIDs {
+                startItemSync(itemId: itemId, shoppingListId: listID, supabase: supabase)
+            }
         }
 
         for pending in pendingImports {
+            guard userSessionID == sessionID else { return }
             guard let clientId = UUID(uuidString: pending.idempotencyKey) else { continue }
             await syncPendingImport(pending, clientId: clientId, supabase: supabase)
         }
@@ -1597,10 +1713,19 @@ final class CoreLoopStore {
               plan.shoppingList.status == .active,
               !isFinishingShopping else { return nil }
 
+        let sessionID = userSessionID
+        let userID = activeUserId
+        let listID = plan.shoppingList.id
+        let storeID = plan.shoppingList.storeId
+        var finishingPlan = plan
+        var finishingChecks = checkedItemIDs
+        persistPlanCache()
+        persistCheckCache()
         isFinishingShopping = true
         let matchingTask = productMatchingTask
         cancelProductMatching()
         await matchingTask?.value
+        guard userSessionID == sessionID, supabase.currentUserId == userID else { return nil }
         shoppingCompletionError = nil
         let summaryBeforeFinish = basketPriceSummary
         analytics.capture(.shoppingFinishStarted, properties: [
@@ -1610,31 +1735,51 @@ final class CoreLoopStore {
             "item_count": .int(summaryBeforeFinish.totalItemCount),
             "priced_items": .int(summaryBeforeFinish.pricedItemCount)
         ])
-        defer { isFinishingShopping = false }
+        defer { if userSessionID == sessionID { isFinishingShopping = false } }
 
         do {
             await flushPendingShoppingChanges(supabase: supabase)
-            guard pendingImports.isEmpty,
-                  pendingDeletions.isEmpty else {
+            guard userSessionID == sessionID, supabase.currentUserId == userID else { return nil }
+            guard !pendingImports.contains(where: { $0.shoppingListId == listID }),
+                  !pendingDeletions.contains(where: { $0.shoppingListId == listID }) else {
                 throw ReasiServiceError.requestFailed(
                     "An added or removed item is still syncing. Stay online and try again."
                 )
             }
+            if plan.shoppingList.id == listID {
+                finishingPlan = plan
+                finishingChecks = checkedItemIDs
+            } else if let userID, let cached = localCache.loadList(userId: userID, listId: listID) {
+                finishingPlan = cached
+                if let checks = pendingChecksByList[listID] {
+                    finishingChecks = Set(checks.states.filter(\.value).map(\.key))
+                }
+            }
 
             let trip = try await supabase.finishShopping(
-                plan.shoppingList,
-                checkedItemIDs: checkedItemIDs
+                finishingPlan.shoppingList,
+                checkedItemIDs: finishingChecks
             )
-            itemSyncTasks.values.forEach { $0.cancel() }
-            itemSyncTasks = [:]
-            pendingCheckItemIDs = []
-            persistCheckCache()
-            withAnimation(ReasiMotion.slow) {
-                plan.shoppingList.status = .completed
-                plan.shoppingList.completedAt = trip.completedAt
-                lastShoppingTrip = trip
+            guard userSessionID == sessionID, supabase.currentUserId == userID else { return nil }
+            guard trip.shoppingListId == listID else { throw ReasiServiceError.invalidResponse }
+            for key in Array(itemSyncTasks.keys) where key.hasPrefix("\(listID):") {
+                itemSyncTasks.removeValue(forKey: key)?.cancel()
             }
-            persistPlanCache()
+            pendingChecksByList[listID]?.pendingItemIDs = []
+            finishingPlan.shoppingList.status = .completed
+            finishingPlan.shoppingList.completedAt = trip.completedAt
+            if let userID { localCache.saveList(finishingPlan, userId: userID) }
+            persistOutbox()
+            if plan.shoppingList.id == listID {
+                pendingCheckItemIDs = []
+                persistCheckCache()
+                withAnimation(ReasiMotion.slow) {
+                    plan.shoppingList.status = .completed
+                    plan.shoppingList.completedAt = trip.completedAt
+                    lastShoppingTrip = trip
+                }
+                persistPlanCache()
+            }
             analytics.capture(.shoppingFinished, properties: [
                 "store_id": .string(trip.storeId.rawValue),
                 "shopping_list_id": .string(trip.shoppingListId),
@@ -1650,14 +1795,15 @@ final class CoreLoopStore {
             ReasiHaptics.success()
             return trip
         } catch {
+            guard userSessionID == sessionID, supabase.currentUserId == userID else { return nil }
             let message = supabase.userFacingMessage(
                 for: error,
                 fallback: "Your list is still open. We couldn't save this shop yet; please try again."
             )
-            shoppingCompletionError = message
+            if plan.shoppingList.id == listID { shoppingCompletionError = message }
             analytics.capture(.shoppingFinishFailed, properties: [
-                "store_id": .string(plan.shoppingList.storeId.rawValue),
-                "shopping_list_id": .string(plan.shoppingList.id)
+                "store_id": .string(storeID.rawValue),
+                "shopping_list_id": .string(listID)
             ])
             ReasiHaptics.warning()
             return nil
@@ -1669,8 +1815,13 @@ final class CoreLoopStore {
         clientId: UUID,
         supabase: SupabaseService
     ) async {
-        guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }),
-              plan.shoppingList.id == pending.shoppingListId else { return }
+        let sessionID = userSessionID
+        let userID = activeUserId
+        guard userID == supabase.currentUserId,
+              pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }),
+              !importSyncKeys.contains(pending.idempotencyKey) else { return }
+        importSyncKeys.insert(pending.idempotencyKey)
+        defer { if userSessionID == sessionID { importSyncKeys.remove(pending.idempotencyKey) } }
 
         do {
             guard let persistedID = try await supabase.addImportedCandidateToShoppingList(
@@ -1681,26 +1832,13 @@ final class CoreLoopStore {
                 idempotencyKey: clientId,
                 origin: pending.origin
             ) else { return }
-
-            guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }) else {
-                let deletion = PendingShoppingListDeletion(
-                    shoppingListId: pending.shoppingListId,
-                    itemId: persistedID
-                )
-                pendingDeletions.insert(deletion)
-                persistDeletionCache()
+            guard userSessionID == sessionID, supabase.currentUserId == userID,
+                  pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }) else { return }
+            if let deletion = resolveImportedItemIdentity(pending, persistedID: persistedID) {
                 startDeleteSync(deletion: deletion, supabase: supabase)
-                return
+            } else {
+                startItemSync(itemId: persistedID, shoppingListId: pending.shoppingListId, supabase: supabase)
             }
-
-            replaceImportedItem(
-                localItemID: pending.localItemID,
-                persistedID: persistedID,
-                clientID: pending.idempotencyKey
-            )
-            pendingImports.removeAll { $0.idempotencyKey == pending.idempotencyKey }
-            persistPlanCache()
-            persistCheckCache()
         } catch {
             // Keep the locally visible item and retry this idempotent write on restore.
         }
@@ -1708,17 +1846,21 @@ final class CoreLoopStore {
 
     private func startDeleteSync(deletion: PendingShoppingListDeletion, supabase: SupabaseService) {
         let taskKey = deletion.cacheKey
-        guard deleteSyncTasks[taskKey] == nil else { return }
+        let sessionID = userSessionID
+        let userID = activeUserId
+        guard !deletion.itemId.hasPrefix("local-import-"), deleteSyncTasks[taskKey] == nil else { return }
 
         deleteSyncTasks[taskKey] = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.deleteSyncTasks[taskKey] = nil }
-            guard self.pendingDeletions.contains(deletion) else { return }
+            defer { if self.userSessionID == sessionID { self.deleteSyncTasks[taskKey] = nil } }
+            guard self.userSessionID == sessionID, supabase.currentUserId == userID,
+                  self.pendingDeletions.contains(deletion) else { return }
             do {
                 try await supabase.deleteShoppingListItem(
                     itemId: deletion.itemId,
                     shoppingListId: deletion.shoppingListId
                 )
+                guard self.userSessionID == sessionID, supabase.currentUserId == userID else { return }
                 self.pendingDeletions.remove(deletion)
                 self.persistDeletionCache()
             } catch {
@@ -1727,42 +1869,76 @@ final class CoreLoopStore {
         }
     }
 
-    private func replaceImportedItem(localItemID: String, persistedID: String, clientID: String) {
-        if allShoppingItems.contains(where: { $0.id == persistedID }) {
-            removeItem(localItemID, from: &plan)
-            return
+    private func reconcileImportedItemIdentities(in remote: WeekPlan) {
+        let remoteItems = remote.shoppingList.sections.flatMap(\.items)
+        for pending in pendingImports where pending.shoppingListId == remote.shoppingList.id {
+            guard let item = remoteItems.first(where: {
+                $0.clientId?.lowercased() == pending.idempotencyKey.lowercased() && $0.id != pending.localItemID
+            }) else { continue }
+            _ = resolveImportedItemIdentity(pending, persistedID: item.id)
+        }
+    }
+
+    private func resolveImportedItemIdentity(
+        _ pending: PendingImportedItem,
+        persistedID: String
+    ) -> PendingShoppingListDeletion? {
+        let listID = pending.shoppingListId
+        let localID = pending.localItemID
+        let localDeletion = PendingShoppingListDeletion(shoppingListId: listID, itemId: localID)
+        let remoteDeletion = PendingShoppingListDeletion(shoppingListId: listID, itemId: persistedID)
+        let isDeleted = pendingDeletions.contains(localDeletion) || pendingDeletions.contains(remoteDeletion)
+        var checks = pendingChecksByList[listID] ?? CachedCheckState(
+            shoppingListId: listID, states: [:], pendingItemIDs: []
+        )
+        if plan.shoppingList.id == listID {
+            checks = CachedCheckState(shoppingListId: listID, states: checkedStates,
+                pendingItemIDs: Array(pendingCheckItemIDs))
         }
 
-        for sectionIndex in plan.shoppingList.sections.indices {
-            guard let itemIndex = plan.shoppingList.sections[sectionIndex].items.firstIndex(where: { $0.id == localItemID }) else {
-                continue
+        // Resolve durable intent before filtering IDs or acknowledging the import.
+        if isDeleted {
+            pendingDeletions.remove(localDeletion)
+            pendingDeletions.insert(remoteDeletion)
+            for id in [localID, persistedID] {
+                checks.states.removeValue(forKey: id)
+                checks.pendingItemIDs.removeAll { $0 == id }
+                itemSyncTasks.removeValue(forKey: "\(listID):\(id)")?.cancel()
             }
-
-            let item = plan.shoppingList.sections[sectionIndex].items[itemIndex]
-            plan.shoppingList.sections[sectionIndex].items[itemIndex] = ShoppingListItem(
-                id: persistedID,
-                name: item.name,
-                quantity: item.quantity,
-                checked: checkedItemIDs.contains(localItemID),
-                aisleLabel: item.aisleLabel,
-                sectionType: item.sectionType,
-                product: item.product,
-                importedCandidate: item.importedCandidate,
-                locationUncertaintyText: item.locationUncertaintyText,
-                clientId: clientID
-            )
-
-            if let checked = checkedStates.removeValue(forKey: localItemID) {
-                checkedStates[persistedID] = checked
-                if pendingCheckItemIDs.remove(localItemID) != nil {
-                    pendingCheckItemIDs.insert(persistedID)
-                }
-                if checkedItemIDs.remove(localItemID) != nil {
-                    checkedItemIDs.insert(persistedID)
-                }
+        } else {
+            if let checked = checks.states.removeValue(forKey: localID) {
+                checks.states[persistedID] = checked
             }
-            return
+            checks.pendingItemIDs = Array(Set(checks.pendingItemIDs.map { $0 == localID ? persistedID : $0 }))
         }
+        pendingChecksByList[listID] = checks
+
+        if plan.shoppingList.id == listID {
+            if isDeleted {
+                removeItem(localID, from: &plan)
+                removeItem(persistedID, from: &plan)
+            } else {
+                Self.replaceImportedItem(in: &plan, pending: pending, persistedID: persistedID)
+            }
+            checkedStates = checks.states
+            pendingCheckItemIDs = Set(checks.pendingItemIDs)
+            applyCheckedStates(checkedStates, to: &plan)
+            checkedItemIDs = Self.checkedIDs(from: plan)
+        } else if let activeUserId, var cached = localCache.loadList(userId: activeUserId, listId: listID) {
+            if isDeleted {
+                removeItem(localID, from: &cached)
+                removeItem(persistedID, from: &cached)
+            } else {
+                Self.replaceImportedItem(in: &cached, pending: pending, persistedID: persistedID)
+            }
+            applyCheckedStates(checks.states, to: &cached)
+            localCache.saveList(cached, userId: activeUserId)
+        }
+        pendingImports.removeAll { $0.idempotencyKey == pending.idempotencyKey }
+        if isDeleted { persistDeletionCache() }
+        persistPlanCache()
+        persistCheckCache()
+        return isDeleted ? remoteDeletion : nil
     }
 
     private func mergePendingImportedItems(from cachedPlan: WeekPlan?, into restored: inout WeekPlan) {
@@ -1771,7 +1947,9 @@ final class CoreLoopStore {
             restored.shoppingList.sections.flatMap(\.items).compactMap(\.clientId)
         )
 
-        for pending in pendingImports where !restoredClientIDs.contains(pending.idempotencyKey) {
+        for pending in pendingImports where pending.shoppingListId == restored.shoppingList.id
+            && !restoredClientIDs.contains(pending.idempotencyKey)
+            && !pendingDeletions.contains(PendingShoppingListDeletion(shoppingListId: pending.shoppingListId, itemId: pending.localItemID)) {
             guard let cachedItem = cachedPlan.shoppingList.sections
                 .flatMap(\.items)
                 .first(where: { $0.id == pending.localItemID }) else { continue }
@@ -1787,6 +1965,7 @@ final class CoreLoopStore {
     }
 
     private func persistPlanCache() {
+        persistOutbox()
         guard let activeUserId, hasPlan, plan.source == .supabase else { return }
         localCache.savePlan(
             CachedPlanState(
@@ -1800,6 +1979,10 @@ final class CoreLoopStore {
 
     private func persistCheckCache() {
         guard let activeUserId, hasPlan, plan.source == .supabase else { return }
+        pendingChecksByList[plan.shoppingList.id] = CachedCheckState(
+            shoppingListId: plan.shoppingList.id, states: checkedStates, pendingItemIDs: Array(pendingCheckItemIDs)
+        )
+        persistOutbox()
         localCache.saveChecks(
             CachedCheckState(
                 shoppingListId: plan.shoppingList.id,
@@ -1813,6 +1996,37 @@ final class CoreLoopStore {
     private func persistDeletionCache() {
         guard let activeUserId else { return }
         localCache.saveDeletions(Array(pendingDeletions), userId: activeUserId)
+        persistOutbox()
+    }
+
+    private func persistOutbox() {
+        guard let activeUserId else { return }
+        localCache.saveOutbox(ShoppingMutationOutbox(
+            imports: pendingImports, checks: pendingChecksByList, deletions: Array(pendingDeletions)
+        ), userId: activeUserId)
+    }
+
+    private static func withoutProductSelection(_ item: ShoppingListItem) -> ShoppingListItem {
+        ShoppingListItem(id: item.id, name: item.name, quantity: item.quantity, checked: item.checked,
+            aisleLabel: item.aisleLabel, sectionType: item.sectionType, product: nil,
+            importedCandidate: nil, locationUncertaintyText: item.locationUncertaintyText, clientId: item.clientId)
+    }
+
+    private static func replaceImportedItem(in plan: inout WeekPlan, pending: PendingImportedItem, persistedID: String) {
+        let alreadyPersisted = plan.shoppingList.sections.flatMap(\.items).contains { $0.id == persistedID }
+        for sectionIndex in plan.shoppingList.sections.indices {
+            if alreadyPersisted {
+                plan.shoppingList.sections[sectionIndex].items.removeAll { $0.id == pending.localItemID }
+                continue
+            }
+            plan.shoppingList.sections[sectionIndex].items = plan.shoppingList.sections[sectionIndex].items.map { item in
+                guard item.id == pending.localItemID else { return item }
+                return ShoppingListItem(id: persistedID, name: item.name, quantity: item.quantity, checked: item.checked,
+                    aisleLabel: item.aisleLabel, sectionType: item.sectionType, product: item.product,
+                    importedCandidate: item.importedCandidate, locationUncertaintyText: item.locationUncertaintyText,
+                    clientId: pending.idempotencyKey)
+            }
+        }
     }
 
     private func reconcilePendingCheckState() {
@@ -1824,8 +2038,7 @@ final class CoreLoopStore {
         )
         let removedItemIDs = pendingCheckItemIDs.subtracting(reconciliation.pendingItemIDs)
         removedItemIDs.forEach {
-            itemSyncTasks[$0]?.cancel()
-            itemSyncTasks[$0] = nil
+            itemSyncTasks.removeValue(forKey: "\(plan.shoppingList.id):\($0)")?.cancel()
         }
         guard reconciliation.pendingItemIDs != pendingCheckItemIDs
                 || reconciliation.states != checkedStates else { return }
@@ -1851,6 +2064,11 @@ final class CoreLoopStore {
             }) else { continue }
             let current = plan.shoppingList.sections[sectionIndex].items[itemIndex]
             let checked = mutation.checked ?? current.checked
+            let quantityChanged = mutation.quantity.map { $0 != current.quantity } ?? false
+            if quantityChanged {
+                localCache.saveSelectionHistory(plan, userId: activeUserId)
+                attemptedProductItemIDs.remove(current.id)
+            }
             plan.shoppingList.sections[sectionIndex].items[itemIndex] = ShoppingListItem(
                 id: current.id,
                 name: current.name,
@@ -1858,8 +2076,8 @@ final class CoreLoopStore {
                 checked: checked,
                 aisleLabel: current.aisleLabel,
                 sectionType: current.sectionType,
-                product: current.product,
-                importedCandidate: current.importedCandidate,
+                product: quantityChanged ? nil : current.product,
+                importedCandidate: quantityChanged ? nil : current.importedCandidate,
                 locationUncertaintyText: current.locationUncertaintyText,
                 clientId: current.clientId
             )
@@ -2015,8 +2233,14 @@ private struct CachedPlanState: Codable {
 
 private struct CachedCheckState: Codable {
     let shoppingListId: String
-    let states: [String: Bool]
-    let pendingItemIDs: [String]
+    var states: [String: Bool]
+    var pendingItemIDs: [String]
+}
+
+private struct ShoppingMutationOutbox: Codable {
+    var imports: [PendingImportedItem]
+    var checks: [String: CachedCheckState]
+    var deletions: [PendingShoppingListDeletion]?
 }
 
 private struct PendingGenerationRequest: Codable, Hashable {
@@ -2138,6 +2362,28 @@ private final class ShoppingListLocalCache {
 
     func savePlan(_ state: CachedPlanState, userId: String) {
         save(state, to: fileURL(kind: "plan", userId: userId))
+        saveList(state.plan, userId: userId)
+    }
+
+    func loadList(userId: String, listId: String) -> WeekPlan? {
+        load(WeekPlan.self, from: fileURL(kind: "list-\(listId)", userId: userId))
+    }
+
+    func saveList(_ plan: WeekPlan, userId: String) {
+        save(plan, to: fileURL(kind: "list-\(plan.shoppingList.id)", userId: userId))
+    }
+
+    func saveSelectionHistory(_ plan: WeekPlan, userId: String?) {
+        guard let userId else { return }
+        save(plan, to: fileURL(kind: "selection-history-\(plan.shoppingList.id)-\(UUID().uuidString)", userId: userId))
+    }
+
+    func loadOutbox(userId: String) -> ShoppingMutationOutbox? {
+        load(ShoppingMutationOutbox.self, from: fileURL(kind: "outbox", userId: userId))
+    }
+
+    func saveOutbox(_ outbox: ShoppingMutationOutbox, userId: String) {
+        save(outbox, to: fileURL(kind: "outbox", userId: userId))
     }
 
     func loadChecks(userId: String) -> CachedCheckState? {

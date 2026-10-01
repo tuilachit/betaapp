@@ -783,9 +783,12 @@ struct PlanIdea: Identifiable, Codable, Hashable {
     var productRole: ProductRole?
     var isRequired: Bool
     var courseHint: String?
+    var recipe: RecipeInfo?
+    var confidence: ProductConfidence?
+    var confidenceReason: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, type, title, detail, product, productRole, courseHint
+        case id, type, title, detail, product, productRole, courseHint, recipe, confidence, confidenceReason
         case sourceURL = "sourceUrl"
         case legacySourceURL = "sourceURL"
         case imageUploadPath = "uploadPath"
@@ -804,7 +807,10 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         product: ProductCandidate? = nil,
         productRole: ProductRole? = nil,
         isRequired: Bool = true,
-        courseHint: String? = nil
+        courseHint: String? = nil,
+        recipe: RecipeInfo? = nil,
+        confidence: ProductConfidence? = nil,
+        confidenceReason: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -816,6 +822,22 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         self.productRole = type == .product ? (productRole ?? .useInPlan) : productRole
         self.isRequired = isRequired
         self.courseHint = courseHint
+        self.recipe = recipe
+        self.confidence = confidence
+        self.confidenceReason = confidenceReason
+    }
+
+    init(resolvedMeal: ResolvedMealIdea, uploadPath: String?, detail: String? = nil) {
+        self.init(
+            type: .dish,
+            title: resolvedMeal.title,
+            detail: detail ?? resolvedMeal.description,
+            sourceURL: resolvedMeal.sourceURL,
+            imageUploadPath: uploadPath,
+            recipe: resolvedMeal.recipe,
+            confidence: resolvedMeal.confidence,
+            confidenceReason: resolvedMeal.confidenceReason
+        )
     }
 
     init(from decoder: Decoder) throws {
@@ -835,6 +857,9 @@ struct PlanIdea: Identifiable, Codable, Hashable {
             ?? container.decodeIfPresent(Bool.self, forKey: .legacyIsRequired)
             ?? true
         courseHint = try container.decodeIfPresent(String.self, forKey: .courseHint)
+        recipe = try container.decodeIfPresent(RecipeInfo.self, forKey: .recipe)
+        confidence = try container.decodeIfPresent(ProductConfidence.self, forKey: .confidence)
+        confidenceReason = try container.decodeIfPresent(String.self, forKey: .confidenceReason)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -849,6 +874,9 @@ struct PlanIdea: Identifiable, Codable, Hashable {
         try container.encodeIfPresent(productRole, forKey: .productRole)
         try container.encode(isRequired, forKey: .isRequired)
         try container.encodeIfPresent(courseHint, forKey: .courseHint)
+        try container.encodeIfPresent(recipe, forKey: .recipe)
+        try container.encodeIfPresent(confidence, forKey: .confidence)
+        try container.encodeIfPresent(confidenceReason, forKey: .confidenceReason)
     }
 }
 
@@ -935,6 +963,9 @@ struct PlanBrief: Codable, Hashable {
             value.sourceURL = local.sourceURL ?? interpreted.sourceURL
             value.imageUploadPath = local.imageUploadPath ?? interpreted.imageUploadPath
             value.courseHint = local.courseHint ?? interpreted.courseHint
+            value.recipe = local.recipe ?? interpreted.recipe
+            value.confidence = local.confidence ?? interpreted.confidence
+            value.confidenceReason = local.confidenceReason ?? interpreted.confidenceReason
             return value
         }
         return merged

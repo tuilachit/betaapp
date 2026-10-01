@@ -1077,6 +1077,16 @@ struct OnboardingPlaceholderView: View {
         let destination = index + offset
         guard guideSections.indices.contains(index), guideSections.indices.contains(destination) else { return }
         guideSections.swapAt(index, destination)
+        guideSections = guideSections.enumerated().map { position, section in
+            StoreGuideSection(
+                code: section.code,
+                title: section.title,
+                sectionType: section.sectionType,
+                aisleNumber: section.aisleNumber,
+                routeOrder: position,
+                confidence: section.confidence
+            )
+        }
         ReasiHaptics.selection()
     }
 

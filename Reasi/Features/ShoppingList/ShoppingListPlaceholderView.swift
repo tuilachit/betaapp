@@ -330,6 +330,15 @@ struct ShoppingListPlaceholderView: View {
             guard !didTrackView else { return }
             didTrackView = true
             coreLoop.markShoppingListViewed(analytics: analytics)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ReasiListPhotoReviewFixture"),
+               ProcessInfo.processInfo.arguments.contains("-ReasiUITestUnauthenticated") {
+                activeSheet = .listPhoto(ListPhotoDraft(
+                    result: ListPhotoReviewSheet.fixtureExtraction,
+                    shoppingListID: coreLoop.plan.shoppingList.id
+                ))
+            }
+            #endif
         }
         .task(id: "\(coreLoop.shoppingProductContext)/\(coreLoop.hasPlan)/\(coreLoop.isRestoringPlan)/\(coreLoop.isSwitchingStore)/\(coreLoop.plan.shoppingList.status)/\(supabase.isSignedIn)") {
             #if DEBUG

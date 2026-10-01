@@ -682,6 +682,7 @@ struct PlanBuilderView: View {
                         .font(ReasiTypography.bodyMedium)
                         .foregroundStyle(Color.reasi.text)
                         .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("plan-builder-add")
@@ -975,16 +976,15 @@ struct PlanBuilderView: View {
         ReasiHaptics.success()
     }
 
-    private func addResolvedIdea(_ resolved: ResolvedMealIdea) {
+    private func addResolvedIdea(_ resolved: ResolvedMealIdea, uploadPath: String? = nil) {
         if let product = resolved.product {
             addProduct(product)
             return
         }
         brief.ideas.append(PlanIdea(
-            type: .dish,
-            title: resolved.title,
-            detail: resolvedIdeaDetail(resolved),
-            sourceURL: resolved.sourceURL
+            resolvedMeal: resolved,
+            uploadPath: uploadPath,
+            detail: resolvedIdeaDetail(resolved)
         ))
         analytics.capture(.planIdeaAdded, properties: ["idea_type": .string(IdeaType.dish.rawValue)])
     }
@@ -996,6 +996,7 @@ struct PlanBuilderView: View {
         ReasiHaptics.selection()
     }
 
+    // Display copy is separate from the complete source recipe retained on the idea.
     private func resolvedIdeaDetail(_ resolved: ResolvedMealIdea) -> String? {
         var parts = [resolved.description].compactMap { $0 }
         if let recipe = resolved.recipe {
@@ -1049,7 +1050,7 @@ struct PlanBuilderView: View {
                     storeId: appState.selectedStore.id,
                     uploadPath: path
                 )
-                addResolvedIdea(resolved)
+                addResolvedIdea(resolved, uploadPath: path)
             case .product:
                 let path = try await supabase.uploadUserImage(data, kind: .productPhoto)
                 let result = try await supabase.resolveProduct(
