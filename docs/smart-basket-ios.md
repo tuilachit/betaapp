@@ -125,8 +125,15 @@ the pinned footer instead. The controller verified this in the exported screen
 recording and synthesized event coordinates. The corrected test scrolls the
 whole option above the footer, asserts the switch value changes, waits for Apply
 to enable, and retains before/after screenshots at normal and accessibility
-text sizes. Native selection logic and controls were not weakened or changed
-to accommodate the test. The final exact-head CI rerun is a separate gate.
+text sizes. The second run passed all 16 XCTest cases, both state journeys, and
+the compact selection/apply journey. Its large-text screenshots exposed a
+composite switch target covering the entire product description, while the
+three-line Apply label consumed much of the usable height. The native switch
+now has an independent compact heading, with product details below at full
+width. The visible button reads "Apply" with its full accessibility label
+preserved. The test uses bounded measured drags inside the scroll area, retaining
+the full-control visibility, selection, ownership, and apply assertions.
+The final exact-head CI rerun is a separate gate.
 
 Local evidence logs:
 

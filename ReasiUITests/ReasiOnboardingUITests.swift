@@ -24,7 +24,6 @@ final class ReasiOnboardingUITests: XCTestCase {
             let selection = app.switches["smart-basket-select-rice"]
             let selectedCount = app.staticTexts["0 swaps selected"]
             let navigationBar = app.navigationBars["Smart Basket"]
-            let scrollView = app.scrollViews.firstMatch
             func selectionIsFullyVisible() -> Bool {
                 let frame = selection.frame
                 // The footer has 16-point top padding; keep the whole control clear of it.
@@ -33,13 +32,19 @@ final class ReasiOnboardingUITests: XCTestCase {
                     frame.maxY <= selectedCount.frame.minY - 24 &&
                     frame.minX >= app.frame.minX && frame.maxX <= app.frame.maxX
             }
-            for _ in 0..<8 {
+            for _ in 0..<20 {
                 if selectionIsFullyVisible() { break }
-                if selection.exists && selection.frame.minY < navigationBar.frame.maxY + 8 {
-                    scrollView.swipeDown()
-                } else {
-                    scrollView.swipeUp()
-                }
+                let top = navigationBar.frame.maxY + 8
+                let bottom = selectedCount.frame.minY - 24
+                XCTAssertGreaterThan(bottom - top, 100)
+                let center = (top + bottom) / 2
+                let error = selection.frame.midY - center
+                let maximumStep = min(150, (bottom - top) * 0.3)
+                let distance = min(max(abs(error), 40), maximumStep) * (error < 0 ? -1 : 1)
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                let start = origin.withOffset(CGVector(dx: app.frame.width / 2, dy: center - app.frame.minY))
+                let end = origin.withOffset(CGVector(dx: app.frame.width / 2, dy: center - distance - app.frame.minY))
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
             }
             let beforeSelection = XCTAttachment(screenshot: app.screenshot())
             beforeSelection.name = largeText ? "Smart Basket large text before selection" : "Smart Basket compact before selection"

@@ -242,15 +242,18 @@ struct SmartBasketSheet: View {
                 Text("Current price unconfirmed").font(ReasiTypography.callout).foregroundStyle(Color.reasi.muted)
             }
             if selectable, let selected = line.selected {
-                Toggle(isOn: Binding(
+                Toggle(selected.matchLabel == "exact" ? "Same product" : "Proposed swap", isOn: Binding(
                     get: { review.selectedLineIDs.contains(line.id) },
                     set: { _ in review.toggleSelection(line.id) }
-                )) {
-                    choiceRow(selected, label: selected.matchLabel == "exact" ? "Same product" : "Proposed swap")
-                }
+                ))
+                .font(ReasiTypography.bodyMedium)
+                .foregroundStyle(Color.reasi.text)
+                .frame(minHeight: 44)
                 .tint(Color.reasi.success)
                 .disabled(blockedMessage != nil || preview.isExpired(at: now) || review.isApplying || review.receipt != nil || review.attempt != nil || review.requiresPreviewRefresh)
+                .accessibilityLabel("Use \(selected.name)")
                 .accessibilityIdentifier("smart-basket-select-\(line.id)")
+                choiceRow(selected, label: nil)
             } else {
                 Text(review.context?.checkedLineIDs.contains(line.id) == true ? "Already picked; unchanged" : "No confirmed swap; unchanged")
                     .font(ReasiTypography.caption)
@@ -261,9 +264,11 @@ struct SmartBasketSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func choiceRow(_ choice: SmartBasketChoice, label: String) -> some View {
+    private func choiceRow(_ choice: SmartBasketChoice, label: String?) -> some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
-            Text(label).font(ReasiTypography.caption).foregroundStyle(Color.reasi.muted)
+            if let label {
+                Text(label).font(ReasiTypography.caption).foregroundStyle(Color.reasi.muted)
+            }
             Text(choice.name).font(ReasiTypography.bodyMedium).foregroundStyle(Color.reasi.text)
             Text(choice.purchaseLabel).font(ReasiTypography.callout).foregroundStyle(Color.reasi.textMuted)
             Text("\(choice.isWeightedEstimate ? "Estimated cost" : "Purchase cost"): \(SmartBasketMoney.text(choice.lineTotalCents))")
@@ -312,7 +317,9 @@ struct SmartBasketSheet: View {
     }
 
     private func applyFooter(now: Date) -> some View {
-        VStack(spacing: ReasiSpacing.s2) {
+        let isApplyAction = !review.didApply && review.receipt == nil && review.attempt == nil && !review.requiresPreviewRefresh
+        let actionTitle = review.didApply ? "Done" : review.receipt != nil ? "Reload list" : review.attempt != nil ? "Check saved swaps" : review.requiresPreviewRefresh ? "Refresh preview" : "Apply selected swaps"
+        return VStack(spacing: ReasiSpacing.s2) {
             if !review.didApply {
                 Text("\(review.selectedLineIDs.count) \(review.selectedLineIDs.count == 1 ? "swap" : "swaps") selected")
                     .font(ReasiTypography.caption)
@@ -329,7 +336,7 @@ struct SmartBasketSheet: View {
             } label: {
                 HStack(spacing: ReasiSpacing.s2) {
                     if review.isApplying { ProgressView() }
-                    Text(review.didApply ? "Done" : review.receipt != nil ? "Reload list" : review.attempt != nil ? "Check saved swaps" : review.requiresPreviewRefresh ? "Refresh preview" : "Apply selected swaps")
+                    Text(isApplyAction ? "Apply" : actionTitle)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -339,6 +346,7 @@ struct SmartBasketSheet: View {
             .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
             .disabled(!review.didApply && (review.isApplying || review.isLoading ||
                 (review.requiresPreviewRefresh ? currentContext == nil : review.receipt != nil || review.attempt != nil ? !review.canReconcile(in: currentContext) : !review.canApply(in: currentContext, at: now))))
+            .accessibilityLabel(actionTitle)
             .accessibilityIdentifier("smart-basket-apply")
         }
         .padding(ReasiSpacing.s4)
