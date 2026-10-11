@@ -292,8 +292,29 @@ enum SmartBasketDate {
     }
 }
 
-enum SmartBasketError: LocalizedError {
-    case unavailable, offline, signedOut, subscriptionRequired, contextChanged, pendingChanges, expired, invalidResponse, refreshRequired, confirmationRequired
+enum SmartBasketError: LocalizedError, Equatable {
+    case unavailable, offline, signedOut, subscriptionRequired, contextChanged, duplicateProducts, pendingChanges, expired, invalidResponse, refreshRequired, confirmationRequired
+
+    static func fromHTTPResponse(statusCode: Int, body: Data) -> Self? {
+        switch statusCode {
+        case 401, 403: .signedOut
+        case 402: .subscriptionRequired
+        case 404: .contextChanged
+        case 409:
+            if let response = try? JSONDecoder().decode(HTTPErrorBody.self, from: body),
+               response.error == "This list contains multiple lines for the same product. Resolve those lines before previewing; no items were changed." {
+                .duplicateProducts
+            } else {
+                .contextChanged
+            }
+        case 503: .unavailable
+        default: nil
+        }
+    }
+
+    private struct HTTPErrorBody: Decodable {
+        let error: String
+    }
 
     var errorDescription: String? {
         switch self {
@@ -302,6 +323,7 @@ enum SmartBasketError: LocalizedError {
         case .signedOut: "Sign in to review this shopping list."
         case .subscriptionRequired: "Smart Basket is available with Reasi Pro."
         case .contextChanged: "Your list or store changed. Refresh the preview before applying swaps."
+        case .duplicateProducts: "Resolve the duplicate product lines in your shopping list before checking prices again. No items were changed."
         case .pendingChanges: "Your latest list changes are still saving. Stay online and try again."
         case .expired: "This preview has expired. Refresh to check prices again."
         case .invalidResponse: "We couldn't confirm this preview for your list. Please try again."

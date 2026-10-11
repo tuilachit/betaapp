@@ -12,6 +12,26 @@ import Foundation
         let now = Date()
         let preview = FixtureSmartBasket.preview(now: now)
         let context = FixtureSmartBasket.context
+        let duplicateConflict = Data(#"{"error":"This list contains multiple lines for the same product. Resolve those lines before previewing; no items were changed."}"#.utf8)
+        let duplicateError = SmartBasketError.fromHTTPResponse(statusCode: 409, body: duplicateConflict)
+        check(duplicateError == .duplicateProducts, "duplicate-product 409 has a dedicated controlled error")
+        check(duplicateError?.localizedDescription == "Resolve the duplicate product lines in your shopping list before checking prices again. No items were changed.",
+              "duplicate conflict explains resolving lines and confirms no items changed")
+        let unknownConflict = Data(#"{"error":"Unknown conflict with private internal details"}"#.utf8)
+        check(SmartBasketError.fromHTTPResponse(statusCode: 409, body: unknownConflict) == .contextChanged,
+              "unknown 409 remains a controlled context-change error")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 409, body: Data("invalid JSON".utf8)) == .contextChanged,
+              "malformed conflict body cannot expose arbitrary server text")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 401, body: duplicateConflict) == .signedOut,
+              "duplicate body cannot override authentication handling")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 402, body: unknownConflict) == .subscriptionRequired,
+              "subscription handling is preserved")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 404, body: unknownConflict) == .contextChanged,
+              "not-owned handling is preserved")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 503, body: unknownConflict) == .unavailable,
+              "unavailable handling is preserved")
+        check(SmartBasketError.fromHTTPResponse(statusCode: 500, body: duplicateConflict) == nil,
+              "unmapped status retains existing fallback")
         func editedPreview(_ edit: (inout [String: Any]) -> Void) throws -> SmartBasketPreview {
             var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(preview)) as! [String: Any]
             edit(&json)

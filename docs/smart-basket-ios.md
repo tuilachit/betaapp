@@ -22,6 +22,10 @@ Zero comparable coverage says Prices can't be compared yet; it does not report
 zero-dollar totals or imply that unsupported prices are stale.
 Completed lists, account restoration/sign-out, offline use, generation, plan
 restoration, and mismatched/switching stores disable requests or Apply.
+An owned-list duplicate-product conflict explains that the duplicate lines must
+be resolved before checking prices again and that no items were changed. Unknown
+conflicts retain the controlled context-change message; arbitrary server error
+text is never displayed by this mapping.
 
 ## Requests
 
@@ -101,13 +105,28 @@ targets. Simulator execution and screenshots belong to authorized GitHub CI;
 they have not been run locally. No production snapshot is activated, and legacy
 data without sufficient new evidence must remain partial/unoptimized.
 
-Verified after the final context-scoped recovery fix: 98 host checks passed;
+Verified after the context-scoped recovery fix: 98 host checks passed;
 Debug app build, Debug build-for-testing (app/unit/UI targets), and arm64 Release
 compilation all passed. Workflow YAML, embedded Ruby and shell syntax checks
 passed. The controller reported no actionable findings in the final targeted
 independent re-review of all five recovery corrections.
 Existing onboarding and UI-test actor-isolation warnings remain outside this
 change; no simulator/device app or XCTest bundle has been launched.
+
+The subsequent controlled duplicate-product HTTP409 mapping adds model and
+coordinator regressions. The controller's host rerun passes 107 checks with zero
+failures; Debug build-for-testing and Release compilation pass. Host checks do
+not claim app-facing acceptance.
+
+The first GitHub fixture run passed all 14 Smart Basket XCTest cases and the
+loading/offline/expiry and partial/no-change/empty/error UI journeys. Selection
+failed because XCTest treated a partly clipped option as hittable and tapped
+the pinned footer instead. The controller verified this in the exported screen
+recording and synthesized event coordinates. The corrected test scrolls the
+whole option above the footer, asserts the switch value changes, waits for Apply
+to enable, and retains before/after screenshots at normal and accessibility
+text sizes. Native selection logic and controls were not weakened or changed
+to accommodate the test. The final exact-head CI rerun is a separate gate.
 
 Local evidence logs:
 
@@ -136,4 +155,5 @@ Local evidence logs:
 Review worktree: `/Users/locnguyen/Documents/Reasi_iOS_smart_basket`, branch
 `codex/smart-basket-preview`, base `0b37702`. The controller authorized a local-only
 commit after the final re-review and builds; the controller opens the draft PR.
-No push, merge, TestFlight upload, deployment, paid call, or real mutation occurred.
+The controller pushed draft PR46 for GitHub-only fixture tests. No merge,
+TestFlight upload, deployment, paid call, or real mutation occurred.

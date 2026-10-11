@@ -1403,14 +1403,9 @@ final class SupabaseService {
     private func smartBasketRequestError(_ error: Error) -> Error {
         if Self.isNetworkError(error) { return SmartBasketError.offline }
         #if canImport(Supabase)
-        if let functionError = error as? FunctionsError, case .httpError(let code, _) = functionError {
-            switch code {
-            case 401, 403: return SmartBasketError.signedOut
-            case 402: return SmartBasketError.subscriptionRequired
-            case 404, 409: return SmartBasketError.contextChanged
-            case 503: return SmartBasketError.unavailable
-            default: break
-            }
+        if let functionError = error as? FunctionsError, case .httpError(let code, let body) = functionError,
+           let mapped = SmartBasketError.fromHTTPResponse(statusCode: code, body: body) {
+            return mapped
         }
         #endif
         return error

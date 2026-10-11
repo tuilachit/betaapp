@@ -6,6 +6,25 @@ import UIKit
 #if DEBUG
 @MainActor
 final class SmartBasketTests: XCTestCase {
+    func testDuplicateProductConflictUsesControlledActionableMessage() {
+        let body = Data(#"{"error":"This list contains multiple lines for the same product. Resolve those lines before previewing; no items were changed."}"#.utf8)
+        let mapped = SmartBasketError.fromHTTPResponse(statusCode: 409, body: body)
+        XCTAssertEqual(mapped, .duplicateProducts)
+        XCTAssertEqual(mapped?.localizedDescription, "Resolve the duplicate product lines in your shopping list before checking prices again. No items were changed.")
+    }
+
+    func testUnknownConflictAndAuthMappingsRemainControlled() {
+        let unknown = Data(#"{"error":"Unknown conflict with private internal details"}"#.utf8)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 409, body: unknown), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 409, body: Data("invalid JSON".utf8)), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 401, body: unknown), .signedOut)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 403, body: unknown), .signedOut)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 402, body: unknown), .subscriptionRequired)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 404, body: unknown), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 503, body: unknown), .unavailable)
+        XCTAssertNil(SmartBasketError.fromHTTPResponse(statusCode: 500, body: unknown))
+    }
+
     func testWholePurchaseMoneyAndMissingTotals() {
         XCTAssertEqual(SmartBasketMoney.text(3596), "A$35.96")
         XCTAssertEqual(SmartBasketMoney.text(0), "A$0.00")

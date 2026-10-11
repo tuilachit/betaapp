@@ -22,9 +22,43 @@ final class ReasiOnboardingUITests: XCTestCase {
             let apply = app.buttons["smart-basket-apply"]
             XCTAssertFalse(apply.isEnabled)
             let selection = app.switches["smart-basket-select-rice"]
-            for _ in 0..<8 where !selection.isHittable { app.swipeUp() }
+            let selectedCount = app.staticTexts["0 swaps selected"]
+            let navigationBar = app.navigationBars["Smart Basket"]
+            let scrollView = app.scrollViews.firstMatch
+            func selectionIsFullyVisible() -> Bool {
+                let frame = selection.frame
+                // The footer has 16-point top padding; keep the whole control clear of it.
+                return selection.isHittable && !frame.isEmpty &&
+                    frame.minY >= navigationBar.frame.maxY + 8 &&
+                    frame.maxY <= selectedCount.frame.minY - 24 &&
+                    frame.minX >= app.frame.minX && frame.maxX <= app.frame.maxX
+            }
+            for _ in 0..<8 {
+                if selectionIsFullyVisible() { break }
+                if selection.exists && selection.frame.minY < navigationBar.frame.maxY + 8 {
+                    scrollView.swipeDown()
+                } else {
+                    scrollView.swipeUp()
+                }
+            }
+            let beforeSelection = XCTAttachment(screenshot: app.screenshot())
+            beforeSelection.name = largeText ? "Smart Basket large text before selection" : "Smart Basket compact before selection"
+            beforeSelection.lifetime = .keepAlways
+            add(beforeSelection)
+            XCTAssertTrue(selectionIsFullyVisible(), "The entire selection control must be above the pinned footer before tapping")
             XCTAssertTrue(selection.isHittable)
+            XCTAssertEqual(selection.value as? String, "0")
             selection.tap()
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: selection)
+            let selectionResult = XCTWaiter.wait(for: [selected], timeout: 5)
+            let afterSelection = XCTAttachment(screenshot: app.screenshot())
+            afterSelection.name = largeText ? "Smart Basket large text after selection" : "Smart Basket compact after selection"
+            afterSelection.lifetime = .keepAlways
+            add(afterSelection)
+            XCTAssertEqual(selectionResult, .completed, "Tapping the visible native switch must select the swap")
+            XCTAssertEqual(selection.value as? String, "1")
+            let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: apply)
+            XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
             XCTAssertTrue(apply.isEnabled)
             XCTAssertGreaterThanOrEqual(apply.frame.height, 44)
             XCTAssertEqual(app.frame.width, 390, accuracy: 1)
