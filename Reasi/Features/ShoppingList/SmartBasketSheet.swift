@@ -251,7 +251,7 @@ struct SmartBasketSheet: View {
                 .frame(minHeight: 44)
                 .tint(Color.reasi.success)
                 .disabled(blockedMessage != nil || preview.isExpired(at: now) || review.isApplying || review.receipt != nil || review.attempt != nil || review.requiresPreviewRefresh)
-                .accessibilityLabel("Use \(selected.name)")
+                .accessibilityLabel("\(selected.matchLabel == "exact" ? "Same product" : "Proposed swap"): \(selected.name)")
                 .accessibilityIdentifier("smart-basket-select-\(line.id)")
                 choiceRow(selected, label: nil)
             } else {

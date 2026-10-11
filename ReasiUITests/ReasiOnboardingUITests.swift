@@ -52,6 +52,7 @@ final class ReasiOnboardingUITests: XCTestCase {
             add(beforeSelection)
             XCTAssertTrue(selectionIsFullyVisible(), "The entire selection control must be above the pinned footer before tapping")
             XCTAssertTrue(selection.isHittable)
+            XCTAssertTrue(selection.label.hasPrefix("Proposed swap:"))
             XCTAssertEqual(selection.value as? String, "0")
             selection.tap()
             let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: selection)
