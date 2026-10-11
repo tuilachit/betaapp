@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B31E7DA225374A7798326201 /* SmartBasketModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326201 /* SmartBasketModels.swift */; };
+		B31E7DA225374A7798326202 /* SmartBasketReviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326202 /* SmartBasketReviewStore.swift */; };
+		B31E7DA225374A7798326203 /* FixtureSmartBasket.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326203 /* FixtureSmartBasket.swift */; };
+		B31E7DA225374A7798326204 /* SmartBasketSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31E7DA225374A7798326204 /* SmartBasketSheet.swift */; };
 		A7FB770F66AD4D68A982FE23 /* ReasiCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A125B97AF33F06FC5F18BC6E /* ReasiCoreTests.swift */; };
 		AF02F667DA24D58CA0075C40 /* ReasiOnboardingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3452A52985EBD4BE6F09451 /* ReasiOnboardingUITests.swift */; };
 		B00000000000000000000001 /* ReasiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* ReasiApp.swift */; };
@@ -83,6 +87,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A31E7DA225374A7798326201 /* SmartBasketModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartBasketModels.swift; sourceTree = "<group>"; };
+		A31E7DA225374A7798326202 /* SmartBasketReviewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartBasketReviewStore.swift; sourceTree = "<group>"; };
+		A31E7DA225374A7798326203 /* FixtureSmartBasket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureSmartBasket.swift; sourceTree = "<group>"; };
+		A31E7DA225374A7798326204 /* SmartBasketSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartBasketSheet.swift; sourceTree = "<group>"; };
 		0415F5A1394E9DEB8D41AD23 /* ReasiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReasiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		717BE143951CFFE6E20FB96F /* ReasiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReasiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000001 /* ReasiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiApp.swift; sourceTree = "<group>"; };
@@ -279,6 +287,7 @@
 			children = (
 				A00000000000000000000016 /* Store.swift */,
 				A00000000000000000000017 /* MealPlanModels.swift */,
+				A31E7DA225374A7798326201 /* SmartBasketModels.swift */,
 				A00000000000000000000041 /* OnboardingPreferences.swift */,
 				A00000000000000000000049 /* SpendingModels.swift */,
 			);
@@ -292,6 +301,7 @@
 				A00000000000000000000020 /* ServiceStatus.swift */,
 				A00000000000000000000021 /* KeychainSessionStore.swift */,
 				A00000000000000000000038 /* CoreLoopStore.swift */,
+				A31E7DA225374A7798326202 /* SmartBasketReviewStore.swift */,
 				A00000000000000000000022 /* SupabaseService.swift */,
 				A00000000000000000000023 /* AnalyticsService.swift */,
 				A00000000000000000000024 /* RevenueCatService.swift */,
@@ -306,6 +316,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000018 /* FixtureStores.swift */,
+				A31E7DA225374A7798326203 /* FixtureSmartBasket.swift */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -346,6 +357,7 @@
 			children = (
 				A00000000000000000000027 /* ShoppingListPlaceholderView.swift */,
 				A31E7DA225374A7798326101 /* ListPhotoReviewSheet.swift */,
+				A31E7DA225374A7798326204 /* SmartBasketSheet.swift */,
 				A00000000000000000000044 /* ProductSearchView.swift */,
 			);
 			path = ShoppingList;
@@ -600,6 +612,10 @@
 				B00000000000000000000015 /* FloatingTabBar.swift in Sources */,
 				B00000000000000000000016 /* Store.swift in Sources */,
 				B00000000000000000000017 /* MealPlanModels.swift in Sources */,
+				B31E7DA225374A7798326201 /* SmartBasketModels.swift in Sources */,
+				B31E7DA225374A7798326202 /* SmartBasketReviewStore.swift in Sources */,
+				B31E7DA225374A7798326203 /* FixtureSmartBasket.swift in Sources */,
+				B31E7DA225374A7798326204 /* SmartBasketSheet.swift in Sources */,
 				B00000000000000000000018 /* FixtureStores.swift in Sources */,
 				B00000000000000000000019 /* ReasiConfig.swift in Sources */,
 				B00000000000000000000020 /* ServiceStatus.swift in Sources */,

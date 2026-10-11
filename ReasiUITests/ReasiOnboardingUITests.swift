@@ -3,6 +3,99 @@ import UIKit
 
 final class ReasiOnboardingUITests: XCTestCase {
     @MainActor
+    func testSmartBasketReviewSelectionAndLargeTextLayout() throws {
+        continueAfterFailure = false
+        for largeText in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSmartBasketFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+            if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+            app.launch()
+            XCTAssertTrue(app.buttons["shopping-basket-options"].waitForExistence(timeout: 8))
+            app.buttons["shopping-basket-options"].tap()
+            app.buttons["Smart Basket"].tap()
+            XCTAssertTrue(app.navigationBars["Smart Basket"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["Estimated purchase costs"].waitForExistence(timeout: 5))
+            let brands = app.switches["smart-basket-brands"]
+            let packs = app.switches["smart-basket-packs"]
+            XCTAssertEqual(brands.value as? String, "0")
+            XCTAssertEqual(packs.value as? String, "0")
+            let apply = app.buttons["smart-basket-apply"]
+            XCTAssertFalse(apply.isEnabled)
+            let selection = app.switches["smart-basket-select-rice"]
+            for _ in 0..<8 where !selection.isHittable { app.swipeUp() }
+            XCTAssertTrue(selection.isHittable)
+            selection.tap()
+            XCTAssertTrue(apply.isEnabled)
+            XCTAssertGreaterThanOrEqual(apply.frame.height, 44)
+            XCTAssertEqual(app.frame.width, 390, accuracy: 1)
+            if largeText { XCTAssertGreaterThan(apply.frame.height, 64) }
+            XCTAssertGreaterThanOrEqual(apply.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(apply.frame.maxX, app.frame.maxX)
+            XCTAssertLessThanOrEqual(apply.frame.maxY, app.frame.maxY)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = largeText ? "Smart Basket large text" : "Smart Basket compact sheet"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            apply.tap()
+            XCTAssertTrue(app.staticTexts["Your selected swaps are saved"].waitForExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testSmartBasketPartialNoChangeEmptyAndErrorFixtures() throws {
+        continueAfterFailure = false
+        let fixtures = [
+            ("-ReasiSmartBasketPartialFixture", "Full totals unconfirmed"),
+            ("-ReasiSmartBasketNoChangeFixture", "No lower-cost swaps were confirmed for this basket."),
+            ("-ReasiSmartBasketUnsupportedFixture", "Prices can't be compared yet"),
+            ("-ReasiSmartBasketEmptyFixture", "There are no items to compare in this list."),
+            ("-ReasiSmartBasketErrorFixture", "Smart Basket is unavailable for this list right now.")
+        ]
+        for (fixture, expected) in fixtures {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSmartBasketFixture", fixture, "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+            app.launch()
+            XCTAssertTrue(app.buttons["shopping-basket-options"].waitForExistence(timeout: 8))
+            app.buttons["shopping-basket-options"].tap()
+            app.buttons["Smart Basket"].tap()
+            XCTAssertTrue(app.staticTexts[expected].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["smart-basket-apply"].isEnabled)
+            if fixture == "-ReasiSmartBasketPartialFixture" || fixture == "-ReasiSmartBasketUnsupportedFixture" {
+                XCTAssertFalse(app.staticTexts["A$0.00"].exists)
+                XCTAssertTrue(app.staticTexts["Unconfirmed"].exists)
+            }
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testSmartBasketLoadingExpiryAndOfflineEntry() throws {
+        continueAfterFailure = false
+        for fixture in ["-ReasiSmartBasketLoadingFixture", "-ReasiSmartBasketExpiryFixture", "-reasi-force-offline"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSmartBasketFixture", fixture, "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+            app.launch()
+            XCTAssertTrue(app.buttons["shopping-basket-options"].waitForExistence(timeout: 8))
+            app.buttons["shopping-basket-options"].tap()
+            if fixture == "-reasi-force-offline" {
+                XCTAssertFalse(app.buttons["Smart Basket"].isEnabled)
+            } else {
+                app.buttons["Smart Basket"].tap()
+                if fixture == "-ReasiSmartBasketLoadingFixture" {
+                    XCTAssertTrue(app.staticTexts["Checking your basket"].waitForExistence(timeout: 5))
+                    XCTAssertFalse(app.buttons["smart-basket-apply"].isEnabled)
+                    XCTAssertTrue(app.staticTexts["Estimated purchase costs"].waitForExistence(timeout: 8))
+                } else {
+                    XCTAssertTrue(app.staticTexts["This preview has expired. Refresh to check prices again."].waitForExistence(timeout: 8))
+                    XCTAssertFalse(app.buttons["smart-basket-apply"].isEnabled)
+                    XCTAssertFalse(app.switches["smart-basket-select-bananas"].isEnabled)
+                }
+            }
+            app.terminate()
+        }
+    }
+    @MainActor
     func testPlanBuilderPickerPreservesDraftAndOpensProductSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
