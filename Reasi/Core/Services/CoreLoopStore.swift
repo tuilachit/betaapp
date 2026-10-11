@@ -151,6 +151,8 @@ final class CoreLoopStore {
     var lastShoppingTrip: ShoppingTripSummary?
     var isMatchingShoppingProducts = false
     var shoppingProductMessage: String?
+    let smartBasketReview = SmartBasketReviewStore()
+    var isReviewingSmartBasket = false
 
     @ObservationIgnored private let localCache = ShoppingListLocalCache()
     @ObservationIgnored private let generationCache = GenerationRequestLocalCache()
@@ -215,7 +217,7 @@ final class CoreLoopStore {
 
     func matchShoppingProducts(supabase: SupabaseService, weeklyBudgetAud: Double? = nil, retry: Bool = false) {
         guard hasPlan, plan.source == .supabase, supabase.isSignedIn,
-              !isRestoringPlan, !isSwitchingStore, !isFinishingShopping, plan.shoppingList.status == .active else {
+              !isReviewingSmartBasket, !isRestoringPlan, !isSwitchingStore, !isFinishingShopping, plan.shoppingList.status == .active else {
             cancelProductMatching()
             return
         }
@@ -499,6 +501,7 @@ final class CoreLoopStore {
     func activateUser(_ userId: String?, selectedStore: StoreSummary) {
         guard activeUserId != userId else { return }
         cancelOutstandingWork()
+        smartBasketReview.invalidate()
         activeUserId = userId
         recentPlans = []
         lastShoppingTrip = nil
@@ -1562,7 +1565,8 @@ final class CoreLoopStore {
         }
     }
 
-    private func syncPendingChanges(supabase: SupabaseService) async {
+    private func syncPendingChanges(supabase: SupabaseService, isCurrent: () -> Bool = { true }) async {
+        guard isCurrent() else { return }
         reconcilePendingCheckState()
 
         for deletion in pendingDeletions {
@@ -1576,17 +1580,136 @@ final class CoreLoopStore {
         for pending in pendingImports {
             guard let clientId = UUID(uuidString: pending.idempotencyKey) else { continue }
             await syncPendingImport(pending, clientId: clientId, supabase: supabase)
+            guard isCurrent() else { return }
         }
     }
 
-    func flushPendingShoppingChanges(supabase: SupabaseService) async {
-        guard supabase.isSignedIn else { return }
-        await syncPendingChanges(supabase: supabase)
+    func flushPendingShoppingChanges(supabase: SupabaseService, isCurrent: () -> Bool = { true }) async {
+        guard supabase.isSignedIn, isCurrent() else { return }
+        await syncPendingChanges(supabase: supabase, isCurrent: isCurrent)
+        guard isCurrent() else { return }
         let outstandingTasks = Array(itemSyncTasks.values) + Array(deleteSyncTasks.values)
         for task in outstandingTasks {
             await task.value
+            guard isCurrent() else { return }
         }
         reconcilePendingCheckState()
+    }
+
+    func smartBasketContext(
+        supabase: SupabaseService, selectedStoreId: StoreID, isOnline: Bool
+    ) throws -> SmartBasketContext {
+        guard isOnline else { throw SmartBasketError.offline }
+        guard let identity = supabase.smartBasketIdentity, activeUserId == identity.userId else {
+            throw SmartBasketError.signedOut
+        }
+        guard hasPlan, plan.source == .supabase, plan.shoppingList.status == .active,
+              !isRestoringPlan, !isFinishingShopping, !generationState.isGenerating else {
+            throw SmartBasketError.unavailable
+        }
+        guard !isSwitchingStore, plan.storeId == selectedStoreId,
+              plan.shoppingList.storeId == selectedStoreId else { throw SmartBasketError.contextChanged }
+        let quantities = try SmartBasketContext.ownedQuantities(allShoppingItems.map { (id: $0.id, quantity: $0.quantity) })
+        return SmartBasketContext(
+            identity: identity, shoppingListId: plan.shoppingList.id, mealPlanId: plan.id,
+            storeId: selectedStoreId, listRevision: try smartBasketListRevision(),
+            quantities: quantities,
+            checkedLineIDs: checkedItemIDs
+        )
+    }
+
+    func smartBasketListRevision() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(SmartBasketListRevision(
+            shoppingList: plan.shoppingList, checkedStates: checkedStates,
+            pendingCheckIDs: pendingCheckItemIDs.sorted(),
+            pendingImports: pendingImports.sorted { $0.idempotencyKey < $1.idempotencyKey },
+            pendingDeletionKeys: pendingDeletions.map(\.cacheKey).sorted()
+        ))
+    }
+
+    func smartBasketOperations(
+        supabase: SupabaseService, appState: AppState, network: NetworkMonitor, expectedStoreId: StoreID
+    ) -> SmartBasketOperations {
+        let confirmationContext: () throws -> SmartBasketContext = {
+            guard appState.selectedStore.id == expectedStoreId else { throw SmartBasketError.contextChanged }
+            return try self.smartBasketContext(
+                supabase: supabase, selectedStoreId: expectedStoreId, isOnline: true
+            )
+        }
+        let context: () throws -> SmartBasketContext = {
+            guard network.isConnected else { throw SmartBasketError.offline }
+            return try confirmationContext()
+        }
+        return SmartBasketOperations(
+            context: context,
+            confirmationContext: confirmationContext,
+            flush: {
+                let expected = try context()
+                let matchingTask = self.productMatchingTask
+                self.cancelProductMatching()
+                await matchingTask?.value
+                guard expected.hasSameOwnerAndList(as: try context()) else { throw SmartBasketError.contextChanged }
+                await self.flushPendingShoppingChanges(supabase: supabase, isCurrent: {
+                    guard let current = try? context() else { return false }
+                    return expected.hasSameOwnerAndList(as: current)
+                })
+                guard expected.hasSameOwnerAndList(as: try context()) else { throw SmartBasketError.contextChanged }
+                guard self.pendingImports.isEmpty, self.pendingDeletions.isEmpty,
+                      self.pendingCheckItemIDs.isEmpty else { throw SmartBasketError.pendingChanges }
+            },
+            preview: { try await supabase.previewSavingBasket($0) },
+            apply: { try await supabase.applySavingBasket($0) },
+            reload: { receipt in
+                for _ in 0..<2 {
+                    let before = try context()
+                    guard receipt.context.hasSameOwnerAndList(as: before) else { throw SmartBasketError.contextChanged }
+                    guard let refreshed = try await supabase.fetchWeekPlan(id: receipt.response.mealPlanId) else {
+                        throw SmartBasketError.refreshRequired
+                    }
+                    let after = try context()
+                    guard receipt.context.hasSameOwnerAndList(as: after) else { throw SmartBasketError.contextChanged }
+                    // An acknowledged edit is no longer in the pending merge. Read again instead of overwriting it.
+                    do { try before.validateReload(afterRead: after) } catch { continue }
+                    try self.integrateSmartBasketPlan(refreshed, expected: after)
+                    return
+                }
+                throw SmartBasketError.refreshRequired
+            }
+        )
+    }
+
+    func integrateSmartBasketPlan(_ refreshed: WeekPlan, expected: SmartBasketContext) throws {
+        guard SmartBasketContext.hasUniqueOwnedIDs(allItemIDs(in: plan)),
+              SmartBasketContext.hasUniqueOwnedIDs(allItemIDs(in: refreshed)) else {
+            throw SmartBasketError.invalidResponse
+        }
+        guard activeUserId == expected.identity.userId,
+              expected.matches(shoppingListId: plan.shoppingList.id, mealPlanId: plan.id, storeId: plan.storeId),
+              expected.matches(shoppingListId: refreshed.shoppingList.id, mealPlanId: refreshed.id, storeId: refreshed.storeId),
+              refreshed.shoppingList.storeId == expected.storeId,
+              plan.shoppingList.status == .active, refreshed.shoppingList.status == .active,
+              !isSwitchingStore else { throw SmartBasketError.contextChanged }
+        var merged = refreshed
+        mergePendingImportedItems(from: plan, into: &merged)
+        for deletion in pendingDeletions where deletion.shoppingListId == merged.shoppingList.id {
+            removeItem(deletion.itemId, from: &merged)
+        }
+        for itemId in pendingCheckItemIDs {
+            setItemChecked(itemId, checked: checkedStates[itemId] ?? false, in: &merged)
+        }
+        merged.budgetTargetAud = merged.budgetTargetAud ?? plan.budgetTargetAud
+        let mergedIDs = allItemIDs(in: merged)
+        guard SmartBasketContext.hasUniqueOwnedIDs(mergedIDs) else { throw SmartBasketError.invalidResponse }
+        let mergedCheckedIDs = Self.checkedIDs(from: merged)
+        let mergedStates = Dictionary(uniqueKeysWithValues: mergedIDs.map { ($0, mergedCheckedIDs.contains($0)) })
+        plan = merged
+        checkedItemIDs = mergedCheckedIDs
+        checkedStates = mergedStates
+        reconcilePendingCheckState()
+        persistPlanCache()
+        persistCheckCache()
     }
 
     func finishShopping(
@@ -1671,6 +1794,8 @@ final class CoreLoopStore {
     ) async {
         guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }),
               plan.shoppingList.id == pending.shoppingListId else { return }
+        let expectedUserId = activeUserId
+        let expectedIdentityRevision = supabase.identityRevision
 
         do {
             guard let persistedID = try await supabase.addImportedCandidateToShoppingList(
@@ -1681,6 +1806,9 @@ final class CoreLoopStore {
                 idempotencyKey: clientId,
                 origin: pending.origin
             ) else { return }
+
+            guard activeUserId == expectedUserId, supabase.identityRevision == expectedIdentityRevision,
+                  !supabase.isSigningOut, plan.shoppingList.id == pending.shoppingListId else { return }
 
             guard pendingImports.contains(where: { $0.idempotencyKey == pending.idempotencyKey }) else {
                 let deletion = PendingShoppingListDeletion(
@@ -1988,6 +2116,14 @@ private struct PendingShoppingListDeletion: Codable, Hashable {
     let itemId: String
 
     var cacheKey: String { "\(shoppingListId):\(itemId)" }
+}
+
+private struct SmartBasketListRevision: Encodable {
+    let shoppingList: ShoppingList
+    let checkedStates: [String: Bool]
+    let pendingCheckIDs: [String]
+    let pendingImports: [PendingImportedItem]
+    let pendingDeletionKeys: [String]
 }
 
 private struct CachedPlanState: Codable {

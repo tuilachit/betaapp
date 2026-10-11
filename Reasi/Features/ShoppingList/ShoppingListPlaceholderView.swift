@@ -324,6 +324,10 @@ struct ShoppingListPlaceholderView: View {
                 )
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+            case .smartBasket(let storeId):
+                SmartBasketSheet(expectedStoreId: storeId)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
         }
         .task {
@@ -331,7 +335,7 @@ struct ShoppingListPlaceholderView: View {
             didTrackView = true
             coreLoop.markShoppingListViewed(analytics: analytics)
         }
-        .task(id: "\(coreLoop.shoppingProductContext)/\(coreLoop.hasPlan)/\(coreLoop.isRestoringPlan)/\(coreLoop.isSwitchingStore)/\(coreLoop.plan.shoppingList.status)/\(supabase.isSignedIn)") {
+        .task(id: "\(coreLoop.shoppingProductContext)/\(coreLoop.hasPlan)/\(coreLoop.isRestoringPlan)/\(coreLoop.isSwitchingStore)/\(coreLoop.isReviewingSmartBasket)/\(coreLoop.plan.shoppingList.status)/\(supabase.isSignedIn)") {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-ReasiMatchCatalogueFixture") {
                 await coreLoop.resolveMissingShoppingProducts(
@@ -352,6 +356,15 @@ struct ShoppingListPlaceholderView: View {
     private var displayedStore: StoreSummary {
         guard coreLoop.hasPlan else { return appState.selectedStore }
         return FixtureStores.store(id: coreLoop.plan.shoppingList.storeId) ?? appState.selectedStore
+    }
+
+    private var canPreviewSmartBasket: Bool {
+        #if DEBUG
+        if FixtureSmartBasket.isEnabled { return network.isConnected && !coreLoop.isShoppingCompleted && !coreLoop.isSwitchingStore }
+        #endif
+        return (try? coreLoop.smartBasketContext(
+            supabase: supabase, selectedStoreId: appState.selectedStore.id, isOnline: network.isConnected
+        )) != nil && coreLoop.allShoppingItems.contains { !coreLoop.checkedItemIDs.contains($0.id) }
     }
 
     private var header: some View {
@@ -420,17 +433,21 @@ struct ShoppingListPlaceholderView: View {
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.textMuted)
                     .contentTransition(.numericText())
-                Button {
-                    ReasiHaptics.light()
-                    activeSheet = .basketDetails
+                Menu {
+                    Button("Price details", systemImage: "info.circle") { activeSheet = .basketDetails }
+                    Button("Smart Basket", systemImage: "arrow.triangle.2.circlepath") {
+                        activeSheet = .smartBasket(coreLoop.plan.storeId)
+                    }
+                    .disabled(!canPreviewSmartBasket)
                 } label: {
-                    Image(systemName: "info.circle")
+                    Image(systemName: "ellipsis")
                         .font(.system(size: 17, weight: .regular))
                         .foregroundStyle(Color.reasi.muted)
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Basket price details")
+                .accessibilityLabel("Basket options")
+                .accessibilityIdentifier("shopping-basket-options")
             }
 
             GeometryReader { proxy in
@@ -1344,6 +1361,7 @@ private enum ShoppingListSheet: Identifiable {
     case assistant
     case itemDetails(ShoppingListItem)
     case basketDetails
+    case smartBasket(StoreID)
 
     var id: String {
         switch self {
@@ -1361,6 +1379,8 @@ private enum ShoppingListSheet: Identifiable {
             "item-details-\(item.id)"
         case .basketDetails:
             "basket-details"
+        case .smartBasket(let storeId):
+            "smart-basket-\(storeId.rawValue)"
         }
     }
 }

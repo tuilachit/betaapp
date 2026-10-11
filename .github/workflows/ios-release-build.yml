@@ -33,3 +33,61 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  smart-basket-offline-tests:
+    name: Smart Basket offline fixture tests
+    runs-on: macos-26
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Prepare credential-free fixture build
+        run: touch Reasi/Config/ReasiConfig.xcconfig
+
+      - name: Run host model and coordinator probes
+        run: zsh scripts/test-smart-basket.sh
+
+      - name: Create 390-point CI simulator
+        run: |
+          set -euo pipefail
+          runtime=$(xcrun simctl list runtimes available --json | ruby -rjson -e '
+            runtimes = JSON.parse(STDIN.read).fetch("runtimes").select { |r| r["isAvailable"] && r["identifier"].include?("SimRuntime.iOS-") }
+            abort "No available iOS runtime" if runtimes.empty?
+            puts runtimes.max_by { |r| r.fetch("version").split(".").map(&:to_i) }.fetch("identifier")')
+          device_type=$(xcrun simctl list devicetypes --json | ruby -rjson -e '
+            types = JSON.parse(STDIN.read).fetch("devicetypes")
+            device = ["iPhone 16e", "iPhone 14"].map { |name| types.find { |d| d["name"] == name } }.compact.first
+            abort "No supported 390-point iPhone device type" unless device
+            puts device.fetch("identifier")')
+          simulator_id=$(xcrun simctl create "Smart Basket 390" "$device_type" "$runtime")
+          echo "SMART_BASKET_SIMULATOR_ID=$simulator_id" >> "$GITHUB_ENV"
+
+      - name: Execute offline fixture XCTest and UI tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Reasi.xcodeproj \
+            -scheme Reasi \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SMART_BASKET_SIMULATOR_ID" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath SmartBasketTests.xcresult \
+            -only-testing:ReasiTests/SmartBasketTests \
+            -only-testing:ReasiUITests/ReasiOnboardingUITests/testSmartBasketReviewSelectionAndLargeTextLayout \
+            -only-testing:ReasiUITests/ReasiOnboardingUITests/testSmartBasketPartialNoChangeEmptyAndErrorFixtures \
+            -only-testing:ReasiUITests/ReasiOnboardingUITests/testSmartBasketLoadingExpiryAndOfflineEntry \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Preserve test results and fixture screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-basket-offline-test-results
+          path: SmartBasketTests.xcresult
+          if-no-files-found: ignore
