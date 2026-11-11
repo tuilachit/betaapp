@@ -1321,3 +1321,22 @@ final class ReasiPlanBuilderDefaultsTests: XCTestCase {
         XCTAssertNil(draft.budgetTargetAud)
     }
 }
+
+final class ReasiSampleDatesTests: XCTestCase {
+    private func date(_ value: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.date(from: value)!
+    }
+
+    func testWeekStartsOnMondayAndLabelsTheCurrentWeek() {
+        let thursday = date("2026-11-12 09:00")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(now: thursday)), "2026-11-09")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(weeksAgo: 4, now: thursday)), "2026-10-12")
+        XCTAssertEqual(SampleDates.weekLabel(now: thursday), "November 9 - 15")
+        XCTAssertEqual(SampleDates.weekLabel(now: date("2026-12-02 09:00")), "November 30 - December 6")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(now: date("2026-11-15 23:30"))), "2026-11-09")
+    }
+}

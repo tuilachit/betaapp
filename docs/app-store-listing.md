@@ -103,4 +103,8 @@ Saved in `docs/app-store-screenshots/` at 1320 × 2868 (6.9"), the size App Stor
 4. `04-list.png`: the shopping list.
 5. `05-spend.png`: Spend month view with the track record.
 
-They use the app's built-in sample data. Take them again from a real account before launch if the sample shows anything you wouldn't show customers.
+They use the app's built-in sample data, whose dates follow the day of capture, so the week, Spend range and Home date always agree. To recapture after a design change, run this on an iPhone 17 Pro Max simulator and export the attachments from the result bundle:
+
+```bash
+TEST_RUNNER_REASI_CAPTURE_SCREENSHOTS=1 xcodebuild test -project Reasi.xcodeproj -scheme Reasi -destination 'name=iPhone 17 Pro Max' -only-testing:ReasiUITests/ReasiAppStoreScreenshots -resultBundlePath shots.xcresult
+```

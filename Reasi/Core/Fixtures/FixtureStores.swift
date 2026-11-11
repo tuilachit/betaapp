@@ -44,13 +44,58 @@ enum FixtureStores {
     }
 }
 
+/// Dates for sample data, relative to today, so sample screens never show a stale week.
+enum SampleDates {
+    private static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2 // weeks start on Monday, as in Reasi's plans
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    /// Monday of the current week, minus `weeksAgo` weeks.
+    static func weekStart(weeksAgo: Int = 0, now: Date = .now) -> Date {
+        let calendar = calendar
+        let monday = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? calendar.startOfDay(for: now)
+        return calendar.date(byAdding: .day, value: -7 * weeksAgo, to: monday) ?? monday
+    }
+
+    static func dayKey(_ date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    static func timestamp(_ date: Date, hour: Int = 8, minute: Int = 30) -> String {
+        let moment = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: moment)
+    }
+
+    static func day(_ offset: Int, from date: Date) -> Date {
+        calendar.date(byAdding: .day, value: offset, to: date) ?? date
+    }
+
+    /// "November 9 - 15", or "November 30 - December 6" across a month boundary.
+    static func weekLabel(now: Date = .now) -> String {
+        let start = weekStart(now: now)
+        let end = day(6, from: start)
+        let month = Date.FormatStyle().month(.wide).locale(Locale(identifier: "en_AU"))
+        let startMonth = start.formatted(month), endMonth = end.formatted(month)
+        let startDay = calendar.component(.day, from: start), endDay = calendar.component(.day, from: end)
+        return startMonth == endMonth
+            ? "\(startMonth) \(startDay) - \(endDay)"
+            : "\(startMonth) \(startDay) - \(endMonth) \(endDay)"
+    }
+}
+
 enum FixtureWeekPlan {
     static let current = WeekPlan(
         id: "fixture-week-plan",
         source: .fixture,
         storeId: .topRyde,
         storeName: "Coles Top Ryde",
-        weekLabel: "July 13 - 19",
+        weekLabel: SampleDates.weekLabel(),
         planningNotes: "A calm seven-dinner plan with shared herbs, greens, rice, pasta, and yoghurt so the shop stays efficient without feeling repetitive.",
         meals: [
             MealSummary(
