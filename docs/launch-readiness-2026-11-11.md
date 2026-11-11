@@ -81,6 +81,10 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 7. Final build
 
+**Archived on 12 Nov 2026.** Build `1.0.0 (13)` is in Xcode Organizer as `Reasi-1.0.0-13.xcarchive`. It's signed for team Y57R7X3G78, carries the Sign in with Apple entitlement, and passes the release preflight as a device build. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place.
+
+CI note: PR #47's `iOS Release build` run stayed queued with no job created, because GitHub never assigned a `macos-26` hosted runner. The same workflow ran on 11 Oct. If it is still queued, re-run it from the Actions tab.
+
 - Run the Release configuration on a physical iPhone.
 - Archive with Any iOS Device selected, then Validate and Upload in Organizer.
 
