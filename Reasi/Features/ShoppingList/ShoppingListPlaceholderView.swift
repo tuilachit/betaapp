@@ -455,6 +455,18 @@ struct ShoppingListPlaceholderView: View {
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.muted)
             }
+            if let capturedAt = summary.oldestPriceCapturedAt {
+                let freshness = PriceFreshness(capturedAt: capturedAt)
+                Label {
+                    Text(freshness.label(retailer: displayedStore.retailerDisplayName))
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: freshness.isStale ? "exclamationmark.circle" : "clock")
+                }
+                .font(ReasiTypography.caption)
+                .foregroundStyle(freshness.isStale ? Color.reasi.warning : Color.reasi.muted)
+                .accessibilityIdentifier("price-freshness")
+            }
             Text("Tap the circle when it’s in your trolley.")
                 .font(ReasiTypography.font(size: 12, relativeTo: .caption))
                 .foregroundStyle(Color.reasi.muted)
@@ -672,7 +684,7 @@ struct ShoppingListPlaceholderView: View {
                     )
                 }
             } label: {
-                Label("Plan my week", systemImage: "sparkles")
+                Label("Plan my week", systemImage: "calendar.badge.plus")
             }
             .buttonStyle(ReasiPrimaryButtonStyle())
         }

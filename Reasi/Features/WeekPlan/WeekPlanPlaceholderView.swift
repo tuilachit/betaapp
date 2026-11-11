@@ -92,7 +92,7 @@ struct WeekPlanPlaceholderView: View {
                         Task { await coreLoop.selectRecentPlan(id: summary.id, supabase: supabase) }
                     } label: {
                         HStack(spacing: ReasiSpacing.s2) {
-                            Image(systemName: summary.kind == .week ? "calendar" : "sparkles")
+                            Image(systemName: summary.kind == .week ? "calendar" : "wineglass")
                             Text(summary.name).lineLimit(1)
                         }
                         .font(ReasiTypography.caption)
@@ -207,7 +207,7 @@ struct WeekPlanPlaceholderView: View {
                     appState.openPlanBuilder(entryMethod: .describe)
                 }
             } label: {
-                Label("Create a plan", systemImage: "sparkles")
+                Label("Create a plan", systemImage: "plus")
             }
             .buttonStyle(ReasiPrimaryButtonStyle())
         }

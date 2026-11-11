@@ -9,6 +9,7 @@ struct HomeView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
     @Environment(OnboardingStore.self) private var onboarding
+    @Environment(SpendingStore.self) private var spending
 
     @State private var showStorePicker = false
 
@@ -16,6 +17,7 @@ struct HomeView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
                 header
+                weekMoneyCard
                 creationActions
                 if coreLoop.generationState.isGenerating {
                     GenerationProgressCard(
@@ -73,7 +75,104 @@ struct HomeView: View {
         }
         .task {
             analytics.capture(.coreHomeViewed)
+            if spending.dashboard == nil {
+                await spending.refresh(supabase: supabase)
+            }
         }
+    }
+
+    /// This week's money at a glance: what has been spent against the target, and what the current list will cost.
+    private var weekMoneyCard: some View {
+        let weekDashboard = spending.dashboard.flatMap { $0.period == .week ? $0 : nil }
+        let target = weekDashboard?.weeklyBudgetAud ?? onboarding.preferences.weeklyGroceryBudgetAud
+        let spent = weekDashboard?.completedSpendAud ?? 0
+        let summary = coreLoop.basketPriceSummary
+        let planned = coreLoop.hasPlan && summary.pricedItemCount > 0 && !coreLoop.isShoppingCompleted
+            ? summary.plannedTotalAud
+            : nil
+        let progress = target.map { $0 > 0 ? min(max(spent / $0, 0), 1) : 0 } ?? 0
+        let isOver = target.map { spent > $0 } ?? false
+
+        return Button {
+            ReasiHaptics.light()
+            appState.showSpend()
+        } label: {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                HStack {
+                    Text("THIS WEEK")
+                        .font(ReasiTypography.caption)
+                        .tracking(0.6)
+                        .foregroundStyle(Color.reasi.muted)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.reasi.dim)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s2) {
+                    Text(spent, format: .currency(code: "AUD"))
+                        .font(ReasiTypography.font(size: 34, weight: .semibold, relativeTo: .title))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.reasi.text)
+                        .contentTransition(.numericText(value: spent))
+                    Text("spent")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+
+                if let target {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.reasi.surfaceHigh)
+                            Capsule()
+                                .fill(isOver ? Color.reasi.warning : Color.reasi.text)
+                                .frame(width: proxy.size.width * progress)
+                        }
+                    }
+                    .frame(height: 5)
+
+                    Text(isOver
+                         ? "\((spent - target).formatted(.currency(code: "AUD"))) over your \(WeeklyBudgetGuide.wholeDollars(target)) target"
+                         : "\((target - spent).formatted(.currency(code: "AUD"))) left of your \(WeeklyBudgetGuide.wholeDollars(target)) target")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(isOver ? Color.reasi.warning : Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Set a weekly target to see how each shop compares.")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let planned {
+                    Divider().overlay(Color.reasi.border)
+                    HStack {
+                        Label(
+                            summary.pricedItemCount < summary.totalItemCount
+                                ? "Current list · \(summary.pricedItemCount) of \(summary.totalItemCount) priced"
+                                : "Current list",
+                            systemImage: "checklist"
+                        )
+                        .foregroundStyle(Color.reasi.textMuted)
+                        Spacer()
+                        Text(planned, format: .currency(code: "AUD"))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.reasi.text)
+                    }
+                    .font(ReasiTypography.callout)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+        }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityHint("Opens Spend")
+        .accessibilityIdentifier("home-week-money")
     }
 
     private var header: some View {
@@ -82,7 +181,7 @@ struct HomeView: View {
                 Text("Home")
                     .font(ReasiTypography.largeTitle)
                     .foregroundStyle(Color.reasi.text)
-                Text("A calm week of meals, ready when you are.")
+                Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "en_AU"))))
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.muted)
             }
@@ -98,7 +197,7 @@ struct HomeView: View {
             analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
             appState.openPlanBuilder(entryMethod: .describe)
         } label: {
-            Label("Create a plan", systemImage: "sparkles")
+            Label("Create a plan", systemImage: "plus")
         }
         .buttonStyle(ReasiPrimaryButtonStyle())
         .disabled(coreLoop.generationState.isGenerating)
@@ -397,10 +496,13 @@ private struct HomeMealArtwork: View {
         .clipped()
     }
 
+    /// No photo: a quiet mark in the corner so the meal title below stays the focus.
     private var fallback: some View {
         Image(systemName: "fork.knife")
-            .font(.system(size: 30, weight: .medium))
-            .foregroundStyle(Color.reasi.onImageMuted)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(Color.reasi.onImageMuted.opacity(0.7))
+            .padding(ReasiSpacing.s5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 }
 
@@ -456,6 +558,7 @@ struct PlanBuilderView: View {
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
+    @Environment(OnboardingStore.self) private var onboarding
 
     let entryMethod: EntryMethod
 
@@ -539,7 +642,11 @@ struct PlanBuilderView: View {
             }
         }
         .task {
-            appState.planBuilder.begin(entryMethod: entryMethod)
+            appState.planBuilder.begin(
+                entryMethod: entryMethod,
+                householdSize: onboarding.preferences.household?.householdSize,
+                weeklyBudgetAud: onboarding.preferences.weeklyGroceryBudgetAud
+            )
             if let restored = appState.planBuilder.draft {
                 brief = restored
             }
@@ -554,6 +661,12 @@ struct PlanBuilderView: View {
             }
         }
         .onChange(of: brief.kind) { oldKind, newKind in
+            let weeklyBudget = onboarding.preferences.weeklyGroceryBudgetAud
+            if newKind == .occasion, brief.budgetTargetAud == weeklyBudget {
+                brief.budgetTargetAud = nil
+            } else if newKind == .week, brief.budgetTargetAud == nil {
+                brief.budgetTargetAud = weeklyBudget
+            }
             if newKind == .week {
                 brief.desiredCount = 7
             } else if brief.desiredCount == oldKind.defaultDesiredCount {
@@ -878,7 +991,7 @@ struct PlanBuilderView: View {
             ])
         } label: {
             HStack(alignment: .top, spacing: ReasiSpacing.s3) {
-                Image(systemName: recommended ? "sparkles" : "arrow.triangle.swap")
+                Image(systemName: recommended ? "checkmark.circle" : "arrow.triangle.swap")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(recommendation.title).font(ReasiTypography.bodyMedium)
                     Text(recommendation.reason).font(ReasiTypography.caption).foregroundStyle(Color.reasi.textMuted)

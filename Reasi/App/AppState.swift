@@ -104,14 +104,19 @@ final class PlanBuilderStore {
         draft = userId.flatMap(cache.load)
     }
 
-    func begin(entryMethod: EntryMethod) {
+    /// Starts a new draft unless one is in progress. A new draft takes the household size and,
+    /// for a week plan, the weekly budget saved in Profile, so the user never re-enters them.
+    func begin(entryMethod: EntryMethod, householdSize: Int? = nil, weeklyBudgetAud: Double? = nil) {
         guard draft == nil else { return }
-        update(
-            PlanBrief(
-                kind: entryMethod == .describe ? .occasion : .week,
-                entryMethod: entryMethod
-            )
-        )
+        let kind: PlanKind = entryMethod == .describe ? .occasion : .week
+        var brief = PlanBrief(kind: kind, entryMethod: entryMethod)
+        if let householdSize, householdSize > 0 {
+            brief.serves = householdSize
+        }
+        if kind == .week, let weeklyBudgetAud, weeklyBudgetAud.isFinite, weeklyBudgetAud > 0 {
+            brief.budgetTargetAud = weeklyBudgetAud
+        }
+        update(brief)
     }
 
     func update(_ brief: PlanBrief) {

@@ -35,7 +35,7 @@ Do not duplicate the backend. The Supabase schema, RLS, and `generate-week-plan`
 
 ## Phase 4 Status
 
-- Release configuration: `1.0.0 (1)`, bundle ID `ai.reasi.ios`.
+- Release configuration: `1.0.0 (13)`, bundle ID `ai.reasi.ios`.
 - Apple, Google, and email auth use Supabase sessions stored in Keychain.
 - Debug anonymous auth and fixture fallbacks are compile-gated and forced off in Release.
 - Camera/photo usage descriptions, privacy URL plumbing, account deletion, offline/error states, and saved-plan restoration are wired.

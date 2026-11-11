@@ -4,7 +4,7 @@ Current app metadata:
 
 - Bundle ID: `ai.reasi.ios`
 - Version: `1.0.0`
-- Build: `1`
+- Build: `13`
 - Deployment target: iOS 26.0
 - Privacy URL: `https://www.reasiai.com/privacy`
 - Terms URL: `https://www.reasiai.com/terms`
@@ -22,7 +22,7 @@ Current app metadata:
 7. Confirm the Release configuration contains only public client values: Supabase URL/publishable key, PostHog public project key, RevenueCat public iOS SDK key, and Google client ID/scheme.
 8. Merge the backend generation, store/state, Reasi Pro, and release-security PRs in dependency order, then run the documented backend TestFlight release workflow.
 9. In Xcode, select the Reasi target, choose the registered team, and confirm automatic signing resolves an Apple Distribution profile.
-10. Increment `CURRENT_PROJECT_VERSION` for every upload after build 1.
+10. Increment `CURRENT_PROJECT_VERSION` for every upload. Build 12 is the last one uploaded; this branch is build 13.
 11. Run `scripts/testflight-release-preflight.sh` against the built Release app with `REQUIRE_APPLE_AUTH=1` and `CHECK_LIVE_LEGAL_URLS=1`.
 12. Build and run the Release configuration on a physical iPhone, then choose Product > Archive with Any iOS Device selected.
 13. In Organizer, run Validate App before Distribute App > App Store Connect > Upload.
@@ -54,12 +54,12 @@ Current app metadata:
 3. In RevenueCat, configure entitlement `reasi_pro`, offering `default`, all three App Store products, and the public iOS SDK key used by the app.
 4. Configure and sign the RevenueCat-to-Supabase webhook; keep that secret server-side only.
 5. With sandbox accounts, test the weekly purchase (no trial), the monthly 3-day trial, the annual 14-day trial, cancellation, expiration, billing failure, restore, and offline entitlement behavior.
-6. Confirm each account receives exactly one complete free-preview plan and can keep using that plan after the preview is claimed.
+6. Confirm there is no free plan: a new account reaches the paywall after onboarding, and plan generation is refused until Reasi Pro is active (trial or paid). The 3-day aisle-guide contributor reward is the only way to generate without a purchase.
 
 ## App Store Connect
 
 1. Open My Apps > Reasi > TestFlight.
-2. Wait for build `1.0.0 (1)` to finish processing.
+2. Wait for build `1.0.0 (13)` to finish processing.
 3. Complete the export-compliance question. Reasi currently uses standard HTTPS transport and declares no non-exempt encryption.
 4. Add internal testers under Users and Access if they are not already App Store Connect users.
 5. Create an Internal Testing group, add the processed build, then add the testers.
@@ -75,7 +75,7 @@ The hosted policy must explain:
 - Meal preferences, generated plans, shopping lists, product imports, uploaded product/list photos, and assistant chat data stored for the user.
 - OpenAI processing performed only through Supabase Edge Functions for meal generation, vision/OCR, product resolution, comparison, and shopping assistance.
 - PostHog analytics, including the categories of events collected and the fact that raw grocery lists, photos, and full chat content are not intentionally sent to analytics.
-- RevenueCat and Apple purchase processing, free-preview access, subscription state, renewal, and restore behavior.
+- RevenueCat and Apple purchase processing, introductory trials, the aisle-guide contributor reward, subscription state, renewal, and restore behavior.
 - Retention periods, security measures, user rights, contact details, and how account deletion removes the account, owned rows, and uploaded images.
 
 ## External Setup Still Required

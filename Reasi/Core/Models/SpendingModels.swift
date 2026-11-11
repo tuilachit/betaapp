@@ -400,3 +400,63 @@ extension SpendingTripDetail {
     )
 }
 #endif
+
+/// How the user's finished weeks compare with their current weekly target.
+/// Only weeks that are over and had a completed shop count; the week in progress never does.
+struct BudgetTrackRecord: Equatable {
+    let target: Double
+    let completedWeeks: Int
+    let weeksOnTarget: Int
+    /// Positive when the user spent less than the target in total across completed weeks.
+    let netUnderTargetAud: Double
+    /// Consecutive most recent completed weeks at or under the target.
+    let currentStreak: Int
+
+    init?(trend: [SpendingTrendPoint], weeklyTarget: Double?, today: Date = Date(), calendar: Calendar = .current) {
+        guard let weeklyTarget, weeklyTarget.isFinite, weeklyTarget > 0 else { return nil }
+        let todayKey = Self.dayKey(today, calendar: calendar)
+        let finished = trend
+            .filter { $0.amountAud.isFinite && $0.amountAud > 0 }
+            .filter { point in
+                guard let end = Self.weekEndKey(point.weekStart) else { return false }
+                return end <= todayKey
+            }
+            .sorted { $0.weekStart < $1.weekStart }
+        guard !finished.isEmpty else { return nil }
+
+        target = weeklyTarget
+        completedWeeks = finished.count
+        weeksOnTarget = finished.filter { Self.cents($0.amountAud) <= Self.cents(weeklyTarget) }.count
+        netUnderTargetAud = (Double(Self.cents(weeklyTarget) * finished.count) - Double(finished.reduce(0) { $0 + Self.cents($1.amountAud) })) / 100
+        currentStreak = finished.reversed().prefix { Self.cents($0.amountAud) <= Self.cents(weeklyTarget) }.count
+    }
+
+    /// e.g. "3 of 4 weeks on target · A$86 under in total"
+    var summary: String {
+        let weeks = "\(weeksOnTarget) of \(completedWeeks) \(completedWeeks == 1 ? "week" : "weeks") on target"
+        let net = abs(netUnderTargetAud).formatted(.currency(code: "AUD").locale(Locale(identifier: "en_AU")).precision(.fractionLength(0)))
+        if Self.cents(abs(netUnderTargetAud)) < 100 { return "\(weeks) · right on target overall" }
+        return netUnderTargetAud > 0 ? "\(weeks) · \(net) under in total" : "\(weeks) · \(net) over in total"
+    }
+
+    private static func cents(_ value: Double) -> Int { Int((value * 100).rounded()) }
+
+    private static func dayKey(_ date: Date, calendar: Calendar) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// The first day after the week, as yyyy-MM-dd, computed in UTC so the result never shifts with the device time zone.
+    private static func weekEndKey(_ weekStart: String) -> String? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_AU_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let start = formatter.date(from: weekStart) else { return nil }
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let end = utc.date(byAdding: .day, value: 7, to: start) else { return nil }
+        return formatter.string(from: end)
+    }
+}

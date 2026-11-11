@@ -180,12 +180,26 @@ struct SpendView: View {
             }
             .accessibilityElement(children: .combine)
 
+            let record = BudgetTrackRecord(trend: dashboard.trend, weeklyTarget: dashboard.weeklyBudgetAud)
             if dashboard.period == .week {
                 weeklyBudgetStatus(dashboard)
+                if let record, record.currentStreak >= 2 {
+                    Label("On target \(record.currentStreak) weeks running", systemImage: "checkmark.seal")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.text)
+                        .accessibilityIdentifier("spend-target-streak")
+                }
             } else if let average = dashboard.averageWeeklySpendAud {
                 Text("\(average.formatted(.currency(code: "AUD"))) average per week")
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.textMuted)
+                if let record {
+                    Text(record.summary)
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(record.netUnderTargetAud >= 0 ? Color.reasi.text : Color.reasi.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("spend-track-record")
+                }
             } else {
                 Text("Your weekly average will appear after more completed shops.")
                     .font(ReasiTypography.callout)
@@ -617,24 +631,70 @@ struct SpendView: View {
     }
 
     private func monthTrend(_ dashboard: SpendingDashboard) -> some View {
-        let maximum = max(dashboard.trend.map(\.amountAud).max() ?? 1, 1)
+        let target = dashboard.weeklyBudgetAud.flatMap { $0 > 0 ? $0 : nil }
+        let maximum = max(dashboard.trend.map(\.amountAud).max() ?? 1, target ?? 1, 1)
+        let barArea: CGFloat = 84
         return VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            sectionHeader("Weekly trend")
-            HStack(alignment: .bottom, spacing: ReasiSpacing.s3) {
-                ForEach(dashboard.trend) { point in
-                    VStack(spacing: ReasiSpacing.s2) {
-                        RoundedRectangle(cornerRadius: ReasiRadius.sm, style: .continuous)
-                            .fill(Color.reasi.textMuted)
-                            .frame(height: max(8, 84 * point.amountAud / maximum))
-                        Text(SpendingDateCopy.shortDate(point.weekStart))
-                            .font(ReasiTypography.navLabel)
-                            .foregroundStyle(Color.reasi.muted)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
+            HStack(alignment: .firstTextBaseline) {
+                sectionHeader("Weekly trend")
+                Spacer(minLength: ReasiSpacing.s2)
+                if let target {
+                    Text("Target \(target.formatted(.currency(code: "AUD").precision(.fractionLength(0))))")
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(Color.reasi.muted)
                 }
             }
-            .frame(height: 112, alignment: .bottom)
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    HStack(alignment: .bottom, spacing: ReasiSpacing.s3) {
+                        ForEach(dashboard.trend) { point in
+                            let isOver = target.map { point.amountAud > $0 } ?? false
+                            UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6, style: .continuous)
+                                .fill(isOver ? Color.reasi.warning : Color.reasi.text)
+                                .frame(width: 22, height: max(6, barArea * point.amountAud / maximum))
+                                .frame(maxWidth: .infinity)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("Week of \(SpendingDateCopy.shortDate(point.weekStart))")
+                                .accessibilityValue(
+                                    point.amountAud.formatted(.currency(code: "AUD"))
+                                        + (target == nil ? "" : isOver ? ", over target" : ", on target")
+                                )
+                        }
+                    }
+                    if let target {
+                        DashedRule()
+                            .stroke(Color.reasi.text.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            .frame(height: 1)
+                            .offset(y: -barArea * target / maximum)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .frame(height: barArea, alignment: .bottom)
+
+                Rectangle()
+                    .fill(Color.reasi.border)
+                    .frame(height: 1)
+                    .accessibilityHidden(true)
+
+                HStack(alignment: .top, spacing: ReasiSpacing.s3) {
+                    ForEach(dashboard.trend) { point in
+                        VStack(spacing: 2) {
+                            Text(point.amountAud.formatted(.currency(code: "AUD").precision(.fractionLength(0))))
+                                .font(ReasiTypography.font(size: 13, weight: .semibold, relativeTo: .caption))
+                                .monospacedDigit()
+                                .foregroundStyle(Color.reasi.text)
+                            Text(SpendingDateCopy.shortDate(point.weekStart))
+                                .font(ReasiTypography.navLabel)
+                                .foregroundStyle(Color.reasi.muted)
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.top, ReasiSpacing.s2)
+                .accessibilityHidden(true)
+            }
         }
     }
 
@@ -1420,5 +1480,15 @@ private enum SpendingDateCopy {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: value)
+    }
+}
+
+/// A horizontal line drawn as a path so it can take a dash pattern.
+private struct DashedRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }

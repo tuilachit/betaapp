@@ -82,7 +82,7 @@ struct OnboardingPlaceholderView: View {
         HStack(spacing: ReasiSpacing.s4) {
             if onboarding.currentStep.rawValue >= OnboardingStep.purpose.rawValue {
                 HStack(spacing: ReasiSpacing.s1) {
-                    ForEach(0..<8, id: \.self) { index in
+                    ForEach(0..<OnboardingStep.progressStepCount, id: \.self) { index in
                         Capsule()
                             .fill(
                                 index <= onboarding.currentStep.progressIndex
@@ -134,6 +134,8 @@ struct OnboardingPlaceholderView: View {
                 purposeScreen
             case .household:
                 householdScreen
+            case .budget:
+                budgetScreen
             case .foodStyle:
                 foodStyleScreen
             case .spendingTone:
@@ -158,50 +160,86 @@ struct OnboardingPlaceholderView: View {
     }
 
     private var valueScreen: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 0 : 54)
+        VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 0 : ReasiSpacing.s6)
 
-            Circle()
-                .fill(Color.reasi.surface)
-                .frame(width: 64, height: 64)
-                .overlay {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(Color.reasi.text)
-                }
-                .overlay {
-                    Circle().stroke(Color.reasi.borderStrong, lineWidth: 1)
-                }
+            if !dynamicTypeSize.isAccessibilitySize {
+                OnboardingReceiptPreview()
+                    .frame(maxWidth: 320)
+                    .frame(maxWidth: .infinity)
+            }
 
-            Text("Never think about\ngroceries again.")
-                .font(ReasiTypography.font(size: 42, weight: .semibold, relativeTo: .largeTitle))
-                .foregroundStyle(Color.reasi.text)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
+                Text("Groceries that\nfit your budget.")
+                    .font(ReasiTypography.font(size: 40, weight: .semibold, relativeTo: .largeTitle))
+                    .tracking(-0.8)
+                    .foregroundStyle(Color.reasi.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
 
-            Text("A useful week of meals and one calm list, ready when you are.")
-                .font(ReasiTypography.body)
-                .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+                Text("Plan the week around Coles prices, shop from one list, and see where every dollar went.")
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 0 : 80)
+            Spacer(minLength: 0)
         }
-        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 0 : 540, alignment: .topLeading)
+        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 0 : 560, alignment: .topLeading)
     }
 
     private var benefitScreen: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
             onboardingHeading(
-                eyebrow: "A calmer weekly shop",
-                title: "Plan your week, build your list, and shop smarter in minutes."
+                eyebrow: "How it works",
+                title: "Three steps, every week."
             )
 
-            VStack(spacing: ReasiSpacing.s3) {
-                benefitRow(symbol: "calendar", title: "Seven dinners", detail: "Practical meals you can actually cook")
-                benefitRow(symbol: "checklist", title: "One smart list", detail: "Ingredients consolidated for the week")
-                benefitRow(symbol: "storefront", title: "Your store order", detail: "Grouped around the way you walk the shop")
+            VStack(spacing: 0) {
+                howItWorksRow(
+                    number: "01",
+                    title: "Set your number",
+                    detail: "Tell Reasi what you want to spend. Each plan is built to fit it."
+                )
+                Divider().overlay(Color.reasi.border)
+                howItWorksRow(
+                    number: "02",
+                    title: "Shop one list",
+                    detail: "Your meals become one list, matched to products at your store and ordered by aisle."
+                )
+                Divider().overlay(Color.reasi.border)
+                howItWorksRow(
+                    number: "03",
+                    title: "See where it went",
+                    detail: "Tick items off as you shop. Reasi keeps the total and shows how each week compares."
+                )
             }
         }
+    }
+
+    private func howItWorksRow(number: String, title: String, detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s4) {
+            Text(number)
+                .font(ReasiTypography.font(size: 13, weight: .semibold, relativeTo: .caption))
+                .monospacedDigit()
+                .foregroundStyle(Color.reasi.muted)
+                .frame(width: 26, alignment: .leading)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+                Text(title)
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, ReasiSpacing.s5)
+        .accessibilityElement(children: .combine)
     }
 
     private var purposeScreen: some View {
@@ -259,7 +297,7 @@ struct OnboardingPlaceholderView: View {
                     selectionCard(
                         title: choice.title,
                         detail: "Recipes and quantities for \(choice.householdSize)",
-                        symbol: choice.householdSize == 1 ? "person" : "person.2",
+                        symbol: choice.symbol,
                         isSelected: onboarding.preferences.household == choice
                     ) {
                         onboarding.preferences.household = choice
@@ -268,6 +306,106 @@ struct OnboardingPlaceholderView: View {
                 }
             }
         }
+    }
+
+    private var budgetScreen: some View {
+        let amount = onboarding.preferences.weeklyGroceryBudgetAud
+            ?? WeeklyBudgetGuide.startingAmount(for: onboarding.preferences.household)
+
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
+            onboardingHeading(
+                eyebrow: "Weekly budget",
+                title: "What would you like to spend each week?"
+            )
+
+            VStack(spacing: ReasiSpacing.s5) {
+                HStack(spacing: ReasiSpacing.s3) {
+                    budgetStepButton(symbol: "minus", label: "Ten dollars less") {
+                        onboarding.setWeeklyBudget(amount - WeeklyBudgetGuide.step)
+                    }
+                    .disabled(amount <= WeeklyBudgetGuide.minimum)
+
+                    VStack(spacing: ReasiSpacing.s1) {
+                        Text(WeeklyBudgetGuide.wholeDollars(amount))
+                            .font(ReasiTypography.font(size: 56, weight: .semibold, relativeTo: .largeTitle))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.reasi.text)
+                            .contentTransition(.numericText(value: amount))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Text("a week")
+                            .font(ReasiTypography.callout)
+                            .foregroundStyle(Color.reasi.muted)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Weekly budget")
+                    .accessibilityValue(WeeklyBudgetGuide.wholeDollars(amount))
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: onboarding.setWeeklyBudget(amount + WeeklyBudgetGuide.step)
+                        case .decrement: onboarding.setWeeklyBudget(amount - WeeklyBudgetGuide.step)
+                        @unknown default: break
+                        }
+                    }
+
+                    budgetStepButton(symbol: "plus", label: "Ten dollars more") {
+                        onboarding.setWeeklyBudget(amount + WeeklyBudgetGuide.step)
+                    }
+                    .disabled(amount >= WeeklyBudgetGuide.maximum)
+                }
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: ReasiSpacing.s2) { budgetQuickPicks(current: amount) }
+                    VStack(spacing: ReasiSpacing.s2) { budgetQuickPicks(current: amount) }
+                }
+            }
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                    .stroke(Color.reasi.border, lineWidth: 1)
+            }
+            .animation(reduceMotion ? nil : ReasiMotion.tactileSpring, value: amount)
+
+            Text("Each plan is built to fit this. Reasi then tracks what you actually spend against it. You can change it any time in Profile.")
+                .font(ReasiTypography.callout)
+                .foregroundStyle(Color.reasi.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { onboarding.prepareBudgetStep() }
+    }
+
+    @ViewBuilder
+    private func budgetQuickPicks(current: Double) -> some View {
+        ForEach(WeeklyBudgetGuide.quickPicks(for: onboarding.preferences.household), id: \.self) { pick in
+            let isSelected = pick == current
+            Button {
+                onboarding.setWeeklyBudget(pick)
+            } label: {
+                Text(WeeklyBudgetGuide.wholeDollars(pick))
+                    .font(ReasiTypography.bodyMedium)
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? Color.reasi.background : Color.reasi.text)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(isSelected ? Color.reasi.text : Color.reasi.surfaceHigh, in: Capsule())
+            }
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityLabel("\(WeeklyBudgetGuide.wholeDollars(pick)) a week")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+    }
+
+    private func budgetStepButton(symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.reasi.text)
+                .frame(width: 52, height: 52)
+                .background(Color.reasi.surfaceHigh, in: Circle())
+        }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityLabel(label)
     }
 
     private var foodStyleScreen: some View {
@@ -667,7 +805,7 @@ struct OnboardingPlaceholderView: View {
 
             VStack(spacing: 0) {
                 summaryRow(
-                    symbol: onboarding.preferences.primaryPurpose?.symbol ?? "sparkles",
+                    symbol: onboarding.preferences.primaryPurpose?.symbol ?? "list.bullet",
                     label: "Priorities",
                     value: purposeSummary
                 )
@@ -676,6 +814,12 @@ struct OnboardingPlaceholderView: View {
                     symbol: "person.2",
                     label: "Cooking for",
                     value: onboarding.preferences.household?.title ?? "Two (default)"
+                )
+                Divider().overlay(Color.reasi.border)
+                summaryRow(
+                    symbol: "dollarsign.circle",
+                    label: "Weekly budget",
+                    value: onboarding.preferences.weeklyGroceryBudgetAud.map(WeeklyBudgetGuide.wholeDollars) ?? "No target"
                 )
                 Divider().overlay(Color.reasi.border)
                 summaryRow(
@@ -720,7 +864,7 @@ struct OnboardingPlaceholderView: View {
         switch onboarding.currentStep {
         case .value:
             "Get started"
-        case .benefit, .purpose, .household, .foodStyle, .spendingTone, .store:
+        case .benefit, .purpose, .household, .budget, .foodStyle, .spendingTone, .store:
             "Continue"
         case .signIn:
             supabase.isSignedIn ? "Continue" : "Sign in to continue"
@@ -739,6 +883,8 @@ struct OnboardingPlaceholderView: View {
             !onboarding.preferences.selectedPurposes.isEmpty
         case .household:
             onboarding.preferences.household != nil
+        case .budget:
+            onboarding.preferences.weeklyGroceryBudgetAud != nil
         case .foodStyle:
             !onboarding.preferences.foodStyles.isEmpty
         case .spendingTone:
@@ -756,7 +902,7 @@ struct OnboardingPlaceholderView: View {
 
     private func performBottomAction() {
         switch onboarding.currentStep {
-        case .value, .benefit, .household, .foodStyle, .spendingTone, .store, .signIn:
+        case .value, .benefit, .household, .budget, .foodStyle, .spendingTone, .store, .signIn:
             onboarding.advance()
         case .storeGuide:
             guard let guideSubmission else {
@@ -1512,4 +1658,122 @@ private extension View {
         .environment(AnalyticsService())
         .environment(NetworkMonitor())
         .preferredColorScheme(.dark)
+}
+
+/// A sample week drawn as a till receipt: the product's promise in one glance, in the brand's monochrome.
+private struct OnboardingReceiptPreview: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    private let target = 150.0
+    private let planned = 138.40
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            HStack {
+                Text("REASI")
+                    .font(ReasiTypography.font(size: 12, weight: .bold, relativeTo: .caption))
+                    .tracking(2)
+                Spacer()
+                Text("THIS WEEK")
+                    .font(ReasiTypography.font(size: 11, weight: .semibold, relativeTo: .caption))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.reasi.muted)
+            }
+
+            receiptRule
+
+            VStack(spacing: ReasiSpacing.s2) {
+                line("7 dinners", "$96.10")
+                line("Breakfast & lunch", "$31.80")
+                line("Pantry top-up", "$10.50")
+            }
+
+            receiptRule
+
+            line("Planned basket", money(planned), emphasised: true)
+            line("Weekly target", money(target))
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.reasi.surfaceHigh)
+                    Capsule()
+                        .fill(Color.reasi.text)
+                        .frame(width: proxy.size.width * (appeared ? planned / target : 0))
+                }
+            }
+            .frame(height: 5)
+
+            Text("\(money(target - planned)) left to spend")
+                .font(ReasiTypography.font(size: 13, weight: .medium, relativeTo: .caption))
+                .monospacedDigit()
+                .foregroundStyle(Color.reasi.textMuted)
+        }
+        .foregroundStyle(Color.reasi.text)
+        .padding(.horizontal, ReasiSpacing.s5)
+        .padding(.top, ReasiSpacing.s5)
+        .padding(.bottom, ReasiSpacing.s6)
+        .background(Color.reasi.surface, in: ReceiptShape())
+        .overlay { ReceiptShape().stroke(Color.reasi.border, lineWidth: 1) }
+        .rotationEffect(.degrees(-2))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Example week: \(money(planned)) planned against a \(money(target)) target")
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.9).delay(0.25)) { appeared = true }
+        }
+    }
+
+    private var receiptRule: some View {
+        Line()
+            .stroke(Color.reasi.borderStrong, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            .frame(height: 1)
+    }
+
+    private func line(_ label: String, _ value: String, emphasised: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .foregroundStyle(emphasised ? Color.reasi.text : Color.reasi.textMuted)
+            Spacer(minLength: ReasiSpacing.s3)
+            Text(value)
+                .monospacedDigit()
+        }
+        .font(ReasiTypography.font(size: emphasised ? 16 : 14, weight: emphasised ? .semibold : .regular, relativeTo: .body))
+    }
+
+    private func money(_ value: Double) -> String {
+        value.formatted(.currency(code: "AUD").locale(Locale(identifier: "en_AU")))
+    }
+
+    private struct Line: Shape {
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            return path
+        }
+    }
+
+    /// Rounded top, torn zig-zag bottom, like paper off a till.
+    private struct ReceiptShape: Shape {
+        func path(in rect: CGRect) -> Path {
+            let radius: CGFloat = 14
+            let tooth: CGFloat = 7
+            let count = max(1, Int((rect.width / (tooth * 2)).rounded()))
+            let step = rect.width / CGFloat(count)
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY - tooth))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+            path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + radius), control: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - tooth))
+            for index in stride(from: count, to: 0, by: -1) {
+                let x = rect.minX + CGFloat(index) * step
+                path.addLine(to: CGPoint(x: x - step / 2, y: rect.maxY))
+                path.addLine(to: CGPoint(x: x - step, y: rect.maxY - tooth))
+            }
+            path.closeSubpath()
+            return path
+        }
+    }
 }
