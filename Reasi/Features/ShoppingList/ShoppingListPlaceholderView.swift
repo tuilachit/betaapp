@@ -150,7 +150,38 @@ struct ShoppingListPlaceholderView: View {
         }
         .background(Color.reasi.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            shoppingDock
+            VStack(spacing: 0) {
+                shoppingDock
+                // The + lives at the end of the tab bar, so its menu opens from just above it.
+                Color.clear
+                    .frame(width: 56, height: 1)
+                    .confirmationDialog("Add item", isPresented: $showAddDialog, titleVisibility: .visible) {
+                        Button("Search or paste product link") {
+                            productSearchContext = ProductSearchContext(
+                                targetItemID: nil,
+                                targetItemName: nil,
+                                initialQuery: ""
+                            )
+                        }
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                            Button("Take product photo") {
+                                showProductCamera = true
+                            }
+                            Button("Take list photo") {
+                                showListCamera = true
+                            }
+                        }
+                        Button("Choose product photo") {
+                            showProductPhotoPicker = true
+                        }
+                        Button("Choose list photo") {
+                            showListPhotoPicker = true
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, ReasiSpacing.s5)
+            }
         }
         .onAppear(perform: updateIdleTimer)
         .onChange(of: userSettings.keepScreenAwake) { _, _ in updateIdleTimer() }
@@ -160,39 +191,8 @@ struct ShoppingListPlaceholderView: View {
         }
         .reasiTabRoot(
             "Shopping list",
-            action: coreLoop.hasPlan && !coreLoop.isShoppingCompleted
-                ? ReasiToolbarAction(title: "Add shopping item", systemImage: "plus", identifier: "toolbar-add-item") {
-                    appState.requestShoppingListAdd()
-                }
-                : ReasiToolbarAction(title: "Create a plan", systemImage: "plus", identifier: "toolbar-create-plan") {
-                    appState.openPlanBuilder(entryMethod: .build)
-                },
             openProfile: appState.openProfile
         )
-        .confirmationDialog("Add item", isPresented: $showAddDialog, titleVisibility: .visible) {
-            Button("Search or paste product link") {
-                productSearchContext = ProductSearchContext(
-                    targetItemID: nil,
-                    targetItemName: nil,
-                    initialQuery: ""
-                )
-            }
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take product photo") {
-                    showProductCamera = true
-                }
-                Button("Take list photo") {
-                    showListCamera = true
-                }
-            }
-            Button("Choose product photo") {
-                showProductPhotoPicker = true
-            }
-            Button("Choose list photo") {
-                showListPhotoPicker = true
-            }
-            Button("Cancel", role: .cancel) {}
-        }
         .fullScreenCover(isPresented: $showProductCamera) {
             CameraCaptureView { image in
                 showProductCamera = false
@@ -419,21 +419,22 @@ struct ShoppingListPlaceholderView: View {
 
         return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(unpriced == 0 ? "Estimated total" : "Priced subtotal")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    Text(summary.pricedItemCount > 0 ? ShoppingItemPresentation.money(summary.plannedTotalAud) : "—")
-                        .font(ReasiTypography.title2)
-                        .foregroundStyle(Color.reasi.text)
-                        .contentTransition(.numericText(value: summary.plannedTotalAud))
-                        .animation(ReasiMotion.fast, value: summary.plannedTotalAud)
-                }
+                // The number speaks for itself on a shopping list; VoiceOver still gets the name.
+                Text(summary.pricedItemCount > 0 ? ShoppingItemPresentation.money(summary.plannedTotalAud) : "—")
+                    .font(ReasiTypography.font(size: 30, weight: .semibold, relativeTo: .title))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.reasi.text)
+                    .contentTransition(.numericText(value: summary.plannedTotalAud))
+                    .animation(ReasiMotion.fast, value: summary.plannedTotalAud)
+                    .accessibilityLabel(unpriced == 0 ? "Estimated total" : "Priced subtotal")
+                    .accessibilityValue(summary.pricedItemCount > 0 ? ShoppingItemPresentation.money(summary.plannedTotalAud) : "Not priced yet")
                 Spacer(minLength: 8)
-                Text("\(summary.checkedItemCount) / \(summary.totalItemCount) picked")
-                    .font(ReasiTypography.caption)
+                Text("\(summary.checkedItemCount) of \(summary.totalItemCount)")
+                    .font(ReasiTypography.callout)
+                    .monospacedDigit()
                     .foregroundStyle(Color.reasi.textMuted)
                     .contentTransition(.numericText())
+                    .accessibilityLabel("\(summary.checkedItemCount) of \(summary.totalItemCount) picked")
                 Button {
                     ReasiHaptics.light()
                     activeSheet = .basketDetails
@@ -457,36 +458,31 @@ struct ShoppingListPlaceholderView: View {
             }
             .frame(height: 4)
 
-            if let budget = coreLoop.plan.budgetTargetAud {
+            let status: String? = {
+                if unpriced > 0 { return "\(unpriced) unpriced" }
+                guard let budget = coreLoop.plan.budgetTargetAud else { return nil }
                 let difference = budget - summary.plannedTotalAud
-                Text(unpriced > 0 ? "Budget pending · \(unpriced) unpriced"
-                     : difference >= 0 ? "\(ShoppingItemPresentation.money(difference)) left · \(ShoppingItemPresentation.money(budget)) budget"
-                     : "\(ShoppingItemPresentation.money(-difference)) over budget")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(unpriced > 0 || difference < 0 ? Color.reasi.warning : Color.reasi.muted)
-            } else if unpriced > 0 {
-                Text("\(unpriced) \(unpriced == 1 ? "item" : "items") still unpriced")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-            }
-            if let capturedAt = summary.oldestPriceCapturedAt {
-                let freshness = PriceFreshness(capturedAt: capturedAt)
-                Label {
-                    Text(freshness.label(retailer: displayedStore.retailerDisplayName))
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: freshness.isStale ? "exclamationmark.circle" : "clock")
+                return difference >= 0
+                    ? "\(ShoppingItemPresentation.money(difference)) under budget"
+                    : "\(ShoppingItemPresentation.money(-difference)) over budget"
+            }()
+            let isOverBudget = unpriced == 0
+                && (coreLoop.plan.budgetTargetAud.map { summary.plannedTotalAud > $0 } ?? false)
+            let freshness = summary.oldestPriceCapturedAt.map { PriceFreshness(capturedAt: $0) }
+
+            if status != nil || freshness != nil {
+                // One line when it fits: what's missing on the left, how old the prices are on the right.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: ReasiSpacing.s3) {
+                        if let status { summaryStatus(status, isWarning: isOverBudget) }
+                        Spacer(minLength: 0)
+                        if let freshness { priceAge(freshness) }
+                    }
+                    VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+                        if let status { summaryStatus(status, isWarning: isOverBudget) }
+                        if let freshness { priceAge(freshness) }
+                    }
                 }
-                .font(ReasiTypography.caption)
-                .foregroundStyle(freshness.isStale ? Color.reasi.warning : Color.reasi.muted)
-                .accessibilityIdentifier("price-freshness")
-            }
-            // A first-use hint: once anything is ticked, the person knows how it works.
-            if summary.checkedItemCount == 0 {
-                Text("Tap the circle when it’s in your trolley.")
-                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
-                    .foregroundStyle(Color.reasi.muted)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if coreLoop.isMatchingShoppingProducts {
@@ -525,6 +521,22 @@ struct ShoppingListPlaceholderView: View {
         }
     }
 
+    private func summaryStatus(_ text: String, isWarning: Bool) -> some View {
+        Text(text)
+            .font(ReasiTypography.caption)
+            .foregroundStyle(isWarning ? Color.reasi.warning : Color.reasi.muted)
+            .lineLimit(1)
+    }
+
+    private func priceAge(_ freshness: PriceFreshness) -> some View {
+        Text(freshness.label)
+            .font(ReasiTypography.caption)
+            .foregroundStyle(freshness.isStale ? Color.reasi.warning : Color.reasi.muted)
+            .lineLimit(1)
+            .accessibilityLabel(freshness.spokenLabel(retailer: displayedStore.retailerDisplayName))
+            .accessibilityIdentifier("price-freshness")
+    }
+
     private var visibleUsuals: [UsualItem] {
         ShoppingHabits.notOnList(spending.usuals, items: coreLoop.allShoppingItems)
     }
@@ -537,15 +549,11 @@ struct ShoppingListPlaceholderView: View {
 
         return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s3) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Your usuals")
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                        .accessibilityAddTraits(.isHeader)
-                    Text("From your last \(shopCount) shops")
-                        .font(ReasiTypography.font(size: 12, relativeTo: .caption))
-                        .foregroundStyle(Color.reasi.muted)
-                }
+                Text("Your usuals")
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityHint("Items you bought in at least 2 of your last \(shopCount) shops")
                 Spacer(minLength: ReasiSpacing.s2)
                 if usuals.count > 1 {
                     Button("Add all") {
@@ -597,51 +605,41 @@ struct ShoppingListPlaceholderView: View {
         .accessibilityIdentifier("usuals-card")
     }
 
-    private func usualFrequency(_ usual: UsualItem) -> String {
-        usual.timesBought >= usual.shopsConsidered
-            ? "Every shop"
-            : "\(usual.timesBought) of \(usual.shopsConsidered) shops"
+    private func usualDetail(_ usual: UsualItem) -> String {
+        [
+            usual.size,
+            usual.lastPaidAud.map { ShoppingItemPresentation.money($0) }
+        ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     private func usualTile(_ usual: UsualItem) -> some View {
         let isAdding = addingUsualKeys.contains(usual.key)
+        let detail = usualDetail(usual)
 
-        return VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
-            HStack(alignment: .top) {
-                Text(usualFrequency(usual))
-                    .font(ReasiTypography.font(size: 11, weight: .semibold, relativeTo: .caption2))
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .padding(.horizontal, ReasiSpacing.s2)
-                    .padding(.vertical, 3)
-                    .background(Color.reasi.background, in: Capsule())
-                Spacer(minLength: ReasiSpacing.s1)
-                usualAddButton(usual, isAdding: isAdding)
-                    .padding(.top, -6)
-                    .padding(.trailing, -6)
-            }
-            Spacer(minLength: ReasiSpacing.s2)
-            Text(usual.displayName)
-                .font(ReasiTypography.font(size: 15, weight: .semibold, relativeTo: .subheadline))
-                .foregroundStyle(Color.reasi.text)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            if let size = usual.size, !size.isEmpty {
-                Text(size)
-                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(1)
-            }
-            if let paid = usual.lastPaidAud {
-                Text("\(ShoppingItemPresentation.money(paid)) last time")
-                    .font(ReasiTypography.font(size: 12, weight: .medium, relativeTo: .caption))
-                    .monospacedDigit()
+        return HStack(alignment: .center, spacing: ReasiSpacing.s2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(usual.displayName)
+                    .font(ReasiTypography.font(size: 15, weight: .medium, relativeTo: .subheadline))
                     .foregroundStyle(Color.reasi.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.reasi.muted)
+                        .lineLimit(1)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            usualAddButton(usual, isAdding: isAdding)
+                .padding(.trailing, -6)
         }
-        .padding(ReasiSpacing.s3)
-        .frame(width: 152, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .padding(.leading, ReasiSpacing.s3)
+        .padding(.trailing, ReasiSpacing.s2)
+        .padding(.vertical, ReasiSpacing.s2)
+        .frame(width: 196, alignment: .leading)
+        .frame(maxHeight: .infinity)
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
@@ -658,8 +656,7 @@ struct ShoppingListPlaceholderView: View {
         [
             usual.displayName,
             usual.size,
-            usual.lastPaidAud.map { "\(ShoppingItemPresentation.money($0)) last time" },
-            usualFrequency(usual)
+            usual.lastPaidAud.map { "\(ShoppingItemPresentation.money($0)) last time" }
         ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
@@ -688,21 +685,18 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private func usualRow(_ usual: UsualItem) -> some View {
-        let details = [
-            usual.size,
-            usual.lastPaidAud.map { "\(ShoppingItemPresentation.money($0)) last time" },
-            usualFrequency(usual)
-        ].compactMap { $0 }.filter { !$0.isEmpty }
-
+        let detail = usualDetail(usual)
         return HStack(spacing: ReasiSpacing.s3) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(usual.displayName)
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.text)
-                Text(details.joined(separator: " · "))
-                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
-                    .foregroundStyle(Color.reasi.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                        .foregroundStyle(Color.reasi.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             usualAddButton(usual, isAdding: addingUsualKeys.contains(usual.key))
@@ -2019,7 +2013,7 @@ private struct CandidateProductArtwork: View {
         ZStack {
             Color.reasi.surfaceHigh
 
-            if let imageURL = candidate.imageUrl {
+            if let imageURL = ProductImageURL.normalized(candidate.imageUrl) {
                 AsyncImage(url: imageURL) { phase in
                     switch phase {
                     case .success(let image):
@@ -2708,7 +2702,7 @@ private struct ShoppingItemDetailsSheet: View {
 
     @ViewBuilder
     private var productArtwork: some View {
-        if let imageURL = presentation.imageURL {
+        if let imageURL = ProductImageURL.normalized(presentation.imageURL) {
             AsyncImage(url: imageURL) { phase in
                 if let image = phase.image {
                     image.resizable().scaledToFit()

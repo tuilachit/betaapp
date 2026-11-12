@@ -44,6 +44,18 @@ Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight buil
   - Home leads with tonight's dinner ("Tonight · Chicken souvlaki plates") when the week plan has today's day, otherwise the first meal. Without a photo it's a light card, not an empty dark one.
   - The meal detail header without a photo is a plain dark panel, like Home.
   - List rows without a product photo show an aisle symbol from the item's name, then its aisle: leaf for spinach, fish for salmon, fridge for milk, snowflake for frozen, and a basket when nothing matches. Keywords must start a word, so "steak" isn't tea and "foil" isn't oil. Unit tests cover this.
+- **Fewer words (12 Nov).** Screens keep numbers and names and drop the explanations.
+  - List: the summary is the total, "2 of 20" and one short line ("3 unpriced", "Prices from 9 Oct"). The label above the total and the "Tap the circle…" hint are gone; VoiceOver still names the total. Usuals tiles show name, size and price only.
+  - Home: "$33.60 left of $120", "Current list", "7 dinners · 20 items", and the store row is just the store name.
+  - Spend: one line under the categories ("8 of 10 items priced · $4.00 not itemised"), tips show their title only, and "Projected basket" is now "Current list".
+  - Plans: the "At a glance" card and its AI-written paragraph are replaced by one subtitle ("7 dinners · $101 · Coles Top Ryde"); each meal row has one line ("25 min · $18").
+  - Onboarding and empty states are cut to one short line each.
+  - The stale-price warning stays, as "Prices from 9 Oct, may have changed".
+- **+ in the bottom bar (12 Nov).** The + is a separate round button at the end of the tab bar (a system `Tab` with the search role whose selection is intercepted, so it acts without switching tabs). On List it opens Add item, which now pops up just above the button; elsewhere it opens the plan builder. The top bar keeps only the profile button.
+- **Real photos in the sample data (12 Nov).**
+  - In the production catalogue, 21,908 of 22,107 products have a Coles photo and 176 of the 204 meals created since 24 Aug have a Pexels photo. The app shows them; icons and day tiles are only the fallback.
+  - The sample shopping list now uses 17 real Coles products (name, size, price, photo) and the seven sample meals have Pexels photos with photographer credit, so the simulator and App Store screenshots show pictures. Three items stay unmatched to show an unpriced row.
+  - About 19,300 catalogue photo links are stored without the `/productimages/` folder and fail if requested as is. The backend's product search already adds it; the app now does too (`ProductImageURL.normalized`, unit tested).
 - **Copy fixes (12 Nov).** Spend no longer shows a wifi icon and "Try again" when nobody is signed in. Home says "Nothing spent yet · $170 target" instead of "$170.00 left of your $170 target".
 - **UI test fix.** `testPlanBuilderPickerPreservesDraftAndOpensProductSearch` now puts the keyboard away before tapping Add. With the keyboard up on a 6.3" screen, the floating Create plan button covers Add and takes the tap. On the Smart Basket branch it failed one step earlier, because Add couldn't be reached with the keyboard up. I didn't check it on `main`.
 - **Release tooling.** `scripts/testflight-release-preflight.sh` now uses `grep -E` instead of `rg`, so it runs on a stock Mac. It passes all 11 checks on the Release build.

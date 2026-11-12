@@ -65,12 +65,6 @@ struct HomeView: View {
         .reasiTabRoot(
             "Home",
             subtitle: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "en_AU"))),
-            action: coreLoop.hasPlan
-                ? ReasiToolbarAction(title: "Create a plan", systemImage: "plus", identifier: "toolbar-create-plan") {
-                    analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
-                    appState.openPlanBuilder(entryMethod: .describe)
-                }
-                : nil,
             openProfile: appState.openProfile
         )
         .confirmationDialog("Choose store", isPresented: $showStorePicker, titleVisibility: .visible) {
@@ -81,7 +75,7 @@ struct HomeView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Reasi will keep your current list visible while it reorders item locations for this store.")
+            Text("Your list will be reordered for this store.")
         }
         .task {
             analytics.capture(.coreHomeViewed)
@@ -141,15 +135,15 @@ struct HomeView: View {
                     .frame(height: 5)
 
                     Text(isOver
-                         ? "\((spent - target).formatted(.currency(code: "AUD"))) over your \(WeeklyBudgetGuide.wholeDollars(target)) target"
+                         ? "\((spent - target).formatted(.currency(code: "AUD"))) over \(WeeklyBudgetGuide.wholeDollars(target))"
                          : spent < 0.005
-                            ? "Nothing spent yet · \(WeeklyBudgetGuide.wholeDollars(target)) target"
-                            : "\((target - spent).formatted(.currency(code: "AUD"))) left of your \(WeeklyBudgetGuide.wholeDollars(target)) target")
+                            ? "\(WeeklyBudgetGuide.wholeDollars(target)) target"
+                            : "\((target - spent).formatted(.currency(code: "AUD"))) left of \(WeeklyBudgetGuide.wholeDollars(target))")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(isOver ? Color.reasi.warning : Color.reasi.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Set a weekly target to see how each shop compares.")
+                    Text("No weekly target yet")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -158,12 +152,7 @@ struct HomeView: View {
                 if let planned {
                     Divider().overlay(Color.reasi.border)
                     HStack {
-                        Label(
-                            summary.pricedItemCount < summary.totalItemCount
-                                ? "Current list · \(summary.pricedItemCount) of \(summary.totalItemCount) priced"
-                                : "Current list",
-                            systemImage: "checklist"
-                        )
+                        Label("Current list", systemImage: "checklist")
                         .foregroundStyle(Color.reasi.textMuted)
                         Spacer()
                         Text(planned, format: .currency(code: "AUD"))
@@ -206,7 +195,7 @@ struct HomeView: View {
             Text("No plan yet")
                 .font(ReasiTypography.title2)
                 .foregroundStyle(Color.reasi.text)
-            Text("Reasi plans the week's dinners around your budget, then turns them into one list in aisle order.")
+            Text("Dinners planned to your budget, in one list.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
         }
@@ -328,20 +317,21 @@ struct HomeView: View {
             ? (meals == 1 ? "dinner" : "dinners")
             : (meals == 1 ? "course" : "courses")
         let items = coreLoop.allShoppingItems.count
-        return "\(meals) \(noun) · \(items) \(items == 1 ? "item" : "items") on the list"
+        return "\(meals) \(noun) · \(items) \(items == 1 ? "item" : "items")"
     }
 
-    private var storeRowDetail: String {
+    /// Only says something when there's a mismatch worth knowing about.
+    private var storeRowDetail: String? {
         if coreLoop.hasPlan, coreLoop.plan.storeId != appState.selectedStore.id {
-            return "Your list is still in \(coreLoop.plan.storeName) aisle order"
+            return "List is in \(coreLoop.plan.storeName) order"
         }
-        return "Your store"
+        return nil
     }
 
     private func homeRow(
         symbol: String,
         title: String,
-        detail: String,
+        detail: String?,
         detailIsWarning: Bool = false,
         accessory: String
     ) -> some View {
@@ -355,10 +345,12 @@ struct HomeView: View {
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
                     .lineLimit(1)
-                Text(detail)
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(detailIsWarning ? Color.reasi.warning : Color.reasi.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let detail {
+                    Text(detail)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(detailIsWarning ? Color.reasi.warning : Color.reasi.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: ReasiSpacing.s2)
             Image(systemName: accessory)
@@ -367,7 +359,7 @@ struct HomeView: View {
         }
         .padding(.horizontal, ReasiSpacing.s4)
         .padding(.vertical, ReasiSpacing.s3)
-        .frame(minHeight: 60)
+        .frame(minHeight: 52)
         .contentShape(Rectangle())
     }
 

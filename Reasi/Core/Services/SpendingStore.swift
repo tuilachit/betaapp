@@ -77,7 +77,7 @@ final class SpendingStore {
         guard let userId = activeUserId, supabase.isSignedIn else {
             dashboard = nil
             needsSignIn = true
-            dashboardMessage = "Sign in to keep your shopping history and spending insights together."
+            dashboardMessage = "Sign in to see your spending."
             return
         }
         needsSignIn = false

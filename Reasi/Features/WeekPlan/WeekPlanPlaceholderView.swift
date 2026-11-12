@@ -9,7 +9,6 @@ struct WeekPlanPlaceholderView: View {
     @Environment(NetworkMonitor.self) private var network
     @State private var selectedMeal: MealSummary?
     @State private var didTrackView = false
-    @State private var arePlanNotesExpanded = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -19,7 +18,6 @@ struct WeekPlanPlaceholderView: View {
                 if coreLoop.generationState.isGenerating {
                     generationLoading
                     if coreLoop.hasPlan {
-                        planNotes
                         mealList
                         openShoppingListButton
                     }
@@ -38,7 +36,6 @@ struct WeekPlanPlaceholderView: View {
                     if let notice = coreLoop.generationState.noticeMessage {
                         noticeCard(notice)
                     }
-                    planNotes
                     mealList
                     openShoppingListButton
                 }
@@ -50,10 +47,7 @@ struct WeekPlanPlaceholderView: View {
         .background(Color.reasi.background)
         .reasiTabRoot(
             coreLoop.hasPlan ? coreLoop.plan.kind.planHeading : "Your plans",
-            subtitle: coreLoop.hasPlan ? nil : "No plan yet",
-            action: ReasiToolbarAction(title: "Create a plan", systemImage: "plus", identifier: "toolbar-create-plan") {
-                appState.openPlanBuilder(entryMethod: .build)
-            },
+            subtitle: coreLoop.hasPlan ? planSubtitle : nil,
             openProfile: appState.openProfile
         )
         .sheet(item: $selectedMeal) { meal in
@@ -184,9 +178,6 @@ struct WeekPlanPlaceholderView: View {
             Text("No plan yet")
                 .font(ReasiTypography.title2)
                 .foregroundStyle(Color.reasi.text)
-            Text("Describe what you need, or start from a meal, a product or a photo.")
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.textMuted)
 
             Button {
                 Task {
@@ -202,83 +193,13 @@ struct WeekPlanPlaceholderView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
     }
 
-    private var planNotes: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            HStack {
-                Text("At a glance")
-                    .font(ReasiTypography.headline)
-                    .foregroundStyle(Color.reasi.text)
-
-                Spacer()
-
-                Label(coreLoop.plan.storeName, systemImage: "storefront")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(1)
-            }
-
-            HStack(spacing: ReasiSpacing.s2) {
-                PlanMetric(
-                    label: "\(coreLoop.plan.meals.count) \(coreLoop.plan.kind == .week ? "dinners" : "courses")",
-                    symbol: "fork.knife"
-                )
-                PlanMetric(
-                    label: "\(averageMealTime) min avg",
-                    symbol: "clock"
-                )
-                PlanMetric(
-                    label: estimatedWeekCost,
-                    symbol: "banknote"
-                )
-            }
-
-            if !coreLoop.plan.planningNotes.isEmpty {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                    Text(coreLoop.plan.planningNotes)
-                        .font(ReasiTypography.callout)
-                        .foregroundStyle(Color.reasi.textMuted)
-                        .lineLimit(arePlanNotesExpanded ? nil : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        ReasiHaptics.light()
-                        withAnimation(reduceMotion ? nil : ReasiMotion.tactileSpring) {
-                            arePlanNotesExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(arePlanNotesExpanded ? "Show less" : "More details")
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .bold))
-                                .rotationEffect(.degrees(arePlanNotesExpanded ? 180 : 0))
-                        }
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.text)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(ReasiPressStyle())
-                    .accessibilityLabel(arePlanNotesExpanded ? "Collapse plan details" : "Expand plan details")
-                }
-            }
-        }
-        .padding(ReasiSpacing.s5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.cardEdge, lineWidth: 1)
-        }
-        .onChange(of: coreLoop.plan.id) { _, _ in
-            arePlanNotesExpanded = false
-        }
-    }
-
-    private var averageMealTime: Int {
-        guard !coreLoop.plan.meals.isEmpty else { return 0 }
-        let total = coreLoop.plan.meals.reduce(0) { result, meal in
-            result + (meal.recipe?.totalTimeMin ?? meal.cookTimeMin)
-        }
-        return Int((Double(total) / Double(coreLoop.plan.meals.count)).rounded())
+    /// "7 dinners · $101 · Coles Top Ryde": the whole summary, in the title's subtitle.
+    private var planSubtitle: String {
+        let count = coreLoop.plan.meals.count
+        let noun = coreLoop.plan.kind == .week
+            ? (count == 1 ? "dinner" : "dinners")
+            : (count == 1 ? "course" : "courses")
+        return "\(count) \(noun) · \(estimatedWeekCost) · \(coreLoop.plan.storeName)"
     }
 
     private var estimatedWeekCost: String {
@@ -359,18 +280,9 @@ private struct MealRow: View {
                     .foregroundStyle(Color.reasi.text)
                     .lineLimit(2)
 
-                HStack(spacing: ReasiSpacing.s3) {
-                    Label("\(meal.cookTimeMin) min", systemImage: "clock")
-                    Label(
-                        costLabel,
-                        systemImage: "banknote"
-                    )
-                }
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.textMuted)
-
-                Text(meal.cuisine)
+                Text("\(meal.cookTimeMin) min · \(costLabel)")
                     .font(ReasiTypography.caption)
+                    .monospacedDigit()
                     .foregroundStyle(Color.reasi.muted)
                     .lineLimit(1)
             }
@@ -400,27 +312,6 @@ private struct MealRow: View {
             .currency(code: "AUD")
                 .precision(.fractionLength(0))
         )
-    }
-}
-
-private struct PlanMetric: View {
-    let label: String
-    let symbol: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
-            Text(label)
-                .font(ReasiTypography.caption)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-        }
-        .foregroundStyle(Color.reasi.textMuted)
-        .padding(.horizontal, ReasiSpacing.s3)
-        .frame(maxWidth: .infinity)
-        .frame(height: 34)
-        .background(Color.reasi.surfaceHigh, in: Capsule())
     }
 }
 
@@ -465,30 +356,45 @@ private struct MealDetailSheet: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            MealArtwork(meal: meal)
-                .frame(height: 230)
-                .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-                .overlay {
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.76)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+            if meal.imageUrl != nil {
+                MealArtwork(meal: meal)
+                    .frame(height: 230)
                     .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-                }
-                .overlay(alignment: .bottomLeading) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(meal.day)
-                            .font(ReasiTypography.caption)
-                            .foregroundStyle(Color.reasi.onImageMuted)
-                        Text(meal.dish)
-                            .font(ReasiTypography.title)
-                            .foregroundStyle(Color.reasi.onImage)
-                            .minimumScaleFactor(0.82)
-                            .lineLimit(2)
+                    .overlay {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.76)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
                     }
-                    .padding(ReasiSpacing.s5)
+                    .overlay(alignment: .bottomLeading) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(meal.day)
+                                .font(ReasiTypography.caption)
+                                .foregroundStyle(Color.reasi.onImageMuted)
+                            Text(meal.dish)
+                                .font(ReasiTypography.title)
+                                .foregroundStyle(Color.reasi.onImage)
+                                .minimumScaleFactor(0.82)
+                                .lineLimit(2)
+                        }
+                        .padding(ReasiSpacing.s5)
+                    }
+            } else {
+                // No photo: the day and the dish as a plain heading, not an empty dark panel.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(meal.day)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.muted)
+                    Text(meal.dish)
+                        .font(ReasiTypography.title)
+                        .foregroundStyle(Color.reasi.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             if meal.imageUrl != nil {
                 HStack(spacing: 4) {

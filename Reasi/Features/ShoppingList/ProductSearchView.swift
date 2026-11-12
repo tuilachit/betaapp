@@ -675,6 +675,19 @@ private struct ProductSearchResultRow: View {
     }
 }
 
+enum ProductImageURL {
+    /// Coles serves product photos under `/productimages/`. Some stored links leave that
+    /// folder out and fail to load, so add it back before asking for the image.
+    static func normalized(_ url: URL?) -> URL? {
+        guard let url,
+              url.host == "cdn.productimages.coles.com.au",
+              !url.path.hasPrefix("/productimages/"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.path = "/productimages" + (components.path.hasPrefix("/") ? "" : "/") + components.path
+        return components.url ?? url
+    }
+}
+
 struct ProductThumbnail: View {
     let url: URL?
     let size: CGFloat
@@ -683,7 +696,7 @@ struct ProductThumbnail: View {
     var aisle: String? = nil
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: ReasiMotion.fast)) { phase in
+        AsyncImage(url: ProductImageURL.normalized(url), transaction: Transaction(animation: ReasiMotion.fast)) { phase in
             switch phase {
             case .success(let image):
                 image

@@ -232,7 +232,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Shopping Light")
         app.buttons["Spend"].tap()
-        XCTAssertTrue(app.staticTexts["Projected basket"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Current list"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Spend Light")
 
         app.terminate()
@@ -473,8 +473,8 @@ final class ReasiOnboardingUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Spend"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Projected basket"].exists)
-        XCTAssertTrue(app.staticTexts["From the 8 of 10 items that had a price"].exists)
+        XCTAssertTrue(app.staticTexts["Current list"].exists)
+        XCTAssertTrue(app.staticTexts["8 of 10 items priced · $4.00 not itemised"].exists)
 
         let profile = app.buttons["reasi-profile-button"]
         XCTAssertTrue(profile.exists)

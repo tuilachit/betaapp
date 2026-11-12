@@ -164,7 +164,7 @@ struct SpendView: View {
                         .accessibilityIdentifier("spend-track-record")
                 }
             } else {
-                Text("Your weekly average will appear after more completed shops.")
+                Text("Your weekly average shows after a few shops.")
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.muted)
             }
@@ -188,8 +188,8 @@ struct SpendView: View {
                 HStack(spacing: ReasiSpacing.s2) {
                     // Same wording as Home's "This week" card.
                     Text(remaining >= 0
-                         ? "\(remaining.formatted(.currency(code: "AUD"))) left of your \(WeeklyBudgetGuide.wholeDollars(budget)) target"
-                         : "\(abs(remaining).formatted(.currency(code: "AUD"))) over your \(WeeklyBudgetGuide.wholeDollars(budget)) target")
+                         ? "\(remaining.formatted(.currency(code: "AUD"))) left of \(WeeklyBudgetGuide.wholeDollars(budget))"
+                         : "\(abs(remaining).formatted(.currency(code: "AUD"))) over \(WeeklyBudgetGuide.wholeDollars(budget))")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(remaining < 0 ? Color.reasi.warning : Color.reasi.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -242,14 +242,9 @@ struct SpendView: View {
                 .foregroundStyle(Color.reasi.textMuted)
                 .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Projected basket")
-                    .font(ReasiTypography.headline)
-                    .foregroundStyle(Color.reasi.text)
-                Text("\(projection.pricedItems) of \(projection.totalItems) priced")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
-            }
+            Text("Current list")
+                .font(ReasiTypography.headline)
+                .foregroundStyle(Color.reasi.text)
             Spacer(minLength: ReasiSpacing.s3)
             Text(projection.projectedTotalAud, format: .currency(code: "AUD"))
                 .font(ReasiTypography.headline)
@@ -279,10 +274,7 @@ struct SpendView: View {
 
             if breakdown.slices.isEmpty {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                    Text("Not enough priced items yet")
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                    Text("Once items on a finished shop have prices, you'll see where the money went.")
+                    Text("No priced items yet")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
                 }
@@ -303,7 +295,7 @@ struct SpendView: View {
 
     /// Categories are ranked by spend, so they're told apart by shade: the biggest is the darkest.
     private func categoryShade(_ index: Int) -> Color {
-        let opacities: [Double] = [1, 0.66, 0.44, 0.28, 0.16]
+        let opacities: [Double] = [1, 0.68, 0.48, 0.34, 0.22]
         return Color.reasi.text.opacity(opacities[min(index, opacities.count - 1)])
     }
 
@@ -382,26 +374,22 @@ struct SpendView: View {
         }
     }
 
-    private func categoryTrustCopy(_ dashboard: SpendingDashboard) -> some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
-            categoryCoverageText(dashboard)
-            checkoutDifferenceText(dashboard)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func categoryCoverageText(_ dashboard: SpendingDashboard) -> some View {
-        Text("From the \(dashboard.pricedCheckedItems) of \(dashboard.checkedItems) items that had a price")
-            .font(ReasiTypography.caption)
-            .foregroundStyle(Color.reasi.muted)
-    }
-
+    /// One short line, and only when the split doesn't cover the whole spend.
     @ViewBuilder
-    private func checkoutDifferenceText(_ dashboard: SpendingDashboard) -> some View {
-        if abs(dashboard.checkoutDifferenceAud) >= 0.01 {
-            Text("\(abs(dashboard.checkoutDifferenceAud).formatted(.currency(code: "AUD"))) of your checkout total isn't in a category")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.muted)
+    private func categoryTrustCopy(_ dashboard: SpendingDashboard) -> some View {
+        let parts: [String] = [
+            dashboard.pricedCheckedItems < dashboard.checkedItems
+                ? "\(dashboard.pricedCheckedItems) of \(dashboard.checkedItems) items priced"
+                : nil,
+            abs(dashboard.checkoutDifferenceAud) >= 0.01
+                ? "\(abs(dashboard.checkoutDifferenceAud).formatted(.currency(code: "AUD"))) not itemised"
+                : nil
+        ].compactMap { $0 }
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · "))
+                .font(ReasiTypography.caption)
+                .foregroundStyle(Color.reasi.muted)
+                .accessibilityIdentifier("spend-category-coverage")
         }
     }
 
@@ -441,7 +429,7 @@ struct SpendView: View {
 
             if let primary {
                 NavigationLink(value: AppRoute.spendingInsight(card: primary)) {
-                    insightRow(primary, showsBody: true)
+                    insightRow(primary)
                 }
                 .buttonStyle(ReasiPressStyle())
                 .accessibilityIdentifier("spend-next-action")
@@ -459,7 +447,7 @@ struct SpendView: View {
                 }
                 .padding(.vertical, ReasiSpacing.s3)
             } else {
-                Text("Your next recommendation will appear after another completed shop.")
+                Text("A tip appears after your next shop.")
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.muted)
                     .padding(.vertical, ReasiSpacing.s3)
@@ -689,10 +677,10 @@ struct SpendView: View {
                 .background(Color.reasi.surface, in: Circle())
 
             VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                Text("Your first recap starts here")
+                Text("No shops yet")
                     .font(ReasiTypography.title2)
                     .foregroundStyle(Color.reasi.text)
-                Text("Finish a shop to see what you spent, where it went, and what to adjust next time.")
+                Text("Finish a shop to see where the money went.")
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.textMuted)
             }
@@ -1208,7 +1196,7 @@ private struct WeeklyBudgetEditor: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                Text("A weekly target makes the Spend view easier to read. You can change it anytime.")
+                Text("You can change it any time.")
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.textMuted)
 

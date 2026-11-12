@@ -73,7 +73,7 @@ struct PlanningPreferencesSettingsView: View {
                 } header: {
                     Text("Priorities")
                 } footer: {
-                    Text("Choose up to 3, most important first. Deselect a choice to change its order.")
+                    Text("Choose up to 3, most important first.")
                 }
                 .listRowBackground(Color.reasi.surface)
             }

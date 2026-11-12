@@ -177,7 +177,7 @@ struct OnboardingPlaceholderView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
 
-                Text("Plan the week around Coles prices, shop from one list, and see where every dollar went.")
+                Text("Dinners planned to your budget, one list, every dollar tracked.")
                     .font(ReasiTypography.body)
                     .foregroundStyle(Color.reasi.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -199,19 +199,19 @@ struct OnboardingPlaceholderView: View {
                 howItWorksRow(
                     number: "01",
                     title: "Set your number",
-                    detail: "Tell Reasi what you want to spend. Each plan is built to fit it."
+                    detail: "Every plan is built to fit it."
                 )
                 Divider().overlay(Color.reasi.border)
                 howItWorksRow(
                     number: "02",
                     title: "Shop one list",
-                    detail: "Your meals become one list, matched to products at your store and ordered by aisle."
+                    detail: "Real products, in aisle order."
                 )
                 Divider().overlay(Color.reasi.border)
                 howItWorksRow(
                     number: "03",
                     title: "See where it went",
-                    detail: "Tick items off as you shop. Reasi keeps the total and shows how each week compares."
+                    detail: "Each week against your target."
                 )
             }
         }
@@ -368,7 +368,7 @@ struct OnboardingPlaceholderView: View {
             }
             .animation(reduceMotion ? nil : ReasiMotion.tactileSpring, value: amount)
 
-            Text("Each plan is built to fit this. Reasi then tracks what you actually spend against it. You can change it any time in Profile.")
+            Text("Every plan is built to fit it. You can change it any time.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -449,7 +449,7 @@ struct OnboardingPlaceholderView: View {
                 }
             }
 
-            Text("Pick a mix. Your plan can still vary from week to week.")
+            Text("Pick a mix.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.muted)
         }
@@ -682,7 +682,7 @@ struct OnboardingPlaceholderView: View {
                 title: "Get 3 days of Reasi Pro"
             )
 
-            Text("Take a clear photo of your store's aisle guide. Reasi uses it to put your list in aisle order.")
+            Text("Photograph your store's aisle guide to get your list in aisle order.")
                 .font(ReasiTypography.body)
                 .foregroundStyle(Color.reasi.textMuted)
 

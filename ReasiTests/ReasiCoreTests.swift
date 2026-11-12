@@ -1233,14 +1233,17 @@ final class ReasiPriceFreshnessTests: XCTestCase {
         let captured = try XCTUnwrap(PriceFreshness.parse("2026-11-05T08:00:00.000Z"))
         let freshness = PriceFreshness(capturedAt: captured, now: captured.addingTimeInterval(3 * 86_400))
         XCTAssertFalse(freshness.isStale)
-        XCTAssertTrue(freshness.label(retailer: "Coles").hasPrefix("Coles prices checked "))
+        XCTAssertTrue(freshness.label.hasPrefix("Prices from "))
+        XCTAssertFalse(freshness.label.contains("changed"))
+        XCTAssertTrue(freshness.spokenLabel(retailer: "Coles").hasPrefix("Coles prices checked "))
     }
 
     func testOldPricesSayTheyMayHaveChanged() throws {
         let captured = try XCTUnwrap(PriceFreshness.parse("2026-10-09"))
         let freshness = PriceFreshness(capturedAt: captured, now: captured.addingTimeInterval(33 * 86_400))
         XCTAssertTrue(freshness.isStale)
-        XCTAssertTrue(freshness.label(retailer: "Coles").hasSuffix("They may have changed."))
+        XCTAssertTrue(freshness.label.hasSuffix("may have changed"))
+        XCTAssertTrue(freshness.spokenLabel(retailer: "Coles").hasSuffix("They may have changed."))
     }
 
     func testParsesAllCaptureFormatsAndRejectsJunk() {
@@ -1471,5 +1474,23 @@ final class ReasiGroceryGlyphTests: XCTestCase {
     func testUnknownItemsFallBackToABasket() {
         XCTAssertEqual(GroceryGlyph.symbol(name: "Birthday candles", aisle: nil), "basket")
         XCTAssertEqual(GroceryGlyph.symbol(name: nil, aisle: nil), "basket")
+    }
+}
+
+final class ReasiProductImageURLTests: XCTestCase {
+    func testColesLinksWithoutTheFolderGetIt() {
+        let stored = URL(string: "https://cdn.productimages.coles.com.au/1/1499340.jpg")
+        XCTAssertEqual(
+            ProductImageURL.normalized(stored)?.absoluteString,
+            "https://cdn.productimages.coles.com.au/productimages/1/1499340.jpg"
+        )
+    }
+
+    func testWorkingAndOtherLinksAreLeftAlone() {
+        let working = URL(string: "https://cdn.productimages.coles.com.au/productimages/9/9073535.jpg")
+        XCTAssertEqual(ProductImageURL.normalized(working), working)
+        let other = URL(string: "https://images.openfoodfacts.org/images/products/123/front.jpg?rev=4")
+        XCTAssertEqual(ProductImageURL.normalized(other), other)
+        XCTAssertNil(ProductImageURL.normalized(nil))
     }
 }

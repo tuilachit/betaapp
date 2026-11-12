@@ -8,16 +8,29 @@ struct AppShellView: View {
     @Environment(NetworkMonitor.self) private var network
 
     var body: some View {
-        TabView(selection: Binding(
-            get: { appState.selectedTab },
-            set: { appState.selectedTab = $0 }
+        TabView(selection: Binding<ShellTab>(
+            get: { .screen(appState.selectedTab) },
+            set: { selection in
+                switch selection {
+                case .screen(let tab):
+                    appState.selectedTab = tab
+                case .add:
+                    // The + sits in the tab bar but isn't a screen: it acts, and the tab stays put.
+                    performPrimaryAction()
+                }
+            }
         )) {
             ForEach(AppTab.allCases) { tab in
-                Tab(tab.title, systemImage: tab.symbolName, value: tab) {
+                Tab(tab.title, systemImage: tab.symbolName, value: ShellTab.screen(tab)) {
                     tabStack(for: tab)
                 }
                 .accessibilityIdentifier("tab-\(tab.rawValue)")
             }
+            // The search role gives the system's separate round button at the end of the bar.
+            Tab(primaryActionLabel, systemImage: "plus", value: ShellTab.add, role: .search) {
+                Color.reasi.background.ignoresSafeArea()
+            }
+            .accessibilityIdentifier("tab-add")
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tint(Color.reasi.text)
@@ -50,6 +63,28 @@ struct AppShellView: View {
             }
         }
         #endif
+    }
+
+    private enum ShellTab: Hashable {
+        case screen(AppTab)
+        case add
+    }
+
+    private var addsToList: Bool {
+        appState.selectedTab == .list && coreLoop.hasPlan && !coreLoop.isShoppingCompleted
+    }
+
+    private var primaryActionLabel: String {
+        addsToList ? "Add shopping item" : "Create a plan"
+    }
+
+    private func performPrimaryAction() {
+        ReasiHaptics.light()
+        if addsToList {
+            appState.requestShoppingListAdd()
+        } else {
+            appState.openPlanBuilder(entryMethod: .build)
+        }
     }
 
     @ViewBuilder

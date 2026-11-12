@@ -129,7 +129,12 @@ enum FixtureWeekPlan {
                         "Warm rice, fold through baby spinach, then serve with cucumber and salmon."
                     ],
                     serves: 2
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/12431192/pexels-photo-12431192.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/cooked-fish-fillet-beside-mixed-vegetable-12431192/"),
+                imagePhotographerName: "Cristian Mihaila",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@crysnet")
             ),
             MealSummary(
                 id: "meal-tue",
@@ -161,7 +166,12 @@ enum FixtureWeekPlan {
                         "Toss pasta through the broccoli with lemon, parmesan, and pasta water until glossy."
                     ],
                     serves: 2
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/29173118/pexels-photo-29173118.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/delicious-creamy-pasta-with-vegetables-and-garlic-bread-29173118/"),
+                imagePhotographerName: "Kunal Lakhotia",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@kunal-lakhotia-781256899")
             ),
             MealSummary(
                 id: "meal-wed",
@@ -193,7 +203,12 @@ enum FixtureWeekPlan {
                         "Serve with Greek yoghurt, coriander, and a squeeze of lemon."
                     ],
                     serves: 2
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/9219090/pexels-photo-9219090.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/delicious-food-in-plate-9219090/"),
+                imagePhotographerName: "Loren Castillo",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@lorencastillo")
             ),
             MealSummary(
                 id: "meal-thu",
@@ -225,7 +240,12 @@ enum FixtureWeekPlan {
                         "Warm pita and plate with tomato, cucumber, yoghurt sauce, and sliced chicken."
                     ],
                     serves: 2
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/15059692/pexels-photo-15059692.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/cooked-food-on-ceramic-plate-15059692/"),
+                imagePhotographerName: "Collab Media",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@collab-media-173741945")
             ),
             MealSummary(
                 id: "meal-fri",
@@ -257,7 +277,12 @@ enum FixtureWeekPlan {
                         "Add noodles, soy, sesame oil, tofu, and a splash of water, tossing until hot."
                     ],
                     serves: 2
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/8983410/pexels-photo-8983410.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/stir-fry-noodles-with-vegetables-8983410/"),
+                imagePhotographerName: "Shardar Tarikul Islam",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@shardar-tarikul-islam-84327533")
             ),
             MealSummary(
                 id: "meal-sat",
@@ -289,7 +314,12 @@ enum FixtureWeekPlan {
                         "Stir through pesto and spinach, then serve with bread or leftover rice."
                     ],
                     serves: 3
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/2162735/pexels-photo-2162735.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/cooked-noodles-2162735/"),
+                imagePhotographerName: "Quang Nguyen Vinh",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@quang-nguyen-vinh-222549")
             ),
             MealSummary(
                 id: "meal-sun",
@@ -321,7 +351,12 @@ enum FixtureWeekPlan {
                         "Fold through spinach and finish with lime juice."
                     ],
                     serves: 3
-                )
+                ),
+                imageUrl: URL(string: "https://images.pexels.com/photos/28286241/pexels-photo-28286241.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"),
+                imageSourceName: "Pexels",
+                imageSourceUrl: URL(string: "https://www.pexels.com/photo/vegan-lentil-dhal-28286241/"),
+                imagePhotographerName: "Nic Wood",
+                imagePhotographerUrl: URL(string: "https://www.pexels.com/@nic-scrollstoppingphotos")
             )
         ],
         shoppingList: ShoppingList(
@@ -347,8 +382,9 @@ enum FixtureWeekPlan {
                                 brand: "Coles",
                                 size: "200g",
                                 priceAud: 4.5,
-                                imageUrl: nil,
-                                capturedAt: nil
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/1/1499340.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
                             )
                         ),
                         ShoppingListItem(
@@ -364,8 +400,9 @@ enum FixtureWeekPlan {
                                 brand: nil,
                                 size: "Each",
                                 priceAud: 1.2,
-                                imageUrl: nil,
-                                capturedAt: nil
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/5/5318302.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 3
                             )
                         ),
                         ShoppingListItem(
@@ -375,7 +412,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Fresh Produce",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3048820",
+                                productName: "Broccoli",
+                                brand: "Coles Organic",
+                                size: "500g",
+                                priceAud: 7.9,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3048820.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-cucumber",
@@ -384,7 +430,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Fresh Produce",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "4575208",
+                                productName: "Lebanese Cucumbers",
+                                brand: "Coles",
+                                size: "approx. 160g",
+                                priceAud: 1.42,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/4/4575208.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-sweet-potato",
@@ -393,7 +448,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Fresh Produce",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3616751",
+                                productName: "I'm Perfect Sweet Potato",
+                                brand: "Coles",
+                                size: "1.5kg",
+                                priceAud: 4.9,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3616751.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-pumpkin",
@@ -402,7 +466,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Fresh Produce",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3119043",
+                                productName: "Pumpkin Kent",
+                                brand: "Coles Organic",
+                                size: "approx. 800g",
+                                priceAud: 6.0,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3119043.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-herbs",
@@ -427,7 +500,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Seafood",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "1558144",
+                                productName: "Tasmanian Salmon Portions Skin Off",
+                                brand: "Coles",
+                                size: "280g",
+                                priceAud: 14.0,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/1/1558144.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-chicken",
@@ -436,7 +518,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Meat",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "2263317",
+                                productName: "RSPCA Chicken Thigh Fillets Small Pack",
+                                brand: "Coles",
+                                size: "approx. 700g",
+                                priceAud: 12.6,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/2/2263317.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-turkey",
@@ -445,7 +536,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Meat",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "9277808",
+                                productName: "Turkey Mince",
+                                brand: "Steggles",
+                                size: "500g",
+                                priceAud: 7.0,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/9/9277808.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         )
                     ]
                 ),
@@ -461,7 +561,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Dairy",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "2273489",
+                                productName: "Light Greek Style Yoghurt",
+                                brand: "Coles",
+                                size: "1kg",
+                                priceAud: 4.5,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/2/2273489.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-parmesan",
@@ -470,7 +579,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Dairy",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3946950",
+                                productName: "Parmesan Cheese",
+                                brand: "Coles",
+                                size: "125g",
+                                priceAud: 4.3,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3946950.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-tofu",
@@ -479,7 +597,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Chilled",
                             sectionType: .perimeter,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "2752255",
+                                productName: "Firm Tofu",
+                                brand: "Coles Nature's Kitchen",
+                                size: "300g",
+                                priceAud: 2.5,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/2/2752255.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         )
                     ]
                 ),
@@ -504,7 +631,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Aisle 4",
                             sectionType: .numbered,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3380430",
+                                productName: "Orecchiette No.119 Italian Pasta",
+                                brand: "Cucina Matese",
+                                size: "500g",
+                                priceAud: 2.8,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3380430.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-lentils",
@@ -513,7 +649,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Aisle 4",
                             sectionType: .numbered,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "9073535",
+                                productName: "Red Split Lentils",
+                                brand: "Coles",
+                                size: "1kg",
+                                priceAud: 4.0,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/9/9073535.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-coconut-milk",
@@ -522,7 +667,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Aisle 5",
                             sectionType: .numbered,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3902943",
+                                productName: "Coconut Milk",
+                                brand: "Coles Organic",
+                                size: "400mL",
+                                priceAud: 2.1,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3902943.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-noodles",
@@ -531,7 +685,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Aisle 5",
                             sectionType: .numbered,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "5578256",
+                                productName: "Hokkien Noodles",
+                                brand: "Coles",
+                                size: "600g",
+                                priceAud: 3.5,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/5/5578256.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         ),
                         ShoppingListItem(
                             id: "item-passata",
@@ -540,7 +703,16 @@ enum FixtureWeekPlan {
                             checked: false,
                             aisleLabel: "Aisle 6",
                             sectionType: .numbered,
-                            product: nil
+                            product: ProductSnapshot(
+                                sku: "3664812",
+                                productName: "Tomato Passata",
+                                brand: "Coles Organic",
+                                size: "700g",
+                                priceAud: 2.5,
+                                imageUrl: URL(string: "https://cdn.productimages.coles.com.au/productimages/3/3664812.jpg"),
+                                capturedAt: nil,
+                                purchaseQuantity: 1
+                            )
                         )
                     ]
                 ),

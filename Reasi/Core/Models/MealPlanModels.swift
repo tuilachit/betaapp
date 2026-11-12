@@ -741,12 +741,21 @@ struct PriceFreshness: Equatable {
         isStale = days > Self.staleAfterDays
     }
 
-    /// Short line for list and plan headers, e.g. "Coles prices checked 9 Oct".
-    func label(retailer: String) -> String {
-        let date = capturedAt.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_AU")))
-        return isStale
-            ? "\(retailer) prices last checked \(date). They may have changed."
-            : "\(retailer) prices checked \(date)"
+    private var day: String {
+        capturedAt.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_AU")))
+    }
+
+    /// Short line under the list total: "Prices from 9 Oct", or when stale,
+    /// "Prices from 9 Oct, may have changed".
+    var label: String {
+        isStale ? "Prices from \(day), may have changed" : "Prices from \(day)"
+    }
+
+    /// The same fact for VoiceOver, with the retailer named.
+    func spokenLabel(retailer: String) -> String {
+        isStale
+            ? "\(retailer) prices last checked \(day). They may have changed."
+            : "\(retailer) prices checked \(day)"
     }
 
     static func parse(_ value: String) -> Date? {
