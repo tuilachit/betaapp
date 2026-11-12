@@ -96,7 +96,7 @@ enum FixtureWeekPlan {
         storeId: .topRyde,
         storeName: "Coles Top Ryde",
         weekLabel: SampleDates.weekLabel(),
-        planningNotes: "A calm seven-dinner plan with shared herbs, greens, rice, pasta, and yoghurt so the shop stays efficient without feeling repetitive.",
+        planningNotes: "Seven dinners that share herbs, greens, rice and yoghurt, so less goes in the bin.",
         meals: [
             MealSummary(
                 id: "meal-mon",

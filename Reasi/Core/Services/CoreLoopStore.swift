@@ -1150,6 +1150,7 @@ final class CoreLoopStore {
         quantity: String = "1",
         idempotencyKey: String,
         analyticsMethod: String = "review",
+        origin: String? = nil,
         supabase: SupabaseService,
         analytics: AnalyticsService
     ) async -> Bool {
@@ -1191,7 +1192,7 @@ final class CoreLoopStore {
             candidate: candidate,
             quantity: quantity,
             sortOrder: sortOrder,
-            origin: analyticsMethod
+            origin: origin ?? analyticsMethod
         )
         pendingImports.append(pending)
         addedImportKeys.insert(idempotencyKey)

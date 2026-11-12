@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct SpendView: View {
     @Environment(AppState.self) private var appState
@@ -19,17 +18,16 @@ struct SpendView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-                header
                 periodPicker
                 content
             }
-            .padding(.top, ReasiSpacing.s3)
-            .padding(.bottom, 124)
+            .padding(.top, ReasiSpacing.s2)
+            .padding(.bottom, ReasiSpacing.s8)
         }
         .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
         .background(Color.reasi.background)
         .accessibilityIdentifier("spend-screen")
-        .toolbar(.hidden, for: .navigationBar)
+        .reasiTabRoot("Spend", subtitle: periodSubtitle, openProfile: appState.openProfile)
         .refreshable {
             await spending.refresh(supabase: supabase)
         }
@@ -50,41 +48,8 @@ struct SpendView: View {
         }
     }
 
-    private var header: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-                    HStack {
-                        Spacer()
-                        ReasiProfileButton { appState.openProfile() }
-                    }
-                    headerCopy
-                }
-            } else {
-                HStack(alignment: .center, spacing: ReasiSpacing.s4) {
-                    headerCopy
-                    Spacer(minLength: ReasiSpacing.s3)
-                    ReasiProfileButton { appState.openProfile() }
-                }
-            }
-        }
-    }
-
-    private var headerCopy: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-            Text("Spend")
-                .font(ReasiTypography.title2)
-                .foregroundStyle(Color.reasi.text)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(periodSubtitle)
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.muted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     private var periodSubtitle: String {
-        guard let dashboard = spending.dashboard else { return "Completed shops, clearly tracked" }
+        guard let dashboard = spending.dashboard else { return "" }
         return SpendingDateCopy.range(
             start: dashboard.startDate,
             endExclusive: dashboard.endDateExclusive
@@ -157,10 +122,6 @@ struct SpendView: View {
 
     private func spendingHero(_ dashboard: SpendingDashboard) -> some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            Text(dashboard.period == .week ? "THIS WEEK" : "THIS MONTH")
-                .font(ReasiTypography.caption)
-                .foregroundStyle(Color.reasi.muted)
-
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 0) {
@@ -178,7 +139,9 @@ struct SpendView: View {
                     }
                 }
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(dashboard.period == .week ? "This week" : "This month"), \(dashboard.completedSpendAud.formatted(.currency(code: "AUD"))) spent")
+            .accessibilityIdentifier("spend-hero-total")
 
             let record = BudgetTrackRecord(trend: dashboard.trend, weeklyTarget: dashboard.weeklyBudgetAud)
             if dashboard.period == .week {
@@ -223,9 +186,10 @@ struct SpendView: View {
            let progress = dashboard.budgetProgress {
             VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
                 HStack(spacing: ReasiSpacing.s2) {
+                    // Same wording as Home's "This week" card.
                     Text(remaining >= 0
-                         ? "\(remaining.formatted(.currency(code: "AUD"))) left of \(budget.formatted(.currency(code: "AUD")))"
-                         : "\(abs(remaining).formatted(.currency(code: "AUD"))) over \(budget.formatted(.currency(code: "AUD")))")
+                         ? "\(remaining.formatted(.currency(code: "AUD"))) left of your \(WeeklyBudgetGuide.wholeDollars(budget)) target"
+                         : "\(abs(remaining).formatted(.currency(code: "AUD"))) over your \(WeeklyBudgetGuide.wholeDollars(budget)) target")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(remaining < 0 ? Color.reasi.warning : Color.reasi.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -246,7 +210,7 @@ struct SpendView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.reasi.border)
                         Capsule()
-                            .fill(remaining < 0 ? Color.reasi.warning : Color.reasi.success)
+                            .fill(remaining < 0 ? Color.reasi.warning : Color.reasi.text)
                             .frame(width: proxy.size.width * progress)
                     }
                 }
@@ -302,34 +266,30 @@ struct SpendView: View {
         let breakdown = SpendCategoryBreakdown(categories: dashboard.categories)
 
         return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
-            sectionHeader("Where it went")
+            HStack(alignment: .firstTextBaseline) {
+                sectionHeader("Where it went")
+                Spacer(minLength: ReasiSpacing.s2)
+                if !breakdown.slices.isEmpty {
+                    Text(breakdown.totalAud, format: .currency(code: "AUD"))
+                        .font(ReasiTypography.callout)
+                        .monospacedDigit()
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+            }
 
             if breakdown.slices.isEmpty {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
                     Text("Not enough priced items yet")
                         .font(ReasiTypography.headline)
                         .foregroundStyle(Color.reasi.text)
-                    Text("Category totals will appear as item prices are tracked.")
+                    Text("Once items on a finished shop have prices, you'll see where the money went.")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
                 }
                 .padding(.vertical, ReasiSpacing.s3)
             } else {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
-                            categoryDonut(breakdown)
-                                .frame(maxWidth: .infinity)
-                            categoryLegend(breakdown)
-                        }
-                    } else {
-                        HStack(alignment: .center, spacing: ReasiSpacing.s5) {
-                            categoryDonut(breakdown)
-                            categoryLegend(breakdown)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
+                categoryBar(breakdown)
+                categoryLegend(breakdown)
             }
 
             categoryTrustCopy(dashboard)
@@ -341,90 +301,77 @@ struct SpendView: View {
         }
     }
 
-    private func categoryDonut(_ breakdown: SpendCategoryBreakdown) -> some View {
+    /// Categories are ranked by spend, so they're told apart by shade: the biggest is the darkest.
+    private func categoryShade(_ index: Int) -> Color {
+        let opacities: [Double] = [1, 0.66, 0.44, 0.28, 0.16]
+        return Color.reasi.text.opacity(opacities[min(index, opacities.count - 1)])
+    }
+
+    private func categoryBar(_ breakdown: SpendCategoryBreakdown) -> some View {
         let selected = breakdown.slice(id: selectedCategoryID)
+        let gap: CGFloat = 2
 
-        return ZStack {
-            Chart(breakdown.slices) { slice in
-                SectorMark(
-                    angle: .value("Tracked spend", slice.amountAud),
-                    innerRadius: .ratio(0.64),
-                    angularInset: 2
-                )
-                .cornerRadius(4)
-                .foregroundStyle(categoryColor(slice.colorRole))
-                .opacity(selected == nil || selected?.id == slice.id ? 1 : 0.38)
-            }
-            .chartLegend(.hidden)
-            .chartGesture { proxy in
-                SpatialTapGesture()
-                    .onEnded { event in
-                        let angle = proxy.angle(at: event.location)
-                        let value = proxy.value(atAngle: angle, as: Double.self)
-                        if let slice = breakdown.slice(atCumulativeValue: value) {
-                            selectedCategoryID = slice.id
-                            ReasiHaptics.selection()
-                        }
-                    }
-            }
-
-            VStack(spacing: 2) {
-                Text(selected?.label.uppercased() ?? "TRACKED")
-                    .font(ReasiTypography.navLabel)
-                    .foregroundStyle(Color.reasi.muted)
-                    .lineLimit(1)
-                Text(selected?.amountAud ?? breakdown.totalAud, format: .currency(code: "AUD"))
-                    .font(ReasiTypography.headline)
-                    .foregroundStyle(Color.reasi.text)
-                    .contentTransition(.numericText())
-                if let selected {
-                    Text(selected.fraction, format: .percent.precision(.fractionLength(0)))
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
-                } else {
-                    Text("spend")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.textMuted)
+        return GeometryReader { proxy in
+            let usable = proxy.size.width - gap * CGFloat(max(breakdown.slices.count - 1, 0))
+            HStack(spacing: gap) {
+                ForEach(Array(breakdown.slices.enumerated()), id: \.element.id) { index, slice in
+                    Rectangle()
+                        .fill(categoryShade(index))
+                        .opacity(selected == nil || selected?.id == slice.id ? 1 : 0.3)
+                        .frame(width: usable * slice.fraction)
+                        .contentShape(Rectangle())
+                        .onTapGesture { toggleCategory(slice, selected: selected) }
                 }
             }
-            .padding(.horizontal, ReasiSpacing.s3)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
-        .frame(width: 144, height: 144)
+        .frame(height: 12)
+        .clipShape(Capsule())
+        .animation(reduceMotion ? nil : ReasiMotion.fast, value: selectedCategoryID)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("spend-category-chart")
-        .accessibilityLabel("Tracked spending by category")
+        .accessibilityLabel("Spending by category")
         .accessibilityValue(categoryAccessibilitySummary(breakdown))
+    }
+
+    private func toggleCategory(_ slice: SpendCategorySlice, selected: SpendCategorySlice?) {
+        if selected?.id == slice.id {
+            selectedCategoryID = nil
+        } else {
+            selectedCategoryID = slice.id
+            ReasiHaptics.selection()
+        }
     }
 
     private func categoryLegend(_ breakdown: SpendCategoryBreakdown) -> some View {
         let selected = breakdown.slice(id: selectedCategoryID)
 
-        return VStack(spacing: ReasiSpacing.s1) {
-            ForEach(breakdown.slices) { slice in
+        return VStack(spacing: 0) {
+            ForEach(Array(breakdown.slices.enumerated()), id: \.element.id) { index, slice in
+                let isDimmed = selected != nil && selected?.id != slice.id
                 Button {
-                    if selected?.id == slice.id {
-                        selectedCategoryID = nil
-                    } else {
-                        selectedCategoryID = slice.id
-                        ReasiHaptics.selection()
-                    }
+                    toggleCategory(slice, selected: selected)
                 } label: {
-                    HStack(spacing: ReasiSpacing.s2) {
-                        Circle()
-                            .fill(categoryColor(slice.colorRole))
-                            .frame(width: 8, height: 8)
+                    HStack(spacing: ReasiSpacing.s3) {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(categoryShade(index))
+                            .frame(width: 12, height: 12)
                         Text(slice.label)
                             .font(ReasiTypography.callout)
-                            .foregroundStyle(Color.reasi.textMuted)
+                            .foregroundStyle(Color.reasi.text)
                             .lineLimit(1)
                         Spacer(minLength: ReasiSpacing.s2)
+                        Text(slice.fraction, format: .percent.precision(.fractionLength(0)))
+                            .font(ReasiTypography.callout)
+                            .monospacedDigit()
+                            .foregroundStyle(Color.reasi.muted)
                         Text(slice.amountAud, format: .currency(code: "AUD"))
                             .font(ReasiTypography.callout)
+                            .monospacedDigit()
                             .foregroundStyle(Color.reasi.text)
+                            .frame(minWidth: 64, alignment: .trailing)
                     }
-                    .frame(minHeight: 28)
+                    .opacity(isDimmed ? 0.45 : 1)
+                    .frame(minHeight: 40)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(ReasiPressStyle())
@@ -444,7 +391,7 @@ struct SpendView: View {
     }
 
     private func categoryCoverageText(_ dashboard: SpendingDashboard) -> some View {
-        Text("Based on \(dashboard.pricedCheckedItems) of \(dashboard.checkedItems) priced items")
+        Text("From the \(dashboard.pricedCheckedItems) of \(dashboard.checkedItems) items that had a price")
             .font(ReasiTypography.caption)
             .foregroundStyle(Color.reasi.muted)
     }
@@ -452,9 +399,9 @@ struct SpendView: View {
     @ViewBuilder
     private func checkoutDifferenceText(_ dashboard: SpendingDashboard) -> some View {
         if abs(dashboard.checkoutDifferenceAud) >= 0.01 {
-            Text("\(abs(dashboard.checkoutDifferenceAud).formatted(.currency(code: "AUD"))) checkout difference excluded")
+            Text("\(abs(dashboard.checkoutDifferenceAud).formatted(.currency(code: "AUD"))) of your checkout total isn't in a category")
                     .font(ReasiTypography.caption)
-                    .foregroundStyle(Color.reasi.warning)
+                    .foregroundStyle(Color.reasi.muted)
         }
     }
 
@@ -506,7 +453,7 @@ struct SpendView: View {
                     ProgressView()
                         .controlSize(.small)
                         .tint(Color.reasi.textMuted)
-                    Text("Finding one useful change for your next shop...")
+                    Text("Working out a tip for your next shop…")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.muted)
                 }
@@ -604,17 +551,12 @@ struct SpendView: View {
                 .background(Color.reasi.surface, in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                if !showsBody {
-                    Text(card.kind.label.uppercased())
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                }
-                Text(card.title)
+                Text(SpendingDateCopy.localMoney(card.title))
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
                     .lineLimit(2)
                 if showsBody {
-                    Text(card.body)
+                    Text(SpendingDateCopy.localMoney(card.body))
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.textMuted)
                         .lineLimit(2)
@@ -771,16 +713,20 @@ struct SpendView: View {
 
     private var unavailableState: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s5) {
-            Image(systemName: "wifi.exclamationmark")
+            // Signed out is not a connection problem, so it gets neither the wifi icon nor a retry.
+            Image(systemName: spending.needsSignIn ? "person.crop.circle" : "wifi.exclamationmark")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(Color.reasi.textMuted)
             Text(spending.dashboardMessage ?? "Your spending could not load yet.")
                 .font(ReasiTypography.body)
                 .foregroundStyle(Color.reasi.textMuted)
-            Button("Try again") {
-                Task { await spending.refresh(supabase: supabase) }
+                .fixedSize(horizontal: false, vertical: true)
+            if !spending.needsSignIn {
+                Button("Try again") {
+                    Task { await spending.refresh(supabase: supabase) }
+                }
+                .buttonStyle(ReasiPrimaryButtonStyle())
             }
-            .buttonStyle(ReasiPrimaryButtonStyle())
         }
         .padding(.top, ReasiSpacing.s8)
     }
@@ -809,25 +755,6 @@ struct SpendView: View {
             .font(ReasiTypography.caption)
             .foregroundStyle(Color.reasi.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func categoryColor(_ role: SpendCategoryColorRole) -> Color {
-        switch role {
-        case .produce: Color(light: 0x28743F, dark: 0x9FE3B1)
-        case .protein: Color(light: 0xBE4438, dark: 0xFF9A8B)
-        case .pantry: Color(light: 0x7750B5, dark: 0xC5A9FF)
-        case .dairy: Color(light: 0x926500, dark: 0xFFD36A)
-        case .bakery: Color(light: 0xA55C20, dark: 0xF5B97A)
-        case .frozen: Color(light: 0x236CAB, dark: 0x88C9FF)
-        case .drinks: Color(light: 0x007D75, dark: 0x7ADFD6)
-        case .baby: Color(light: 0xA34681, dark: 0xF3A8D3)
-        case .personalCare: Color(light: 0xAD405B, dark: 0xE89AAE)
-        case .household: Color(light: 0x4C5EB5, dark: 0xA8B6FF)
-        case .other: Color.reasi.textMuted
-        case .accentA: Color(light: 0x26729B, dark: 0xB2E0FF)
-        case .accentB: Color(light: 0x8B4EAF, dark: 0xE1B8FF)
-        case .accentC: Color(light: 0xA45730, dark: 0xFFC6A5)
-        }
     }
 
     private func saveBudget(_ value: Double?) async -> Bool {
@@ -985,16 +912,16 @@ struct SpendingTripDetailView: View {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
                         recapMetric("Items", "\(detail.trip.checkedItems)")
-                        recapMetric("Price coverage", detail.trip.priceCoverage.formatted(.percent.precision(.fractionLength(0))))
-                        recapMetric("Tracked", detail.trip.trackedTotalAud.formatted(.currency(code: "AUD")))
+                        recapMetric("Priced", detail.trip.priceCoverage.formatted(.percent.precision(.fractionLength(0))))
+                        recapMetric("Itemised", detail.trip.trackedTotalAud.formatted(.currency(code: "AUD")))
                     }
                 } else {
                     HStack {
                         recapMetric("Items", "\(detail.trip.checkedItems)")
                         Spacer()
-                        recapMetric("Price coverage", detail.trip.priceCoverage.formatted(.percent.precision(.fractionLength(0))))
+                        recapMetric("Priced", detail.trip.priceCoverage.formatted(.percent.precision(.fractionLength(0))))
                         Spacer()
-                        recapMetric("Tracked", detail.trip.trackedTotalAud.formatted(.currency(code: "AUD")))
+                        recapMetric("Itemised", detail.trip.trackedTotalAud.formatted(.currency(code: "AUD")))
                     }
                 }
             }
@@ -1014,7 +941,7 @@ struct SpendingTripDetailView: View {
             if let remaining = detail.trip.weeklyBudgetRemainingAud {
                 Divider().overlay(Color.reasi.border)
                 Text(remaining >= 0
-                     ? "\(remaining.formatted(.currency(code: "AUD"))) remains in this week's target."
+                     ? "\(remaining.formatted(.currency(code: "AUD"))) left of this week's target."
                      : "This week is \(abs(remaining).formatted(.currency(code: "AUD"))) over target.")
                     .font(ReasiTypography.callout)
                     .foregroundStyle(remaining < 0 ? Color.reasi.warning : Color.reasi.textMuted)
@@ -1030,20 +957,20 @@ struct SpendingTripDetailView: View {
 
     private func recapBreakdown(_ detail: SpendingTripDetail) -> some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-            Text("What shaped the shop")
+            Text("Planned or added")
                 .font(ReasiTypography.title2)
                 .foregroundStyle(Color.reasi.text)
 
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(spacing: ReasiSpacing.s3) {
-                        breakdownMetric("Planned", amount: detail.plannedSpendAud, color: Color.reasi.success)
-                        breakdownMetric("Added", amount: detail.addedSpendAud, color: Color.reasi.warning)
+                        breakdownMetric("Planned", amount: detail.plannedSpendAud, color: Color.reasi.text)
+                        breakdownMetric("Added", amount: detail.addedSpendAud, color: Color.reasi.text.opacity(0.35))
                     }
                 } else {
                     HStack(spacing: ReasiSpacing.s3) {
-                        breakdownMetric("Planned", amount: detail.plannedSpendAud, color: Color.reasi.success)
-                        breakdownMetric("Added", amount: detail.addedSpendAud, color: Color.reasi.warning)
+                        breakdownMetric("Planned", amount: detail.plannedSpendAud, color: Color.reasi.text)
+                        breakdownMetric("Added", amount: detail.addedSpendAud, color: Color.reasi.text.opacity(0.35))
                     }
                 }
             }
@@ -1071,7 +998,7 @@ struct SpendingTripDetailView: View {
     private func recapInsights(_ detail: SpendingTripDetail) -> some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
             HStack {
-                Text("Three takeaways")
+                Text("Notes on this shop")
                     .font(ReasiTypography.title2)
                     .foregroundStyle(Color.reasi.text)
                 Spacer()
@@ -1092,7 +1019,7 @@ struct SpendingTripDetailView: View {
                             .font(ReasiTypography.caption)
                             .foregroundStyle(Color.reasi.muted)
                             .frame(width: 82, alignment: .leading)
-                        Text(card.title)
+                        Text(SpendingDateCopy.localMoney(card.title))
                             .font(ReasiTypography.headline)
                             .foregroundStyle(Color.reasi.text)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1242,10 +1169,10 @@ struct SpendingInsightDetailView: View {
             Text(card.kind.label)
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.muted)
-            Text(card.title)
+            Text(SpendingDateCopy.localMoney(card.title))
                 .font(ReasiTypography.title)
                 .foregroundStyle(Color.reasi.text)
-            Text(card.body)
+            Text(SpendingDateCopy.localMoney(card.body))
                 .font(ReasiTypography.body)
                 .foregroundStyle(Color.reasi.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1462,7 +1389,25 @@ private enum SpendingDateCopy {
               let endDate = dateOnly(endExclusive).flatMap({ Calendar.current.date(byAdding: .day, value: -1, to: $0) }) else {
             return "Completed shops"
         }
-        return "\(startDate.formatted(.dateTime.day().month(.abbreviated))) - \(endDate.formatted(.dateTime.day().month(.abbreviated)))"
+        return dayRange(startDate, endDate)
+    }
+
+    /// "9–15 Nov" within a month, "30 Nov – 6 Dec" across two.
+    static func dayRange(_ start: Date, _ end: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> String {
+        var calendar = calendar
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let locale = Locale(identifier: "en_AU")
+        let month = Date.FormatStyle(timeZone: calendar.timeZone).month(.abbreviated).locale(locale)
+        let startDay = calendar.component(.day, from: start), endDay = calendar.component(.day, from: end)
+        let startMonth = start.formatted(month), endMonth = end.formatted(month)
+        return startMonth == endMonth
+            ? "\(startDay)–\(endDay) \(endMonth)"
+            : "\(startDay) \(startMonth) – \(endDay) \(endMonth)"
+    }
+
+    /// The backend writes "A$12.00"; Reasi is Australian-only, so show "$12.00" like every other amount.
+    static func localMoney(_ text: String) -> String {
+        text.replacingOccurrences(of: "A$", with: "$")
     }
 
     static func shortDate(_ value: String) -> String {

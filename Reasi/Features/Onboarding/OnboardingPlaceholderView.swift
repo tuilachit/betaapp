@@ -682,7 +682,7 @@ struct OnboardingPlaceholderView: View {
                 title: "Get 3 days of Reasi Pro"
             )
 
-            Text("Take a clear photo of your store's aisle guide. We'll turn it into a personal route for your first shop.")
+            Text("Take a clear photo of your store's aisle guide. Reasi uses it to put your list in aisle order.")
                 .font(ReasiTypography.body)
                 .foregroundStyle(Color.reasi.textMuted)
 

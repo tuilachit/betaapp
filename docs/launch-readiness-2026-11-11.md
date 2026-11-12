@@ -1,6 +1,6 @@
 # Reasi 1.0 launch readiness, 11 Nov 2026
 
-Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12). Build number is now 13.
+Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12). Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
 
 ## What this branch changes in the app
 
@@ -20,6 +20,31 @@ Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight buil
   - Removed the sparkles icons from buttons.
   - Each household size has its own icon.
   - On meal cards without a photo, the fork-and-knife icon moved to a corner.
+- **Your usuals (12 Nov).** The shopping list now learns from finished shops. Items ticked in at least 2 of the last 6 shops show in a "Your usuals" row of small tiles you swipe sideways, each with the size, the price last time and how often it was bought ("Every shop", "3 of 4 shops"). At the largest text sizes the row becomes a plain vertical list. One tap adds an item, or "Add all" adds every one. Items already on the list are hidden. Shop details come from `spending-trip-detail` and are kept on the device, so each shop is fetched once. Nothing shows until there are 2 finished shops.
+- **Native iOS 26 navigation (12 Nov).**
+  - The custom floating tab bar and its sideways slide are replaced by the system `TabView`, which gives the Liquid Glass tab bar and shrinks it while scrolling down.
+  - Each tab has a native large title (in Inter) with the profile button, and on Plans and List a + button, in the system toolbar.
+  - The List screen's "Swipe to finish" and assistant controls now sit just above the tab bar instead of behind a fixed 96-point gap.
+  - Pushed screens such as Settings use the system back button, labelled with the screen you came from. UI tests now find it by its `BackButton` identifier.
+  - In the plan builder, the keyboard's Done bar stopped appearing once the builder covered the system tab bar. While you type, Done now sits in the top bar in place of the ••• menu, as in Notes. The keyboard Done bars in sheets (budget, list photo review) still work.
+- **Design and copy pass (12 Nov).**
+  - Spend: the five-colour donut is now one bar in shades of the text colour, biggest category darkest, with a ranked list showing percent and amount. The bar under the total uses the same black as Home, and both screens say "$33.60 left of your $120 target".
+  - Spend explains its two totals: "From the 8 of 10 items that had a price" and "$4.00 of your checkout total isn't in a category", in grey rather than amber.
+  - All-caps labels removed from Spend and the Home week card ("THIS WEEK", "TRACKED", "PATTERN").
+  - Insight text from the backend shows "$" instead of "A$", like the rest of the app. The backend's own fallback copy ("Added items shaped spend") still needs rewording in `spending-insights.ts`.
+  - Dates read the Australian way: "9–15 Nov".
+  - Plans no longer shows the AI-written week label as its subtitle, since its format varies.
+  - Home: once there's a plan, Create a plan moves to the + in the top bar. The second "This week" card and the separate store card are replaced by one grouped list: Your plan, and the store.
+  - The list's "Tap the circle…" hint shows only until the first tick.
+  - Cards on Home, List and Plans have a barely visible edge in light mode, like iOS grouped lists.
+  - Sample data and coaching tones rewritten in plain words.
+  - A sweep of every screen's text replaced the last vague or padded lines: "Three takeaways" is now "Notes on this shop", "What shaped the shop" is now "Planned or added", "Why it matters" is now "Context", "Working securely..." is now "Signing in…". The aisle-guide step now says what the photo is for ("Reasi uses it to put your list in aisle order"). The shop recap shows "$" too.
+- **No empty picture frames (12 Nov).** Meal photos and product photos load when the backend has them; the sample data has none, and a new plan's meal photos arrive a few seconds after the plan.
+  - Plans: a meal without a photo shows its day ("Mon") in a small tile, like Calendar, with today's tile filled. The muddy gradient boxes, coloured from the plan's AI-picked tone, are gone.
+  - Home leads with tonight's dinner ("Tonight · Chicken souvlaki plates") when the week plan has today's day, otherwise the first meal. Without a photo it's a light card, not an empty dark one.
+  - The meal detail header without a photo is a plain dark panel, like Home.
+  - List rows without a product photo show an aisle symbol from the item's name, then its aisle: leaf for spinach, fish for salmon, fridge for milk, snowflake for frozen, and a basket when nothing matches. Keywords must start a word, so "steak" isn't tea and "foil" isn't oil. Unit tests cover this.
+- **Copy fixes (12 Nov).** Spend no longer shows a wifi icon and "Try again" when nobody is signed in. Home says "Nothing spent yet · $170 target" instead of "$170.00 left of your $170 target".
 - **UI test fix.** `testPlanBuilderPickerPreservesDraftAndOpensProductSearch` now puts the keyboard away before tapping Add. With the keyboard up on a 6.3" screen, the floating Create plan button covers Add and takes the tap. On the Smart Basket branch it failed one step earlier, because Add couldn't be reached with the keyboard up. I didn't check it on `main`.
 - **Release tooling.** `scripts/testflight-release-preflight.sh` now uses `grep -E` instead of `rg`, so it runs on a stock Mac. It passes all 11 checks on the Release build.
 - **Docs.** The TestFlight checklist says build 13 and no longer mentions a free-preview plan, which doesn't exist on `main`.
@@ -81,7 +106,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 7. Final build
 
-**Archived on 12 Nov 2026.** Build `1.0.0 (13)` is in Xcode Organizer as `Reasi-1.0.0-13.xcarchive`. It's signed for team Y57R7X3G78, carries the Sign in with Apple entitlement, and passes the release preflight as a device build. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place.
+**Archived on 12 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` and passes the release preflight. Upload this one, not `Reasi-1.0.0-13.xcarchive`, which predates the 12 Nov design changes. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. The App Store screenshots in `docs/app-store-screenshots/` were recaptured from this design on the same day.
 
 CI note: PR #47's `iOS Release build` run stayed queued with no job created, because GitHub never assigned a `macos-26` hosted runner. The same workflow ran on 11 Oct. If it is still queued, re-run it from the Actions tab.
 

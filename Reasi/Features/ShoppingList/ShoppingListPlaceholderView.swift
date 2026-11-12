@@ -5,7 +5,6 @@ import Vision
 import VisionKit
 
 private enum ShoppingDockMetrics {
-    static let tabBarClearance: CGFloat = 96
     static let finishHeight: CGFloat = 52
     static let controlGap: CGFloat = 12
 }
@@ -13,6 +12,7 @@ private enum ShoppingDockMetrics {
 struct ShoppingListPlaceholderView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AppState.self) private var appState
     @Environment(CoreLoopStore.self) private var coreLoop
     @Environment(SupabaseService.self) private var supabase
@@ -36,6 +36,7 @@ struct ShoppingListPlaceholderView: View {
     @State private var inlineError: String?
     @State private var inputIsBusy = false
     @State private var scrollPosition = ScrollPosition(edge: .top)
+    @State private var addingUsualKeys: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -70,6 +71,11 @@ struct ShoppingListPlaceholderView: View {
                             shoppingCompleteCard
                         } else {
                             shoppingOverview
+                            if !visibleUsuals.isEmpty,
+                               coreLoop.plan.shoppingList.status == .active,
+                               coreLoop.plan.storeId == appState.selectedStore.id {
+                                usualsCard
+                            }
                         }
 
                         if coreLoop.isSwitchingStore {
@@ -125,8 +131,8 @@ struct ShoppingListPlaceholderView: View {
                         }
                     }
                 }
-                .padding(.top, ReasiSpacing.s8)
-                .padding(.bottom, shoppingContentBottomPadding)
+                .padding(.top, ReasiSpacing.s1)
+                .padding(.bottom, ReasiSpacing.s8)
             }
             .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
             .scrollPosition($scrollPosition)
@@ -143,7 +149,7 @@ struct ShoppingListPlaceholderView: View {
             }
         }
         .background(Color.reasi.background)
-        .overlay(alignment: .bottomTrailing) {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             shoppingDock
         }
         .onAppear(perform: updateIdleTimer)
@@ -152,7 +158,17 @@ struct ShoppingListPlaceholderView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .reasiTabRoot(
+            "Shopping list",
+            action: coreLoop.hasPlan && !coreLoop.isShoppingCompleted
+                ? ReasiToolbarAction(title: "Add shopping item", systemImage: "plus", identifier: "toolbar-add-item") {
+                    appState.requestShoppingListAdd()
+                }
+                : ReasiToolbarAction(title: "Create a plan", systemImage: "plus", identifier: "toolbar-create-plan") {
+                    appState.openPlanBuilder(entryMethod: .build)
+                },
+            openProfile: appState.openProfile
+        )
         .confirmationDialog("Add item", isPresented: $showAddDialog, titleVisibility: .visible) {
             Button("Search or paste product link") {
                 productSearchContext = ProductSearchContext(
@@ -331,6 +347,10 @@ struct ShoppingListPlaceholderView: View {
             didTrackView = true
             coreLoop.markShoppingListViewed(analytics: analytics)
         }
+        .task(id: "\(coreLoop.hasPlan)/\(supabase.isSignedIn)") {
+            guard coreLoop.hasPlan else { return }
+            await spending.refreshUsuals(supabase: supabase)
+        }
         .task(id: "\(coreLoop.shoppingProductContext)/\(coreLoop.hasPlan)/\(coreLoop.isRestoringPlan)/\(coreLoop.isSwitchingStore)/\(coreLoop.plan.shoppingList.status)/\(supabase.isSignedIn)") {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-ReasiMatchCatalogueFixture") {
@@ -355,11 +375,7 @@ struct ShoppingListPlaceholderView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: ReasiSpacing.s4) {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                Text("Shopping list")
-                    .font(ReasiTypography.largeTitle)
-                    .foregroundStyle(Color.reasi.text)
+        HStack(spacing: ReasiSpacing.s4) {
                 Menu {
                     ForEach(FixtureStores.launchStores) { store in
                         Button {
@@ -390,9 +406,7 @@ struct ShoppingListPlaceholderView: View {
                 }
                 .accessibilityLabel("Choose shopping store")
                 .disabled(coreLoop.isShoppingCompleted)
-            }
-            Spacer(minLength: ReasiSpacing.s3)
-            ReasiProfileButton { appState.openProfile() }
+            Spacer(minLength: 0)
         }
     }
 
@@ -467,10 +481,13 @@ struct ShoppingListPlaceholderView: View {
                 .foregroundStyle(freshness.isStale ? Color.reasi.warning : Color.reasi.muted)
                 .accessibilityIdentifier("price-freshness")
             }
-            Text("Tap the circle when it’s in your trolley.")
-                .font(ReasiTypography.font(size: 12, relativeTo: .caption))
-                .foregroundStyle(Color.reasi.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            // A first-use hint: once anything is ticked, the person knows how it works.
+            if summary.checkedItemCount == 0 {
+                Text("Tap the circle when it’s in your trolley.")
+                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                    .foregroundStyle(Color.reasi.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if coreLoop.isMatchingShoppingProducts {
                 HStack(spacing: ReasiSpacing.s2) {
@@ -504,7 +521,228 @@ struct ShoppingListPlaceholderView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
+        }
+    }
+
+    private var visibleUsuals: [UsualItem] {
+        ShoppingHabits.notOnList(spending.usuals, items: coreLoop.allShoppingItems)
+    }
+
+    /// A short rail of the things this household keeps buying, one tap each. It sits above
+    /// the list as a strip rather than a tall card, so the list itself stays on screen.
+    private var usualsCard: some View {
+        let usuals = visibleUsuals
+        let shopCount = usuals.first?.shopsConsidered ?? ShoppingHabits.shopsToConsider
+
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your usuals")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("From your last \(shopCount) shops")
+                        .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                        .foregroundStyle(Color.reasi.muted)
+                }
+                Spacer(minLength: ReasiSpacing.s2)
+                if usuals.count > 1 {
+                    Button("Add all") {
+                        Task { await addUsuals(usuals) }
+                    }
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.text)
+                    .frame(minHeight: 44)
+                    .disabled(!addingUsualKeys.isEmpty)
+                    .accessibilityLabel("Add all \(usuals.count) usuals")
+                    .accessibilityIdentifier("usuals-add-all")
+                }
+            }
+
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 0) {
+                    ForEach(Array(usuals.enumerated()), id: \.element.id) { index, usual in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(Color.reasi.border)
+                                .frame(height: 1)
+                        }
+                        usualRow(usual)
+                    }
+                }
+                .padding(.horizontal, ReasiSpacing.s4)
+                .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                        .stroke(Color.reasi.cardEdge, lineWidth: 1)
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: ReasiSpacing.s2) {
+                        ForEach(usuals) { usual in
+                            usualTile(usual)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.viewAligned)
+                .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
+                .padding(.horizontal, -ReasiSpacing.s5)
+            }
+        }
+        .transition(.opacity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("usuals-card")
+    }
+
+    private func usualFrequency(_ usual: UsualItem) -> String {
+        usual.timesBought >= usual.shopsConsidered
+            ? "Every shop"
+            : "\(usual.timesBought) of \(usual.shopsConsidered) shops"
+    }
+
+    private func usualTile(_ usual: UsualItem) -> some View {
+        let isAdding = addingUsualKeys.contains(usual.key)
+
+        return VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+            HStack(alignment: .top) {
+                Text(usualFrequency(usual))
+                    .font(ReasiTypography.font(size: 11, weight: .semibold, relativeTo: .caption2))
+                    .foregroundStyle(Color.reasi.textMuted)
+                    .padding(.horizontal, ReasiSpacing.s2)
+                    .padding(.vertical, 3)
+                    .background(Color.reasi.background, in: Capsule())
+                Spacer(minLength: ReasiSpacing.s1)
+                usualAddButton(usual, isAdding: isAdding)
+                    .padding(.top, -6)
+                    .padding(.trailing, -6)
+            }
+            Spacer(minLength: ReasiSpacing.s2)
+            Text(usual.displayName)
+                .font(ReasiTypography.font(size: 15, weight: .semibold, relativeTo: .subheadline))
+                .foregroundStyle(Color.reasi.text)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let size = usual.size, !size.isEmpty {
+                Text(size)
+                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                    .foregroundStyle(Color.reasi.muted)
+                    .lineLimit(1)
+            }
+            if let paid = usual.lastPaidAud {
+                Text("\(ShoppingItemPresentation.money(paid)) last time")
+                    .font(ReasiTypography.font(size: 12, weight: .medium, relativeTo: .caption))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.reasi.text)
+                    .lineLimit(1)
+            }
+        }
+        .padding(ReasiSpacing.s3)
+        .frame(width: 152, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(usualAccessibilityLabel(usual))
+        .accessibilityAction(named: "Add to list") {
+            Task { await addUsuals([usual]) }
+        }
+    }
+
+    private func usualAccessibilityLabel(_ usual: UsualItem) -> String {
+        [
+            usual.displayName,
+            usual.size,
+            usual.lastPaidAud.map { "\(ShoppingItemPresentation.money($0)) last time" },
+            usualFrequency(usual)
+        ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    private func usualAddButton(_ usual: UsualItem, isAdding: Bool) -> some View {
+        Button {
+            Task { await addUsuals([usual]) }
+        } label: {
+            ZStack {
+                Circle()
+                    .stroke(Color.reasi.border, lineWidth: 1)
+                    .frame(width: 32, height: 32)
+                if isAdding {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.reasi.text)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isAdding)
+        .accessibilityLabel("Add \(usual.displayName)")
+    }
+
+    private func usualRow(_ usual: UsualItem) -> some View {
+        let details = [
+            usual.size,
+            usual.lastPaidAud.map { "\(ShoppingItemPresentation.money($0)) last time" },
+            usualFrequency(usual)
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+
+        return HStack(spacing: ReasiSpacing.s3) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(usual.displayName)
+                    .font(ReasiTypography.body)
+                    .foregroundStyle(Color.reasi.text)
+                Text(details.joined(separator: " · "))
+                    .font(ReasiTypography.font(size: 12, relativeTo: .caption))
+                    .foregroundStyle(Color.reasi.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            usualAddButton(usual, isAdding: addingUsualKeys.contains(usual.key))
+        }
+        .padding(.vertical, ReasiSpacing.s2)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func addUsuals(_ usuals: [UsualItem]) async {
+        let pending = usuals.filter { !addingUsualKeys.contains($0.key) }
+        guard !pending.isEmpty else { return }
+        addingUsualKeys.formUnion(pending.map(\.key))
+        defer { addingUsualKeys.subtract(pending.map(\.key)) }
+
+        var addedCount = 0
+        for usual in pending {
+            // Join an aisle section that's already on the list; otherwise the item lands in
+            // "Location not certain" like any other added item.
+            let section = coreLoop.plan.shoppingList.sections.first {
+                guard let label = usual.sectionLabel else { return false }
+                return $0.label.localizedCaseInsensitiveCompare(label) == .orderedSame
+            }
+            let added = await coreLoop.addImportedCandidate(
+                usual.candidate(joining: section),
+                idempotencyKey: UUID().uuidString,
+                analyticsMethod: "usuals",
+                origin: "manual",
+                supabase: supabase,
+                analytics: analytics
+            )
+            if added { addedCount += 1 }
+        }
+
+        if addedCount < pending.count {
+            inlineError = "Some of your usuals could not be added. Please try again."
+            ReasiHaptics.warning()
+        } else {
+            AccessibilityNotification.Announcement(
+                addedCount == 1 ? "Added to your list" : "\(addedCount) usuals added to your list"
+            ).post()
         }
     }
 
@@ -532,16 +770,10 @@ struct ShoppingListPlaceholderView: View {
                 }
                 assistantButton
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, ReasiSpacing.s5)
-            .padding(.bottom, ShoppingDockMetrics.tabBarClearance)
+            .padding(.bottom, ReasiSpacing.s2)
         }
-    }
-
-    private var shoppingContentBottomPadding: CGFloat {
-        // Let rows scroll behind the floating controls, while allowing the last
-        // item to scroll completely above them at the end of the list.
-        ShoppingDockMetrics.tabBarClearance + ReasiSpacing.s3
-            + (coreLoop.hasPlan && !coreLoop.isShoppingCompleted ? ShoppingDockMetrics.finishHeight : 0)
     }
 
     private var shouldShowFinishControl: Bool {
@@ -605,7 +837,7 @@ struct ShoppingListPlaceholderView: View {
                 Text("Checking product data")
                     .font(ReasiTypography.headline)
                     .foregroundStyle(Color.reasi.text)
-                Text("This can take a moment when Reasi is checking sources and freshness.")
+                Text("Checking prices can take a few seconds.")
                     .font(ReasiTypography.caption)
                     .foregroundStyle(Color.reasi.textMuted)
             }
@@ -1762,7 +1994,7 @@ private struct CandidateReviewRow: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
         }
     }
 
@@ -2775,7 +3007,7 @@ private struct SwipeToFinishControl: View {
                     .fill(Color.reasi.surface)
                     .overlay {
                         RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                            .stroke(Color.reasi.border, lineWidth: 1)
+                            .stroke(Color.reasi.cardEdge, lineWidth: 1)
                     }
 
                 Text(isBusy ? "Saving…" : "Swipe to finish")
@@ -3068,7 +3300,7 @@ private struct ShoppingItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ProductThumbnail(url: presentation.imageURL, size: 56)
+            ProductThumbnail(url: presentation.imageURL, size: 56, itemName: item.name, aisle: item.aisleLabel)
                 .opacity(isChecked ? 0.65 : 1)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {

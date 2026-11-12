@@ -1340,3 +1340,136 @@ final class ReasiSampleDatesTests: XCTestCase {
         XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(now: date("2026-11-15 23:30"))), "2026-11-09")
     }
 }
+
+final class ReasiShoppingHabitsTests: XCTestCase {
+    func testUsualsNeedTwoShopsAndRankByHowOftenBought() {
+        let usuals = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture)
+        let names = usuals.map(\.name)
+
+        XCTAssertEqual(Array(names.prefix(2)).sorted(), ["Cavendish Bananas", "Full Cream Milk"])
+        XCTAssertTrue(usuals.allSatisfy { $0.timesBought >= ShoppingHabits.minimumTimesBought })
+        XCTAssertFalse(names.contains("Dark Chocolate Block"), "Bought once, so not a usual")
+        XCTAssertEqual(usuals.first?.shopsConsidered, 4)
+        XCTAssertEqual(usuals.first(where: { $0.name == "Full Cream Milk" })?.lastPaidAud, 3.10)
+    }
+
+    func testOneShopIsNotEnoughHistory() {
+        XCTAssertTrue(ShoppingHabits.usuals(from: Array(SpendingTripDetail.usualsFixture.prefix(1))).isEmpty)
+    }
+
+    func testUncheckedItemsAndRepeatsWithinOneShopDoNotCount() {
+        let trips = [
+            Self.trip(id: "a", day: "2026-11-02", items: [
+                Self.item("Rice", sku: "rice", checked: true),
+                Self.item("Rice", sku: "rice", checked: true),
+                Self.item("Tofu", sku: "tofu", checked: false)
+            ]),
+            Self.trip(id: "b", day: "2026-11-09", items: [
+                Self.item("Tofu", sku: "tofu", checked: false)
+            ])
+        ]
+        XCTAssertTrue(ShoppingHabits.usuals(from: trips).isEmpty)
+    }
+
+    func testItemsWithoutCodesMatchByName() {
+        let trips = [
+            Self.trip(id: "a", day: "2026-11-02", items: [Self.item("Lemons", sku: nil, checked: true)]),
+            Self.trip(id: "b", day: "2026-11-09", items: [Self.item("  lemons ", sku: nil, checked: true)])
+        ]
+        let usuals = ShoppingHabits.usuals(from: trips)
+        XCTAssertEqual(usuals.count, 1)
+        XCTAssertEqual(usuals.first?.key, "name:lemons")
+        XCTAssertEqual(usuals.first?.candidate(joining: nil).confidence, .low)
+    }
+
+    func testOnlyTheMostRecentSixShopsAreRead() {
+        // Bought in the two oldest of eight shops: outside the window, so not a usual.
+        let trips = (0..<8).map { index in
+            Self.trip(
+                id: "t\(index)",
+                day: String(format: "2026-10-%02d", index + 1),
+                items: index < 2 ? [Self.item("Old habit", sku: "old", checked: true)] : []
+            )
+        }
+        XCTAssertTrue(ShoppingHabits.usuals(from: trips).isEmpty)
+    }
+
+    func testUsualsAlreadyOnTheListAreHidden() {
+        let usuals = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture)
+        let onList = [
+            ShoppingListItem(
+                id: "milk", name: "Milk", quantity: "1", checked: false, aisleLabel: nil, sectionType: .unknown,
+                product: ProductSnapshot(sku: "fixture-milk", productName: "Coles Full Cream Milk", brand: "Coles", size: "2L", priceAud: 3.1, imageUrl: nil, capturedAt: nil)
+            ),
+            ShoppingListItem(id: "bananas", name: "cavendish bananas", quantity: "1", checked: false, aisleLabel: nil, sectionType: .unknown, product: nil)
+        ]
+        let remaining = ShoppingHabits.notOnList(usuals, items: onList).map(\.name)
+        XCTAssertFalse(remaining.contains("Full Cream Milk"))
+        XCTAssertFalse(remaining.contains("Cavendish Bananas"))
+        XCTAssertEqual(remaining.count, usuals.count - 2)
+    }
+
+    func testAddedUsualJoinsAnExistingSection() {
+        let usual = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture).first { $0.name == "Full Cream Milk" }!
+        let section = ShoppingListSection(label: "Dairy and Chilled", sortKey: 2, type: .perimeter, items: [])
+        let candidate = usual.candidate(joining: section)
+        XCTAssertEqual(candidate.sectionLabel, "Dairy and Chilled")
+        XCTAssertEqual(candidate.sectionSortKey, 2)
+        XCTAssertEqual(candidate.priceAud, 3.10)
+        XCTAssertEqual(candidate.sku, "fixture-milk")
+        XCTAssertNil(usual.candidate(joining: nil).sectionLabel)
+    }
+
+    @MainActor
+    func testUsualsReadThisMonthAndLastMonth() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Australia/Sydney")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 3))!
+        XCTAssertEqual(SpendingStore.usualsAnchorDates(now: now, calendar: calendar), ["2026-01-01", "2025-12-01"])
+    }
+
+    private static func item(_ name: String, sku: String?, checked: Bool) -> SpendingTripItem {
+        SpendingTripItem(
+            id: UUID().uuidString, shoppingListItemId: nil, name: name, quantity: "1", checked: checked,
+            sectionLabel: nil, aisleLabel: nil, sku: sku, barcode: nil, brand: nil, size: nil,
+            priceAud: 2, priceSource: "catalogue", priceCapturedAt: nil, origin: "manual",
+            spendCategory: "Other", categorySource: "section"
+        )
+    }
+
+    private static func trip(id: String, day: String, items: [SpendingTripItem]) -> SpendingTripDetail {
+        SpendingTripDetail(
+            trip: SpendingTrip(
+                id: id, shoppingListId: "list-\(id)", storeId: .topRyde, storeName: "Coles Top Ryde",
+                completedAt: "\(day)T08:00:00Z", knownBasketTotalAud: 0, confirmedTotalAud: nil,
+                checkedItems: items.count, pricedCheckedItems: 0, trackedTotalAud: 0, effectiveTotalAud: 0,
+                checkoutDifferenceAud: 0, priceCoverage: 0, weeklyBudgetAud: nil, weeklySpendAud: 0,
+                weeklyBudgetRemainingAud: nil
+            ),
+            categories: [], plannedSpendAud: 0, addedSpendAud: 0, insightStatus: nil, insightCards: [], items: items
+        )
+    }
+}
+
+final class ReasiGroceryGlyphTests: XCTestCase {
+    func testNameWinsOverBroadAisle() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Baby Spinach", aisle: "Aisle 5"), "leaf")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Salmon portions", aisle: "Seafood"), "fish")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Full Cream Milk", aisle: nil), "refrigerator")
+    }
+
+    func testAisleIsUsedWhenTheNameSaysNothing() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Brand 500g", aisle: "Frozen"), "snowflake")
+    }
+
+    func testKeywordsMustStartAWord() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Beef steak", aisle: nil), "frying.pan", "tea must not match steak")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Eggplant", aisle: nil), "carrot", "eggplant is produce, not eggs")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Aluminium foil", aisle: nil), "house", "foil is not oil")
+    }
+
+    func testUnknownItemsFallBackToABasket() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Birthday candles", aisle: nil), "basket")
+        XCTAssertEqual(GroceryGlyph.symbol(name: nil, aisle: nil), "basket")
+    }
+}

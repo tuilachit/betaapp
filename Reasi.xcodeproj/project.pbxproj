@@ -23,7 +23,6 @@
 		B00000000000000000000012 /* ReasiHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* ReasiHaptics.swift */; };
 		B00000000000000000000013 /* ReasiPressStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* ReasiPressStyle.swift */; };
 		B00000000000000000000014 /* SkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* SkeletonView.swift */; };
-		B00000000000000000000015 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* FloatingTabBar.swift */; };
 		B00000000000000000000016 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* Store.swift */; };
 		B00000000000000000000017 /* MealPlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* MealPlanModels.swift */; };
 		B00000000000000000000018 /* FixtureStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* FixtureStores.swift */; };
@@ -99,7 +98,6 @@
 		A00000000000000000000012 /* ReasiHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiHaptics.swift; sourceTree = "<group>"; };
 		A00000000000000000000013 /* ReasiPressStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasiPressStyle.swift; sourceTree = "<group>"; };
 		A00000000000000000000014 /* SkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonView.swift; sourceTree = "<group>"; };
-		A00000000000000000000015 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
 		A00000000000000000000016 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		A00000000000000000000017 /* MealPlanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealPlanModels.swift; sourceTree = "<group>"; };
 		A00000000000000000000018 /* FixtureStores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureStores.swift; sourceTree = "<group>"; };
@@ -258,7 +256,6 @@
 				A00000000000000000000012 /* ReasiHaptics.swift */,
 				A00000000000000000000013 /* ReasiPressStyle.swift */,
 				A00000000000000000000014 /* SkeletonView.swift */,
-				A00000000000000000000015 /* FloatingTabBar.swift */,
 				A00000000000000000000051 /* ReasiProfileButton.swift */,
 			);
 			path = DesignSystem;
@@ -597,7 +594,6 @@
 				B00000000000000000000012 /* ReasiHaptics.swift in Sources */,
 				B00000000000000000000013 /* ReasiPressStyle.swift in Sources */,
 				B00000000000000000000014 /* SkeletonView.swift in Sources */,
-				B00000000000000000000015 /* FloatingTabBar.swift in Sources */,
 				B00000000000000000000016 /* Store.swift in Sources */,
 				B00000000000000000000017 /* MealPlanModels.swift in Sources */,
 				B00000000000000000000018 /* FixtureStores.swift in Sources */,
@@ -805,7 +801,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = Y57R7X3G78;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Reasi/Info.plist;
@@ -836,7 +832,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Reasi/Reasi.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = Y57R7X3G78;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Reasi/Info.plist;

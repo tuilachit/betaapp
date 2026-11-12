@@ -22,7 +22,7 @@ Current app metadata:
 7. Confirm the Release configuration contains only public client values: Supabase URL/publishable key, PostHog public project key, RevenueCat public iOS SDK key, and Google client ID/scheme.
 8. Merge the backend generation, store/state, Reasi Pro, and release-security PRs in dependency order, then run the documented backend TestFlight release workflow.
 9. In Xcode, select the Reasi target, choose the registered team, and confirm automatic signing resolves an Apple Distribution profile.
-10. Increment `CURRENT_PROJECT_VERSION` for every upload. Build 12 is the last one uploaded; this branch is build 13.
+10. Increment `CURRENT_PROJECT_VERSION` for every upload. Build 12 is the last one uploaded. Build 13 was archived but not uploaded; this branch is now build 14.
 11. Run `scripts/testflight-release-preflight.sh` against the built Release app with `REQUIRE_APPLE_AUTH=1` and `CHECK_LIVE_LEGAL_URLS=1`.
 12. Build and run the Release configuration on a physical iPhone, then choose Product > Archive with Any iOS Device selected.
 13. In Organizer, run Validate App before Distribute App > App Store Connect > Upload.
@@ -59,7 +59,7 @@ Current app metadata:
 ## App Store Connect
 
 1. Open My Apps > Reasi > TestFlight.
-2. Wait for build `1.0.0 (13)` to finish processing.
+2. Wait for build `1.0.0 (14)` to finish processing.
 3. Complete the export-compliance question. Reasi currently uses standard HTTPS transport and declares no non-exempt encryption.
 4. Add internal testers under Users and Access if they are not already App Store Connect users.
 5. Create an Internal Testing group, add the processed build, then add the testers.

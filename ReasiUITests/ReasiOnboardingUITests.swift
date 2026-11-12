@@ -225,8 +225,10 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["List behavior"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Settings Sheet Light")
         app.buttons["Done"].tap()
-        for _ in 0..<8 where !app.buttons["Back"].isHittable { app.swipeDown() }
-        app.buttons["Back"].tap()
+        // The system back button is labelled with the previous screen's title.
+        let back = app.navigationBars.buttons["BackButton"]
+        for _ in 0..<8 where !back.isHittable { app.swipeDown() }
+        back.tap()
         XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Shopping Light")
         app.buttons["Spend"].tap()
@@ -472,13 +474,13 @@ final class ReasiOnboardingUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Spend"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Projected basket"].exists)
-        XCTAssertTrue(app.staticTexts["Based on 8 of 10 priced items"].exists)
+        XCTAssertTrue(app.staticTexts["From the 8 of 10 items that had a price"].exists)
 
         let profile = app.buttons["reasi-profile-button"]
         XCTAssertTrue(profile.exists)
         profile.tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
-        app.buttons["Back"].tap()
+        app.navigationBars.buttons["BackButton"].tap()
 
         let chart = app.otherElements["spend-category-chart"]
         XCTAssertTrue(chart.waitForExistence(timeout: 3))
@@ -505,10 +507,10 @@ final class ReasiOnboardingUITests: XCTestCase {
         let periodControl = app.segmentedControls["Spending period"]
         XCTAssertTrue(periodControl.exists)
         periodControl.buttons["Month"].tap()
-        XCTAssertTrue(app.staticTexts["THIS MONTH"].waitForExistence(timeout: 3))
+        XCTAssertTrue(spendHero("This month", in: app).waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "average per week")).firstMatch.exists)
         periodControl.buttons["Week"].tap()
-        XCTAssertTrue(app.staticTexts["THIS WEEK"].waitForExistence(timeout: 3))
+        XCTAssertTrue(spendHero("This week", in: app).waitForExistence(timeout: 3))
 
         let moreInsights = app.buttons["spend-more-insights"]
         XCTAssertTrue(moreInsights.waitForExistence(timeout: 3))
@@ -518,8 +520,8 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(isClearOfFloatingTabBar(moreInsights, in: app))
         moreInsights.tap()
         XCTAssertEqual(moreInsights.value as? String, "Expanded")
-        XCTAssertTrue(app.staticTexts["PATTERN"].exists)
-        XCTAssertTrue(app.staticTexts["WHY IT MATTERS"].exists)
+        XCTAssertTrue(app.staticTexts["Protein was the biggest cost"].exists)
+        XCTAssertTrue(app.staticTexts["$20.40 wasn't on the plan"].exists, "Insight text shows $ like the rest of the app")
 
         let shop = app.buttons["spend-recent-trip-ui-test-trip"]
         XCTAssertTrue(shop.waitForExistence(timeout: 3))
@@ -587,8 +589,16 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["View plans"].exists)
     }
 
+    /// The Spend total, whose spoken label starts with the period ("This week, $86.40 spent").
+    private func spendHero(_ period: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ AND label BEGINSWITH %@", "spend-hero-total", period
+        )).firstMatch
+    }
+
     private func isClearOfFloatingTabBar(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        element.isHittable && element.frame.maxY < app.frame.maxY - 150
+        // The system tab bar plus the home indicator take about 96 points, less once it shrinks on scroll.
+        element.isHittable && element.frame.maxY < app.frame.maxY - 110
     }
 
     @MainActor
@@ -603,7 +613,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Uncheck Pork mince"].exists)
         XCTAssertTrue(app.staticTexts["500g"].exists)
         XCTAssertFalse(app.staticTexts["Need 200g"].exists)
-        XCTAssertTrue(app.buttons["Change product for Pork mince"].isHittable)
+        reveal(app.buttons["Change product for Pork mince"], in: app)
         XCTAssertFalse(app.staticTexts["Choose a product"].exists)
         app.buttons["Change product for Pork mince"].tap()
         XCTAssertTrue(app.navigationBars["Change product"].waitForExistence(timeout: 5))
@@ -676,7 +686,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         button.tap()
-        XCTAssertTrue(app.staticTexts["THIS WEEK"].waitForExistence(timeout: 5), "Without a loaded matching trip, the button should open Spend history")
+        XCTAssertTrue(app.segmentedControls["Spending period"].waitForExistence(timeout: 5), "Without a loaded matching trip, the button should open Spend history")
         XCTAssertFalse(app.staticTexts["Shop recap"].exists)
     }
 
@@ -774,7 +784,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Coles Baby Spinach"].exists)
         XCTAssertTrue(app.staticTexts["Priced subtotal"].exists)
         let change = app.buttons["Change product for Baby spinach"]
-        XCTAssertTrue(change.isHittable)
+        reveal(change, in: app)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Product choices and budget overview"
         attachment.lifetime = .keepAlways
