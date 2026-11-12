@@ -1079,3 +1079,418 @@ final class ReasiCoreTests: XCTestCase {
         )
     }
 }
+
+private extension ReasiConfig {
+    /// No analytics, auth or purchase keys, so unit tests never reach a live service.
+    static let offlineForTests = ReasiConfig(
+        supabaseURL: nil,
+        supabaseAnonKey: "",
+        postHogKey: "",
+        postHogHost: URL(string: "https://us.i.posthog.com")!,
+        revenueCatPublicKey: "",
+        revenueCatEnabled: false,
+        googleClientID: "",
+        googleURLScheme: "",
+        appleAuthEnabled: false,
+        authRedirectURL: nil,
+        privacyPolicyURL: nil,
+        termsOfServiceURL: nil,
+        debugGuestAuthEnabled: false,
+        debugFixtureFallbackEnabled: false
+    )
+}
+
+@MainActor
+final class ReasiWeeklyBudgetOnboardingTests: XCTestCase {
+    private func makeStore() -> (OnboardingStore, UserDefaults, String) {
+        let name = "ReasiWeeklyBudgetOnboardingTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        return (OnboardingStore(defaults: defaults), defaults, name)
+    }
+
+    func testBudgetStepFollowsHouseholdAndCountsInProgress() {
+        XCTAssertEqual(OnboardingStep.budget.rawValue, OnboardingStep.household.rawValue + 1)
+        XCTAssertTrue(OnboardingStep.budget.isSurvey)
+        XCTAssertEqual(OnboardingStep.progressStepCount, OnboardingStep.ready.progressIndex + 1)
+    }
+
+    func testStartingAmountScalesWithHouseholdAndIsAQuickPick() {
+        var previous = 0.0
+        for household in HouseholdChoice.allCases {
+            let start = WeeklyBudgetGuide.startingAmount(for: household)
+            XCTAssertGreaterThan(start, previous)
+            XCTAssertTrue(WeeklyBudgetGuide.quickPicks(for: household).contains(start))
+            previous = start
+        }
+        XCTAssertTrue(WeeklyBudgetGuide.quickPicks(for: nil).contains(WeeklyBudgetGuide.startingAmount(for: nil)))
+    }
+
+    func testClampRoundsToStepAndStaysInRange() {
+        XCTAssertEqual(WeeklyBudgetGuide.clamp(144), 140)
+        XCTAssertEqual(WeeklyBudgetGuide.clamp(146), 150)
+        XCTAssertEqual(WeeklyBudgetGuide.clamp(5), WeeklyBudgetGuide.minimum)
+        XCTAssertEqual(WeeklyBudgetGuide.clamp(9_999), WeeklyBudgetGuide.maximum)
+        XCTAssertEqual(WeeklyBudgetGuide.clamp(.nan), WeeklyBudgetGuide.minimum)
+    }
+
+    func testPrepareKeepsAnExistingBudgetAndFillsAnEmptyOne() {
+        let (store, defaults, name) = makeStore()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        store.preferences.household = .familyThreeFour
+        store.prepareBudgetStep()
+        XCTAssertEqual(store.preferences.weeklyGroceryBudgetAud, 230)
+
+        store.setWeeklyBudget(275)
+        store.prepareBudgetStep()
+        XCTAssertEqual(store.preferences.weeklyGroceryBudgetAud, 280)
+    }
+
+    func testSkippingTheBudgetLeavesNoTargetAndAdvances() {
+        let (store, defaults, name) = makeStore()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        store.currentStep = .budget
+        store.prepareBudgetStep()
+        store.skipCurrentSurvey(analytics: AnalyticsService(config: .offlineForTests))
+        XCTAssertNil(store.preferences.weeklyGroceryBudgetAud)
+        XCTAssertEqual(store.currentStep, .foodStyle)
+    }
+
+    func testBudgetSurvivesAsADraftAcrossLaunches() {
+        let (store, defaults, name) = makeStore()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        store.setWeeklyBudget(180)
+        XCTAssertEqual(OnboardingStore(defaults: defaults).preferences.weeklyGroceryBudgetAud, 180)
+    }
+}
+
+final class ReasiBudgetTrackRecordTests: XCTestCase {
+    private var sydney: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Australia/Sydney")!
+        return calendar
+    }
+
+    private func day(_ value: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.calendar = sydney
+        formatter.timeZone = sydney.timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.date(from: value)!
+    }
+
+    func testCountsOnlyFinishedWeeksWithSpend() throws {
+        let trend = [
+            SpendingTrendPoint(weekStart: "2026-10-12", amountAud: 140),
+            SpendingTrendPoint(weekStart: "2026-10-19", amountAud: 0),
+            SpendingTrendPoint(weekStart: "2026-10-26", amountAud: 165),
+            SpendingTrendPoint(weekStart: "2026-11-02", amountAud: 120),
+            SpendingTrendPoint(weekStart: "2026-11-09", amountAud: 30)
+        ]
+        let record = try XCTUnwrap(BudgetTrackRecord(trend: trend, weeklyTarget: 150, today: day("2026-11-11 09:00"), calendar: sydney))
+        XCTAssertEqual(record.completedWeeks, 3)
+        XCTAssertEqual(record.weeksOnTarget, 2)
+        XCTAssertEqual(record.netUnderTargetAud, 25, accuracy: 0.001)
+        XCTAssertEqual(record.currentStreak, 1)
+        XCTAssertEqual(record.summary, "2 of 3 weeks on target · $25 under in total")
+    }
+
+    func testAWeekCountsFromTheDayAfterItEnds() throws {
+        let trend = [SpendingTrendPoint(weekStart: "2026-11-02", amountAud: 100)]
+        XCTAssertNil(BudgetTrackRecord(trend: trend, weeklyTarget: 150, today: day("2026-11-08 23:59"), calendar: sydney))
+        XCTAssertNotNil(BudgetTrackRecord(trend: trend, weeklyTarget: 150, today: day("2026-11-09 00:01"), calendar: sydney))
+    }
+
+    func testExactlyOnTargetCountsAndReadsAsOnTarget() throws {
+        let trend = [
+            SpendingTrendPoint(weekStart: "2026-10-26", amountAud: 150),
+            SpendingTrendPoint(weekStart: "2026-11-02", amountAud: 150.004)
+        ]
+        let record = try XCTUnwrap(BudgetTrackRecord(trend: trend, weeklyTarget: 150, today: day("2026-11-11 09:00"), calendar: sydney))
+        XCTAssertEqual(record.weeksOnTarget, 2)
+        XCTAssertEqual(record.currentStreak, 2)
+        XCTAssertEqual(record.summary, "2 of 2 weeks on target · right on target overall")
+    }
+
+    func testOverspendReadsAsOver() throws {
+        let trend = [SpendingTrendPoint(weekStart: "2026-11-02", amountAud: 190.4)]
+        let record = try XCTUnwrap(BudgetTrackRecord(trend: trend, weeklyTarget: 150, today: day("2026-11-11 09:00"), calendar: sydney))
+        XCTAssertEqual(record.summary, "0 of 1 week on target · $40 over in total")
+    }
+
+    func testNoTargetOrNoFinishedWeeksGivesNoRecord() {
+        let trend = [SpendingTrendPoint(weekStart: "2026-11-02", amountAud: 100)]
+        XCTAssertNil(BudgetTrackRecord(trend: trend, weeklyTarget: nil, today: day("2026-11-11 09:00"), calendar: sydney))
+        XCTAssertNil(BudgetTrackRecord(trend: trend, weeklyTarget: 0, today: day("2026-11-11 09:00"), calendar: sydney))
+        XCTAssertNil(BudgetTrackRecord(trend: [], weeklyTarget: 150, today: day("2026-11-11 09:00"), calendar: sydney))
+    }
+}
+
+final class ReasiPriceFreshnessTests: XCTestCase {
+    func testRecentPricesReadAsChecked() throws {
+        let captured = try XCTUnwrap(PriceFreshness.parse("2026-11-05T08:00:00.000Z"))
+        let freshness = PriceFreshness(capturedAt: captured, now: captured.addingTimeInterval(3 * 86_400))
+        XCTAssertFalse(freshness.isStale)
+        XCTAssertTrue(freshness.label.hasPrefix("Prices from "))
+        XCTAssertFalse(freshness.label.contains("changed"))
+        XCTAssertTrue(freshness.spokenLabel(retailer: "Coles").hasPrefix("Coles prices checked "))
+    }
+
+    func testOldPricesSayTheyMayHaveChanged() throws {
+        let captured = try XCTUnwrap(PriceFreshness.parse("2026-10-09"))
+        let freshness = PriceFreshness(capturedAt: captured, now: captured.addingTimeInterval(33 * 86_400))
+        XCTAssertTrue(freshness.isStale)
+        XCTAssertTrue(freshness.label.hasSuffix("may have changed"))
+        XCTAssertTrue(freshness.spokenLabel(retailer: "Coles").hasSuffix("They may have changed."))
+    }
+
+    func testParsesAllCaptureFormatsAndRejectsJunk() {
+        XCTAssertNotNil(PriceFreshness.parse("2026-10-09T08:00:00Z"))
+        XCTAssertNotNil(PriceFreshness.parse("2026-10-09T08:00:00.123Z"))
+        XCTAssertNotNil(PriceFreshness.parse("2026-10-09"))
+        XCTAssertNil(PriceFreshness.parse("last Wednesday"))
+    }
+
+    func testBasketUsesTheOldestCapturedPrice() {
+        let items = [
+            ShoppingListItem.priceFreshnessFixture(id: "a", capturedAt: "2026-11-05T08:00:00Z"),
+            ShoppingListItem.priceFreshnessFixture(id: "b", capturedAt: "2026-10-09T08:00:00Z"),
+            ShoppingListItem.priceFreshnessFixture(id: "c", capturedAt: nil)
+        ]
+        XCTAssertEqual(BasketPriceSummary(items: items).oldestPriceCapturedAt, PriceFreshness.parse("2026-10-09T08:00:00Z"))
+    }
+}
+
+private extension ShoppingListItem {
+    static func priceFreshnessFixture(id: String, capturedAt: String?) -> ShoppingListItem {
+        ShoppingListItem(
+            id: id,
+            name: "Item \(id)",
+            quantity: "1",
+            checked: false,
+            aisleLabel: nil,
+            sectionType: .unknown,
+            product: ProductSnapshot(
+                sku: id,
+                productName: "Product \(id)",
+                brand: nil,
+                size: nil,
+                priceAud: 4,
+                imageUrl: nil,
+                capturedAt: capturedAt
+            )
+        )
+    }
+}
+
+@MainActor
+final class ReasiPlanBuilderDefaultsTests: XCTestCase {
+    func testNewWeekDraftStartsFromHouseholdAndWeeklyBudget() throws {
+        let store = PlanBuilderStore()
+        store.begin(entryMethod: .build, householdSize: 4, weeklyBudgetAud: 230)
+        let draft = try XCTUnwrap(store.draft)
+        XCTAssertEqual(draft.kind, .week)
+        XCTAssertEqual(draft.serves, 4)
+        XCTAssertEqual(draft.budgetTargetAud, 230)
+    }
+
+    func testOccasionDraftKeepsHouseholdButNotTheWeeklyBudget() throws {
+        let store = PlanBuilderStore()
+        store.begin(entryMethod: .describe, householdSize: 1, weeklyBudgetAud: 90)
+        let draft = try XCTUnwrap(store.draft)
+        XCTAssertEqual(draft.kind, .occasion)
+        XCTAssertEqual(draft.serves, 1)
+        XCTAssertNil(draft.budgetTargetAud)
+    }
+
+    func testAnExistingDraftIsNeverOverwritten() throws {
+        let store = PlanBuilderStore()
+        store.begin(entryMethod: .build, householdSize: 2, weeklyBudgetAud: 150)
+        var edited = try XCTUnwrap(store.draft)
+        edited.budgetTargetAud = 99
+        store.update(edited)
+        store.begin(entryMethod: .build, householdSize: 5, weeklyBudgetAud: 290)
+        XCTAssertEqual(store.draft?.budgetTargetAud, 99)
+        XCTAssertEqual(store.draft?.serves, 2)
+    }
+
+    func testMissingProfileValuesKeepTheBuiltInDefaults() throws {
+        let store = PlanBuilderStore()
+        store.begin(entryMethod: .build)
+        let draft = try XCTUnwrap(store.draft)
+        XCTAssertEqual(draft.serves, 2)
+        XCTAssertNil(draft.budgetTargetAud)
+    }
+}
+
+final class ReasiSampleDatesTests: XCTestCase {
+    private func date(_ value: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.date(from: value)!
+    }
+
+    func testWeekStartsOnMondayAndLabelsTheCurrentWeek() {
+        let thursday = date("2026-11-12 09:00")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(now: thursday)), "2026-11-09")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(weeksAgo: 4, now: thursday)), "2026-10-12")
+        XCTAssertEqual(SampleDates.weekLabel(now: thursday), "November 9 - 15")
+        XCTAssertEqual(SampleDates.weekLabel(now: date("2026-12-02 09:00")), "November 30 - December 6")
+        XCTAssertEqual(SampleDates.dayKey(SampleDates.weekStart(now: date("2026-11-15 23:30"))), "2026-11-09")
+    }
+}
+
+final class ReasiShoppingHabitsTests: XCTestCase {
+    func testUsualsNeedTwoShopsAndRankByHowOftenBought() {
+        let usuals = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture)
+        let names = usuals.map(\.name)
+
+        XCTAssertEqual(Array(names.prefix(2)).sorted(), ["Cavendish Bananas", "Full Cream Milk"])
+        XCTAssertTrue(usuals.allSatisfy { $0.timesBought >= ShoppingHabits.minimumTimesBought })
+        XCTAssertFalse(names.contains("Dark Chocolate Block"), "Bought once, so not a usual")
+        XCTAssertEqual(usuals.first?.shopsConsidered, 4)
+        XCTAssertEqual(usuals.first(where: { $0.name == "Full Cream Milk" })?.lastPaidAud, 3.10)
+    }
+
+    func testOneShopIsNotEnoughHistory() {
+        XCTAssertTrue(ShoppingHabits.usuals(from: Array(SpendingTripDetail.usualsFixture.prefix(1))).isEmpty)
+    }
+
+    func testUncheckedItemsAndRepeatsWithinOneShopDoNotCount() {
+        let trips = [
+            Self.trip(id: "a", day: "2026-11-02", items: [
+                Self.item("Rice", sku: "rice", checked: true),
+                Self.item("Rice", sku: "rice", checked: true),
+                Self.item("Tofu", sku: "tofu", checked: false)
+            ]),
+            Self.trip(id: "b", day: "2026-11-09", items: [
+                Self.item("Tofu", sku: "tofu", checked: false)
+            ])
+        ]
+        XCTAssertTrue(ShoppingHabits.usuals(from: trips).isEmpty)
+    }
+
+    func testItemsWithoutCodesMatchByName() {
+        let trips = [
+            Self.trip(id: "a", day: "2026-11-02", items: [Self.item("Lemons", sku: nil, checked: true)]),
+            Self.trip(id: "b", day: "2026-11-09", items: [Self.item("  lemons ", sku: nil, checked: true)])
+        ]
+        let usuals = ShoppingHabits.usuals(from: trips)
+        XCTAssertEqual(usuals.count, 1)
+        XCTAssertEqual(usuals.first?.key, "name:lemons")
+        XCTAssertEqual(usuals.first?.candidate(joining: nil).confidence, .low)
+    }
+
+    func testOnlyTheMostRecentSixShopsAreRead() {
+        // Bought in the two oldest of eight shops: outside the window, so not a usual.
+        let trips = (0..<8).map { index in
+            Self.trip(
+                id: "t\(index)",
+                day: String(format: "2026-10-%02d", index + 1),
+                items: index < 2 ? [Self.item("Old habit", sku: "old", checked: true)] : []
+            )
+        }
+        XCTAssertTrue(ShoppingHabits.usuals(from: trips).isEmpty)
+    }
+
+    func testUsualsAlreadyOnTheListAreHidden() {
+        let usuals = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture)
+        let onList = [
+            ShoppingListItem(
+                id: "milk", name: "Milk", quantity: "1", checked: false, aisleLabel: nil, sectionType: .unknown,
+                product: ProductSnapshot(sku: "fixture-milk", productName: "Coles Full Cream Milk", brand: "Coles", size: "2L", priceAud: 3.1, imageUrl: nil, capturedAt: nil)
+            ),
+            ShoppingListItem(id: "bananas", name: "cavendish bananas", quantity: "1", checked: false, aisleLabel: nil, sectionType: .unknown, product: nil)
+        ]
+        let remaining = ShoppingHabits.notOnList(usuals, items: onList).map(\.name)
+        XCTAssertFalse(remaining.contains("Full Cream Milk"))
+        XCTAssertFalse(remaining.contains("Cavendish Bananas"))
+        XCTAssertEqual(remaining.count, usuals.count - 2)
+    }
+
+    func testAddedUsualJoinsAnExistingSection() {
+        let usual = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture).first { $0.name == "Full Cream Milk" }!
+        let section = ShoppingListSection(label: "Dairy and Chilled", sortKey: 2, type: .perimeter, items: [])
+        let candidate = usual.candidate(joining: section)
+        XCTAssertEqual(candidate.sectionLabel, "Dairy and Chilled")
+        XCTAssertEqual(candidate.sectionSortKey, 2)
+        XCTAssertEqual(candidate.priceAud, 3.10)
+        XCTAssertEqual(candidate.sku, "fixture-milk")
+        XCTAssertNil(usual.candidate(joining: nil).sectionLabel)
+    }
+
+    @MainActor
+    func testUsualsReadThisMonthAndLastMonth() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Australia/Sydney")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 3))!
+        XCTAssertEqual(SpendingStore.usualsAnchorDates(now: now, calendar: calendar), ["2026-01-01", "2025-12-01"])
+    }
+
+    private static func item(_ name: String, sku: String?, checked: Bool) -> SpendingTripItem {
+        SpendingTripItem(
+            id: UUID().uuidString, shoppingListItemId: nil, name: name, quantity: "1", checked: checked,
+            sectionLabel: nil, aisleLabel: nil, sku: sku, barcode: nil, brand: nil, size: nil,
+            priceAud: 2, priceSource: "catalogue", priceCapturedAt: nil, origin: "manual",
+            spendCategory: "Other", categorySource: "section"
+        )
+    }
+
+    private static func trip(id: String, day: String, items: [SpendingTripItem]) -> SpendingTripDetail {
+        SpendingTripDetail(
+            trip: SpendingTrip(
+                id: id, shoppingListId: "list-\(id)", storeId: .topRyde, storeName: "Coles Top Ryde",
+                completedAt: "\(day)T08:00:00Z", knownBasketTotalAud: 0, confirmedTotalAud: nil,
+                checkedItems: items.count, pricedCheckedItems: 0, trackedTotalAud: 0, effectiveTotalAud: 0,
+                checkoutDifferenceAud: 0, priceCoverage: 0, weeklyBudgetAud: nil, weeklySpendAud: 0,
+                weeklyBudgetRemainingAud: nil
+            ),
+            categories: [], plannedSpendAud: 0, addedSpendAud: 0, insightStatus: nil, insightCards: [], items: items
+        )
+    }
+}
+
+final class ReasiGroceryGlyphTests: XCTestCase {
+    func testNameWinsOverBroadAisle() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Baby Spinach", aisle: "Aisle 5"), "leaf")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Salmon portions", aisle: "Seafood"), "fish")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Full Cream Milk", aisle: nil), "refrigerator")
+    }
+
+    func testAisleIsUsedWhenTheNameSaysNothing() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Coles Brand 500g", aisle: "Frozen"), "snowflake")
+    }
+
+    func testKeywordsMustStartAWord() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Beef steak", aisle: nil), "frying.pan", "tea must not match steak")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Eggplant", aisle: nil), "carrot", "eggplant is produce, not eggs")
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Aluminium foil", aisle: nil), "house", "foil is not oil")
+    }
+
+    func testUnknownItemsFallBackToABasket() {
+        XCTAssertEqual(GroceryGlyph.symbol(name: "Birthday candles", aisle: nil), "basket")
+        XCTAssertEqual(GroceryGlyph.symbol(name: nil, aisle: nil), "basket")
+    }
+}
+
+final class ReasiProductImageURLTests: XCTestCase {
+    func testColesLinksWithoutTheFolderGetIt() {
+        let stored = URL(string: "https://cdn.productimages.coles.com.au/1/1499340.jpg")
+        XCTAssertEqual(
+            ProductImageURL.normalized(stored)?.absoluteString,
+            "https://cdn.productimages.coles.com.au/productimages/1/1499340.jpg"
+        )
+    }
+
+    func testWorkingAndOtherLinksAreLeftAlone() {
+        let working = URL(string: "https://cdn.productimages.coles.com.au/productimages/9/9073535.jpg")
+        XCTAssertEqual(ProductImageURL.normalized(working), working)
+        let other = URL(string: "https://images.openfoodfacts.org/images/products/123/front.jpg?rev=4")
+        XCTAssertEqual(ProductImageURL.normalized(other), other)
+        XCTAssertNil(ProductImageURL.normalized(nil))
+    }
+}

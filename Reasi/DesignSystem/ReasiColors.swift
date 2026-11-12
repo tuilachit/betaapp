@@ -9,6 +9,9 @@ struct ReasiColorPalette {
     let glass = Color(light: 0xFFFFFF, dark: 0x1C1C1E, opacity: 0.82)
     let border = Color(light: 0xD7D7DE, dark: 0x29292D)
     let borderStrong = Color(light: 0xB4B4BE, dark: 0x3D3D43)
+    /// The edge of a card on the page. Barely there in light mode, where white on grey already
+    /// separates, as in iOS grouped lists. Dark mode keeps a visible edge.
+    let cardEdge = Color(light: 0xEDEDF1, dark: 0x262629)
     let text = Color(light: 0x19191D, dark: 0xF4F4F5)
     let textMuted = Color(light: 0x51515B, dark: 0xB8B8BF)
     let muted = Color(light: 0x62626D, dark: 0x85858E)

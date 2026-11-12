@@ -150,7 +150,7 @@ struct ProfileView: View {
                 HStack(spacing: ReasiSpacing.s3) {
                     ProgressView()
                         .tint(Color.reasi.text)
-                    Text("Working securely...")
+                    Text("Signing in…")
                         .font(ReasiTypography.callout)
                         .foregroundStyle(Color.reasi.textMuted)
                 }

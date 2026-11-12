@@ -11,10 +11,16 @@ final class SpendingStore {
     private(set) var isLoadingTrip = false
     private(set) var isRetryingInsights = false
     private(set) var dashboardMessage: String?
+    /// True when Spend can't load because nobody is signed in, as opposed to a connection problem.
+    private(set) var needsSignIn = false
     private(set) var tripMessage: String?
+    /// Items bought in more than one recent finished shop. Empty until there are two shops.
+    private(set) var usuals: [UsualItem] = []
 
     @ObservationIgnored private let cache = SpendingLocalCache()
     @ObservationIgnored private var activeUserId: String?
+    @ObservationIgnored private var usualsUserId: String?
+    @ObservationIgnored private var isLoadingUsuals = false
 
     func activate(userId: String?) {
         #if DEBUG
@@ -31,6 +37,8 @@ final class SpendingStore {
 
         guard activeUserId != userId else { return }
         activeUserId = userId
+        usuals = []
+        usualsUserId = nil
         period = .week
         selectedTrip = nil
         tripMessage = nil
@@ -68,9 +76,11 @@ final class SpendingStore {
 
         guard let userId = activeUserId, supabase.isSignedIn else {
             dashboard = nil
-            dashboardMessage = "Sign in to keep your shopping history and spending insights together."
+            needsSignIn = true
+            dashboardMessage = "Sign in to see your spending."
             return
         }
+        needsSignIn = false
 
         isLoadingDashboard = dashboard == nil
         dashboardMessage = nil
@@ -157,6 +167,71 @@ final class SpendingStore {
         async let dashboardRefresh: Void = refresh(supabase: supabase)
         async let tripRefresh: Void = loadTrip(id: tripId, supabase: supabase)
         _ = await (dashboardRefresh, tripRefresh)
+        await refreshUsuals(supabase: supabase, force: true)
+    }
+
+    /// Works out the household's usual items from their last few finished shops.
+    /// Shop details are kept on the device, so only shops not seen before are fetched.
+    func refreshUsuals(supabase: SupabaseService, force: Bool = false) async {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-ReasiShowShoppingFixture") || arguments.contains("-ReasiShowSpendFixture") {
+            usuals = ShoppingHabits.usuals(from: SpendingTripDetail.usualsFixture)
+            return
+        }
+        #endif
+
+        guard let userId = activeUserId, supabase.isSignedIn else {
+            usuals = []
+            return
+        }
+        guard force || usualsUserId != userId, !isLoadingUsuals else { return }
+        isLoadingUsuals = true
+        defer { isLoadingUsuals = false }
+
+        do {
+            var trips: [String: SpendingRecentTrip] = [:]
+            for anchor in Self.usualsAnchorDates() {
+                let dashboard = try await supabase.fetchSpendingDashboard(period: .month, anchorDate: anchor)
+                guard activeUserId == userId else { return }
+                for trip in dashboard.recentTrips { trips[trip.tripId] = trip }
+                if trips.count >= ShoppingHabits.shopsToConsider { break }
+            }
+
+            let recent = trips.values
+                .sorted { (PriceFreshness.parse($0.completedAt) ?? .distantPast) > (PriceFreshness.parse($1.completedAt) ?? .distantPast) }
+                .prefix(ShoppingHabits.shopsToConsider)
+
+            var details: [SpendingTripDetail] = []
+            for trip in recent {
+                if let cached = cache.loadTrip(userId: userId, tripId: trip.tripId) {
+                    details.append(cached)
+                    continue
+                }
+                // One shop failing to load shouldn't hide the rest.
+                guard let detail = try? await supabase.fetchSpendingTripDetail(tripId: trip.tripId) else { continue }
+                guard activeUserId == userId else { return }
+                cache.saveTrip(detail, userId: userId)
+                details.append(detail)
+            }
+
+            guard activeUserId == userId else { return }
+            usuals = ShoppingHabits.usuals(from: details)
+            usualsUserId = userId
+        } catch {
+            // Usuals are a shortcut, not a requirement; keep whatever was shown before.
+        }
+    }
+
+    /// This month and last month, as the month anchors the spending dashboard expects.
+    static func usualsAnchorDates(now: Date = Date(), calendar: Calendar = .current) -> [String] {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-01"
+        let lastMonth = calendar.date(byAdding: .month, value: -1, to: now) ?? now
+        return [formatter.string(from: now), formatter.string(from: lastMonth)]
     }
 
     func correctTotal(

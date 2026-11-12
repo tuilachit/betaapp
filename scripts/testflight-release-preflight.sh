@@ -25,7 +25,7 @@ plist_value() {
 require_source_release_setting() {
   local key="$1"
   local value="$2"
-  rg -q "^[[:space:]]*$key = $value;" "$PROJECT_FILE" \
+  grep -Eq "^[[:space:]]*$key = $value;" "$PROJECT_FILE" \
     || fail "Release setting $key must be $value"
 }
 
@@ -58,9 +58,9 @@ pass "App Store icon is opaque 1024 x 1024"
 pass "Export-compliance declaration is present"
 
 if [[ "${REQUIRE_APPLE_AUTH:-0}" == "1" ]]; then
-  rg -q 'com.apple.developer.applesignin' "$SOURCE_ENTITLEMENTS" \
+  grep -Eq 'com.apple.developer.applesignin' "$SOURCE_ENTITLEMENTS" \
     || fail "Sign in with Apple entitlement is missing; include the Apple-auth PR"
-  rg -q 'REASI_ENABLE_APPLE_AUTH = YES;' "$PROJECT_FILE" \
+  grep -Eq 'REASI_ENABLE_APPLE_AUTH = YES;' "$PROJECT_FILE" \
     || fail "Release Apple auth flag is not enabled; include the Apple-auth PR"
   pass "Sign in with Apple entitlement and Release flag are enabled"
 fi
@@ -87,14 +87,14 @@ if [[ -n "$APP_PATH" ]]; then
 
   executable="$APP_PATH/$(plist_value "$BUILT_INFO" "CFBundleExecutable")"
   [[ -f "$executable" ]] || fail "Built app executable is missing"
-  if strings "$executable" | rg -q 'Continue for testing|-ReasiUITestUnauthenticated|-ReasiSkipBrandIntro'; then
+  if strings "$executable" | grep -Eq 'Continue for testing|-ReasiUITestUnauthenticated|-ReasiSkipBrandIntro'; then
     fail "Debug-only UI/test behavior is present in the Release executable"
   fi
   pass "Debug-only UI and launch hooks are absent from Release"
 
   if find "$APP_PATH" -type f -maxdepth 5 -print0 \
     | xargs -0 strings 2>/dev/null \
-    | rg -q 'sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{32,}|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|REVENUECAT_(SECRET|WEBHOOK_SECRET)'; then
+    | grep -Eq 'sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{32,}|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|REVENUECAT_(SECRET|WEBHOOK_SECRET)'; then
     fail "A server-secret pattern was found in the app bundle"
   fi
   pass "No OpenAI, service-role, or RevenueCat secret pattern was found in the bundle"

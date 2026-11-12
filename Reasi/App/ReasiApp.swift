@@ -12,6 +12,10 @@ struct ReasiApp: App {
     @State private var onboarding = OnboardingStore()
     @State private var supabase = SupabaseService()
     @State private var analytics = AnalyticsService()
+
+    init() {
+        ReasiTypography.applyNavigationBarFonts()
+    }
     @State private var revenueCat = RevenueCatService()
     @State private var network = NetworkMonitor()
     @State private var userSettings = UserSettingsStore()

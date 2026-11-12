@@ -675,18 +675,36 @@ private struct ProductSearchResultRow: View {
     }
 }
 
+enum ProductImageURL {
+    /// Coles serves product photos under `/productimages/`. Some stored links leave that
+    /// folder out and fail to load, so add it back before asking for the image.
+    static func normalized(_ url: URL?) -> URL? {
+        guard let url,
+              url.host == "cdn.productimages.coles.com.au",
+              !url.path.hasPrefix("/productimages/"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.path = "/productimages" + (components.path.hasPrefix("/") ? "" : "/") + components.path
+        return components.url ?? url
+    }
+}
+
 struct ProductThumbnail: View {
     let url: URL?
     let size: CGFloat
+    /// Used only when there's no photo, to pick an aisle symbol instead of one generic icon.
+    var itemName: String? = nil
+    var aisle: String? = nil
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: ReasiMotion.fast)) { phase in
+        AsyncImage(url: ProductImageURL.normalized(url), transaction: Transaction(animation: ReasiMotion.fast)) { phase in
             switch phase {
             case .success(let image):
                 image
                     .resizable()
                     .scaledToFit()
                     .padding(5)
+                    .frame(width: size, height: size)
+                    .background(Color.white.opacity(0.94))
             case .empty:
                 if url == nil {
                     placeholder
@@ -702,14 +720,46 @@ struct ProductThumbnail: View {
             }
         }
         .frame(width: size, height: size)
-        .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
+        .background(Color.reasi.surfaceHigh)
         .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
     }
 
     private var placeholder: some View {
-        Image(systemName: "basket")
-            .font(.system(size: 20, weight: .medium))
-            .foregroundStyle(Color.reasi.dim)
+        Image(systemName: GroceryGlyph.symbol(name: itemName, aisle: aisle))
+            .font(.system(size: size * 0.34, weight: .regular))
+            .foregroundStyle(Color.reasi.muted)
+    }
+}
+
+/// An SF Symbol for a grocery item from its name and aisle, for rows without a product photo.
+/// The name is checked before the aisle, because aisle labels are often broad ("Aisle 5").
+enum GroceryGlyph {
+    private static let rules: [(symbol: String, words: [String])] = [
+        ("snowflake", ["frozen", "ice cream", "freezer"]),
+        ("fish", ["salmon", "fish", "prawn", "tuna", "seafood", "barramundi", "snapper", "shrimp"]),
+        ("leaf", ["spinach", "lettuce", "kale", "rocket", "herb", "coriander", "parsley", "basil", "mint", "salad", "greens", "bok choy"]),
+        ("carrot", ["carrot", "broccoli", "onion", "garlic", "potato", "tomato", "capsicum", "zucchini", "cucumber", "mushroom", "pumpkin", "avocado", "eggplant", "lemon", "lime", "banana", "apple", "strawberr", "blueberr", "raspberr", "berries", "orange", "fruit", "veg", "produce"]),
+        ("frying.pan", ["chicken", "beef", "pork", "lamb", "mince", "sausage", "bacon", "steak", "thigh", "meat", "turkey", "ham"]),
+        ("refrigerator", ["milk", "yoghurt", "yogurt", "cheese", "feta", "butter", "cream", "egg", "dairy", "tofu", "chilled"]),
+        ("cup.and.saucer", ["coffee", "tea"]),
+        ("waterbottle", ["juice", "water", "drink", "soda", "cola", "beverage"]),
+        ("house", ["paper towel", "toilet", "tissue", "detergent", "dishwash", "cleaning", "bin bag", "household", "laundry", "foil", "cling"]),
+        ("cabinet", ["rice", "pasta", "noodle", "flour", "oil", "sauce", "spice", "stock", "bean", "chickpea", "lentil", "tinned", "canned", "sugar", "salt", "cereal", "oats", "bread", "wrap", "tortilla", "pantry", "bakery"]),
+    ]
+
+    static func symbol(name: String?, aisle: String?) -> String {
+        for text in [name, aisle].compactMap({ $0?.lowercased() }) where !text.isEmpty {
+            let words = text.split(whereSeparator: { !$0.isLetter }).map(String.init)
+            if let rule = rules.first(where: { rule in rule.words.contains { matches($0, text: text, words: words) } }) {
+                return rule.symbol
+            }
+        }
+        return "basket"
+    }
+
+    /// A phrase matches anywhere; a single keyword must start a word, so "tea" doesn't match "steak".
+    private static func matches(_ keyword: String, text: String, words: [String]) -> Bool {
+        keyword.contains(" ") ? text.contains(keyword) : words.contains { $0.hasPrefix(keyword) }
     }
 }
 
