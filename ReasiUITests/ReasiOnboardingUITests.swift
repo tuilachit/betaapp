@@ -123,10 +123,10 @@ final class ReasiOnboardingUITests: XCTestCase {
             } else {
                 app.buttons["Smart Basket"].tap()
                 if fixture == "-ReasiSmartBasketLoadingFixture" {
-                    XCTAssertTrue(app.staticTexts["Checking your basket"].waitForExistence(timeout: 5))
+                    XCTAssertTrue(app.staticTexts["Checking your basket"].waitForExistence(timeout: 10))
                     XCTAssertFalse(app.buttons["smart-basket-apply"].isEnabled)
-                    // The loading fixture holds for 8 seconds, so allow for that plus a slow runner.
-                    XCTAssertTrue(app.staticTexts["Estimated purchase costs"].waitForExistence(timeout: 15))
+                    // The loading fixture holds for 20 seconds, so allow for that plus a slow runner.
+                    XCTAssertTrue(app.staticTexts["Estimated purchase costs"].waitForExistence(timeout: 45))
                 } else {
                     XCTAssertTrue(app.staticTexts["This preview has expired. Refresh to check prices again."].waitForExistence(timeout: 8))
                     XCTAssertFalse(app.buttons["smart-basket-apply"].isEnabled)

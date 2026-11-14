@@ -54,9 +54,10 @@ enum FixtureSmartBasket {
             preview: { _ in
                 if arguments.contains("-ReasiSmartBasketErrorFixture") { throw SmartBasketError.unavailable }
                 if arguments.contains("-ReasiSmartBasketUnsupportedFixture") { return unsupportedPreview(storeId: storeId) }
-                // Long enough for a UI test on a slow CI simulator to see the loading state:
-                // XCUITest can spend 4 to 5 seconds waiting for the app to settle after a tap.
-                if arguments.contains("-ReasiSmartBasketLoadingFixture") { try await Task.sleep(for: .seconds(8)) }
+                // Long enough for a UI test on a slow CI simulator to see the loading state. On a
+                // cold GitHub runner, XCUITest's first look at the screen has come back 10 seconds
+                // after the tap, so a hold of a few seconds is over before the test can see it.
+                if arguments.contains("-ReasiSmartBasketLoadingFixture") { try await Task.sleep(for: .seconds(20)) }
                 let status = arguments.contains("-ReasiSmartBasketNoChangeFixture") ? "no_change"
                     : arguments.contains("-ReasiSmartBasketPartialFixture") ? "partial" : "ready"
                 let result = preview(partial: status == "partial", status: status, storeId: storeId,
