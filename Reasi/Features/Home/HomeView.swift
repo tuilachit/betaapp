@@ -9,14 +9,17 @@ struct HomeView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
     @Environment(OnboardingStore.self) private var onboarding
+    @Environment(SpendingStore.self) private var spending
 
     @State private var showStorePicker = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                header
-                creationActions
+                weekMoneyCard
+                if !coreLoop.hasPlan && !coreLoop.isRestoringPlan {
+                    creationActions
+                }
                 if coreLoop.generationState.isGenerating {
                     GenerationProgressCard(
                         stage: coreLoop.generationStage,
@@ -41,7 +44,6 @@ struct HomeView: View {
                     SkeletonBlock(height: 178, radius: ReasiRadius.xl)
                 } else if coreLoop.hasPlan {
                     featuredMealCard
-                    currentPlanCard
                 } else {
                     emptyPlanCard
                 }
@@ -53,14 +55,18 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                 }
-                storeCard
+                planAndStoreGroup
             }
-            .padding(.top, ReasiSpacing.s8)
-            .padding(.bottom, 120)
+            .padding(.top, ReasiSpacing.s2)
+            .padding(.bottom, ReasiSpacing.s8)
         }
         .contentMargins(.horizontal, ReasiSpacing.s5, for: .scrollContent)
         .background(Color.reasi.background)
-        .toolbar(.hidden, for: .navigationBar)
+        .reasiTabRoot(
+            "Home",
+            subtitle: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "en_AU"))),
+            openProfile: appState.openProfile
+        )
         .confirmationDialog("Choose store", isPresented: $showStorePicker, titleVisibility: .visible) {
             ForEach(FixtureStores.launchStores) { store in
                 Button(store.name) {
@@ -69,28 +75,104 @@ struct HomeView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Reasi will keep your current list visible while it reorders item locations for this store.")
+            Text("Your list will be reordered for this store.")
         }
         .task {
             analytics.capture(.coreHomeViewed)
+            if spending.dashboard == nil {
+                await spending.refresh(supabase: supabase)
+            }
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                Text("Home")
-                    .font(ReasiTypography.largeTitle)
-                    .foregroundStyle(Color.reasi.text)
-                Text("A calm week of meals, ready when you are.")
+    /// This week's money at a glance: what has been spent against the target, and what the current list will cost.
+    private var weekMoneyCard: some View {
+        let weekDashboard = spending.dashboard.flatMap { $0.period == .week ? $0 : nil }
+        let target = weekDashboard?.weeklyBudgetAud ?? onboarding.preferences.weeklyGroceryBudgetAud
+        let spent = weekDashboard?.completedSpendAud ?? 0
+        let summary = coreLoop.basketPriceSummary
+        let planned = coreLoop.hasPlan && summary.pricedItemCount > 0 && !coreLoop.isShoppingCompleted
+            ? summary.plannedTotalAud
+            : nil
+        let progress = target.map { $0 > 0 ? min(max(spent / $0, 0), 1) : 0 } ?? 0
+        let isOver = target.map { spent > $0 } ?? false
+
+        return Button {
+            ReasiHaptics.light()
+            appState.showSpend()
+        } label: {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                HStack {
+                    Text("This week")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.reasi.dim)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s2) {
+                    Text(spent, format: .currency(code: "AUD"))
+                        .font(ReasiTypography.font(size: 34, weight: .semibold, relativeTo: .title))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.reasi.text)
+                        .contentTransition(.numericText(value: spent))
+                    Text("spent")
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.textMuted)
+                }
+
+                if let target {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.reasi.surfaceHigh)
+                            Capsule()
+                                .fill(isOver ? Color.reasi.warning : Color.reasi.text)
+                                .frame(width: proxy.size.width * progress)
+                        }
+                    }
+                    .frame(height: 5)
+
+                    Text(isOver
+                         ? "\((spent - target).formatted(.currency(code: "AUD"))) over \(WeeklyBudgetGuide.wholeDollars(target))"
+                         : spent < 0.005
+                            ? "\(WeeklyBudgetGuide.wholeDollars(target)) target"
+                            : "\((target - spent).formatted(.currency(code: "AUD"))) left of \(WeeklyBudgetGuide.wholeDollars(target))")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(isOver ? Color.reasi.warning : Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("No weekly target yet")
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let planned {
+                    Divider().overlay(Color.reasi.border)
+                    HStack {
+                        Label("Current list", systemImage: "checklist")
+                        .foregroundStyle(Color.reasi.textMuted)
+                        Spacer()
+                        Text(planned, format: .currency(code: "AUD"))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.reasi.text)
+                    }
                     .font(ReasiTypography.callout)
-                    .foregroundStyle(Color.reasi.muted)
+                }
             }
-
-            Spacer()
-
-            ReasiProfileButton { appState.openProfile() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.cardEdge, lineWidth: 1)
+            }
         }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityHint("Opens Spend")
+        .accessibilityIdentifier("home-week-money")
     }
 
     private var creationActions: some View {
@@ -98,77 +180,11 @@ struct HomeView: View {
             analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
             appState.openPlanBuilder(entryMethod: .describe)
         } label: {
-            Label("Create a plan", systemImage: "sparkles")
+            Label("Create a plan", systemImage: "plus")
         }
         .buttonStyle(ReasiPrimaryButtonStyle())
         .disabled(coreLoop.generationState.isGenerating)
         .opacity(coreLoop.generationState.isGenerating ? 0.72 : 1)
-    }
-
-    private var currentPlanCard: some View {
-        Button {
-            ReasiHaptics.light()
-            appState.showPlan()
-        } label: {
-            VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(coreLoop.plan.kind == .week ? "This week" : "Your occasion")
-                            .font(ReasiTypography.caption)
-                            .foregroundStyle(Color.reasi.muted)
-                        Text(coreLoop.plan.weekLabel)
-                            .font(ReasiTypography.title2)
-                            .foregroundStyle(Color.reasi.text)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.reasi.dim)
-                }
-
-                Label(coreLoop.plan.storeName, systemImage: "storefront")
-                    .font(ReasiTypography.caption)
-                    .foregroundStyle(
-                        coreLoop.plan.storeId == appState.selectedStore.id
-                            ? Color.reasi.muted
-                            : Color.reasi.warning
-                    )
-
-                if coreLoop.plan.storeId != appState.selectedStore.id {
-                    Text("This list is still arranged for \(coreLoop.plan.storeName).")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.warning)
-                }
-
-                HStack(spacing: ReasiSpacing.s2) {
-                    PillMetric(
-                        label: "\(coreLoop.plan.meals.count) \(coreLoop.plan.kind == .week ? "dinners" : "courses")",
-                        symbol: "fork.knife"
-                    )
-                    PillMetric(label: "\(coreLoop.allShoppingItems.count) items", symbol: "checklist")
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(ReasiSpacing.s5)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color.reasi.planHighlight,
-                        Color.reasi.surface
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
-        }
-        .buttonStyle(ReasiPressStyle())
     }
 
     private var emptyPlanCard: some View {
@@ -179,7 +195,7 @@ struct HomeView: View {
             Text("No plan yet")
                 .font(ReasiTypography.title2)
                 .foregroundStyle(Color.reasi.text)
-            Text("Your first generated week will appear here and stay linked to your account.")
+            Text("Dinners planned to your budget, in one list.")
                 .font(ReasiTypography.callout)
                 .foregroundStyle(Color.reasi.textMuted)
         }
@@ -188,7 +204,7 @@ struct HomeView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
         }
     }
 
@@ -235,7 +251,7 @@ struct HomeView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
         }
     }
 
@@ -254,43 +270,97 @@ struct HomeView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
     }
 
-    private var storeCard: some View {
-        Button {
-            ReasiHaptics.light()
-            showStorePicker = true
-        } label: {
-            HStack(spacing: ReasiSpacing.s3) {
-                Image(systemName: "storefront.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .frame(width: 38, height: 38)
-                    .background(Color.reasi.surfaceHigh, in: Circle())
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Shopping at")
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
-                    Text(appState.selectedStore.name)
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                        .lineLimit(1)
+    /// The plan and the store as one inset group, like a Settings section.
+    private var planAndStoreGroup: some View {
+        VStack(spacing: 0) {
+            if coreLoop.hasPlan {
+                Button {
+                    ReasiHaptics.light()
+                    appState.showPlan()
+                } label: {
+                    homeRow(
+                        symbol: "fork.knife",
+                        title: coreLoop.plan.kind == .week ? "Your plan" : "Your occasion",
+                        detail: planRowDetail,
+                        accessory: "chevron.right"
+                    )
                 }
+                .buttonStyle(ReasiPressStyle())
+                .accessibilityIdentifier("home-current-plan")
 
-                Spacer()
+                Divider()
+                    .overlay(Color.reasi.border)
+                    .padding(.leading, 56)
+            }
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.reasi.dim)
+            Button {
+                ReasiHaptics.light()
+                showStorePicker = true
+            } label: {
+                homeRow(
+                    symbol: "storefront",
+                    title: appState.selectedStore.name,
+                    detail: storeRowDetail,
+                    detailIsWarning: coreLoop.hasPlan && coreLoop.plan.storeId != appState.selectedStore.id,
+                    accessory: "chevron.up.chevron.down"
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(ReasiSpacing.s4)
-            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
-            }
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityHint("Choose a different store")
         }
-        .buttonStyle(ReasiPressStyle())
+        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+    }
+
+    private var planRowDetail: String {
+        let meals = coreLoop.plan.meals.count
+        let noun = coreLoop.plan.kind == .week
+            ? (meals == 1 ? "dinner" : "dinners")
+            : (meals == 1 ? "course" : "courses")
+        let items = coreLoop.allShoppingItems.count
+        return "\(meals) \(noun) · \(items) \(items == 1 ? "item" : "items")"
+    }
+
+    /// Only says something when there's a mismatch worth knowing about.
+    private var storeRowDetail: String? {
+        if coreLoop.hasPlan, coreLoop.plan.storeId != appState.selectedStore.id {
+            return "List is in \(coreLoop.plan.storeName) order"
+        }
+        return nil
+    }
+
+    private func homeRow(
+        symbol: String,
+        title: String,
+        detail: String?,
+        detailIsWarning: Bool = false,
+        accessory: String
+    ) -> some View {
+        HStack(spacing: ReasiSpacing.s3) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.reasi.textMuted)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(ReasiTypography.headline)
+                    .foregroundStyle(Color.reasi.text)
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail)
+                        .font(ReasiTypography.caption)
+                        .foregroundStyle(detailIsWarning ? Color.reasi.warning : Color.reasi.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: ReasiSpacing.s2)
+            Image(systemName: accessory)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.reasi.dim)
+        }
+        .padding(.horizontal, ReasiSpacing.s4)
+        .padding(.vertical, ReasiSpacing.s3)
+        .frame(minHeight: 52)
+        .contentShape(Rectangle())
     }
 
     private func selectStore(_ store: StoreSummary) {
@@ -312,9 +382,22 @@ struct HomeView: View {
         )
     }
 
+    /// Tonight's dinner when the plan has a meal for today's weekday, otherwise the first one.
+    private var featuredMeal: (meal: MealSummary, isTonight: Bool)? {
+        let today = Date.now.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "en_AU")))
+            .prefix(3).lowercased()
+        if coreLoop.plan.kind == .week,
+           let tonight = coreLoop.plan.meals.first(where: { $0.day.prefix(3).lowercased() == today }) {
+            return (tonight, true)
+        }
+        return coreLoop.plan.meals.first.map { ($0, false) }
+    }
+
     @ViewBuilder
     private var featuredMealCard: some View {
-        if let meal = coreLoop.plan.meals.first {
+        if let featured = featuredMeal, featured.meal.imageUrl == nil {
+            featuredMealRow(featured.meal, isTonight: featured.isTonight)
+        } else if let meal = featuredMeal?.meal {
             Button {
                 ReasiHaptics.light()
                 appState.showPlan()
@@ -330,9 +413,9 @@ struct HomeView: View {
                     }
                     .overlay(alignment: .bottomLeading) {
                         VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                            Text(meal.day.uppercased())
-                                .font(ReasiTypography.caption)
-                                .foregroundStyle(.white.opacity(0.78))
+                            Text(featuredMeal?.isTonight == true ? "Tonight" : meal.day)
+                                .font(ReasiTypography.headline)
+                                .foregroundStyle(.white.opacity(0.85))
 
                             Text(meal.dish)
                                 .font(ReasiTypography.title2)
@@ -349,7 +432,7 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                            .stroke(Color.reasi.border, lineWidth: 1)
+                            .stroke(Color.reasi.cardEdge, lineWidth: 1)
                     }
                     .contentShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
             }
@@ -359,6 +442,47 @@ struct HomeView: View {
             )
             .accessibilityHint("Opens your week plan")
         }
+    }
+}
+
+private extension HomeView {
+    /// Without a photo, the meal is a plain row on a light card: no empty dark frame.
+    func featuredMealRow(_ meal: MealSummary, isTonight: Bool) -> some View {
+        Button {
+            ReasiHaptics.light()
+            appState.showPlan()
+        } label: {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                HStack {
+                    Text(isTonight ? "Tonight" : meal.day)
+                        .font(ReasiTypography.headline)
+                        .foregroundStyle(Color.reasi.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.reasi.dim)
+                }
+                Text(meal.dish)
+                    .font(ReasiTypography.title2)
+                    .foregroundStyle(Color.reasi.text)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(meal.cookTimeMin) min · \(meal.cuisine)")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(ReasiSpacing.s5)
+            .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
+                    .stroke(Color.reasi.cardEdge, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
+        }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityLabel("\(isTonight ? "Tonight" : meal.day), \(meal.dish), \(meal.cuisine), \(meal.cookTimeMin) minutes")
+        .accessibilityHint("Opens your week plan")
     }
 }
 
@@ -397,10 +521,13 @@ private struct HomeMealArtwork: View {
         .clipped()
     }
 
+    /// No photo: a quiet mark in the corner so the meal title below stays the focus.
     private var fallback: some View {
         Image(systemName: "fork.knife")
-            .font(.system(size: 30, weight: .medium))
-            .foregroundStyle(Color.reasi.onImageMuted)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(Color.reasi.onImageMuted.opacity(0.7))
+            .padding(ReasiSpacing.s5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 }
 
@@ -417,25 +544,6 @@ private struct HomeMealMetric: View {
             .padding(.horizontal, ReasiSpacing.s3)
             .padding(.vertical, ReasiSpacing.s2)
             .background(.black.opacity(0.45), in: Capsule())
-    }
-}
-
-private struct PillMetric: View {
-    let label: String
-    let symbol: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-            Text(label)
-                .font(ReasiTypography.caption)
-                .lineLimit(1)
-        }
-        .foregroundStyle(Color.reasi.textMuted)
-        .padding(.horizontal, ReasiSpacing.s3)
-        .padding(.vertical, ReasiSpacing.s2)
-        .background(Color.reasi.surfaceHigh, in: Capsule())
     }
 }
 
@@ -456,6 +564,7 @@ struct PlanBuilderView: View {
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
+    @Environment(OnboardingStore.self) private var onboarding
 
     let entryMethod: EntryMethod
 
@@ -523,23 +632,31 @@ struct PlanBuilderView: View {
                         .labelStyle(.iconOnly)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Discard draft", systemImage: "trash", role: .destructive) {
-                            showsDiscardConfirmation = true
+                    // While typing, the trailing slot puts the keyboard away, as in Notes.
+                    // A keyboard accessory bar doesn't show for this cover since the switch
+                    // to the system TabView, so the top bar carries Done instead.
+                    if focusedField != nil {
+                        Button("Done") { focusedField = nil }
+                            .fontWeight(.semibold)
+                    } else {
+                        Menu {
+                            Button("Discard draft", systemImage: "trash", role: .destructive) {
+                                showsDiscardConfirmation = true
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
+                        .accessibilityLabel("Plan options")
                     }
-                    .accessibilityLabel("Plan options")
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focusedField = nil }
                 }
             }
         }
         .task {
-            appState.planBuilder.begin(entryMethod: entryMethod)
+            appState.planBuilder.begin(
+                entryMethod: entryMethod,
+                householdSize: onboarding.preferences.household?.householdSize,
+                weeklyBudgetAud: onboarding.preferences.weeklyGroceryBudgetAud
+            )
             if let restored = appState.planBuilder.draft {
                 brief = restored
             }
@@ -554,6 +671,12 @@ struct PlanBuilderView: View {
             }
         }
         .onChange(of: brief.kind) { oldKind, newKind in
+            let weeklyBudget = onboarding.preferences.weeklyGroceryBudgetAud
+            if newKind == .occasion, brief.budgetTargetAud == weeklyBudget {
+                brief.budgetTargetAud = nil
+            } else if newKind == .week, brief.budgetTargetAud == nil {
+                brief.budgetTargetAud = weeklyBudget
+            }
             if newKind == .week {
                 brief.desiredCount = 7
             } else if brief.desiredCount == oldKind.defaultDesiredCount {
@@ -878,7 +1001,7 @@ struct PlanBuilderView: View {
             ])
         } label: {
             HStack(alignment: .top, spacing: ReasiSpacing.s3) {
-                Image(systemName: recommended ? "sparkles" : "arrow.triangle.swap")
+                Image(systemName: recommended ? "checkmark.circle" : "arrow.triangle.swap")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(recommendation.title).font(ReasiTypography.bodyMedium)
                     Text(recommendation.reason).font(ReasiTypography.caption).foregroundStyle(Color.reasi.textMuted)

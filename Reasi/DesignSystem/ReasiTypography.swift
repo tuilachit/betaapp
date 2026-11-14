@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum ReasiFontWeight {
     case regular
@@ -21,6 +22,18 @@ enum ReasiFontWeight {
 }
 
 enum ReasiTypography {
+    /// Native navigation bars keep their Liquid Glass and scroll behaviour; only the title font changes to Inter.
+    @MainActor
+    static func applyNavigationBarFonts() {
+        let bar = UINavigationBar.appearance()
+        if let large = UIFont(name: ReasiFontWeight.bold.fontName, size: 34) {
+            bar.largeTitleTextAttributes = [.font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: large)]
+        }
+        if let inline = UIFont(name: ReasiFontWeight.semibold.fontName, size: 17) {
+            bar.titleTextAttributes = [.font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: inline)]
+        }
+    }
+
     static func font(size: CGFloat, weight: ReasiFontWeight = .regular, relativeTo textStyle: Font.TextStyle = .body) -> Font {
         .custom(weight.fontName, size: size, relativeTo: textStyle)
     }

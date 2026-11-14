@@ -91,6 +91,15 @@ enum HouseholdChoice: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    var symbol: String {
+        switch self {
+        case .justMe: "person"
+        case .two: "person.2"
+        case .familyThreeFour: "person.3"
+        case .fivePlus: "person.3.sequence"
+        }
+    }
+
     var householdSize: Int {
         switch self {
         case .justMe: 1
@@ -276,5 +285,44 @@ struct OnboardingPreferences: Codable, Equatable {
         try container.encodeIfPresent(completedAt, forKey: .completedAt)
         try container.encodeIfPresent(weeklyGroceryBudgetAud, forKey: .weeklyGroceryBudgetAud)
         try container.encode(spendingCoachTone, forKey: .spendingCoachTone)
+    }
+}
+
+/// Starting points for the weekly budget question. These are prompts to adjust, not claims about what households spend.
+enum WeeklyBudgetGuide {
+    static let step: Double = 10
+    static let minimum: Double = 40
+    static let maximum: Double = 800
+
+    static func startingAmount(for household: HouseholdChoice?) -> Double {
+        switch household {
+        case .justMe: 90
+        case .two, .none: 150
+        case .familyThreeFour: 230
+        case .fivePlus: 290
+        }
+    }
+
+    static func quickPicks(for household: HouseholdChoice?) -> [Double] {
+        switch household {
+        case .justMe: [70, 90, 120, 150]
+        case .two, .none: [120, 150, 180, 220]
+        case .familyThreeFour: [180, 230, 280, 330]
+        case .fivePlus: [240, 290, 340, 400]
+        }
+    }
+
+    static func clamp(_ amount: Double) -> Double {
+        guard amount.isFinite else { return minimum }
+        let rounded = (amount / step).rounded() * step
+        return min(max(rounded, minimum), maximum)
+    }
+
+    static func wholeDollars(_ amount: Double) -> String {
+        amount.formatted(
+            .currency(code: "AUD")
+                .locale(Locale(identifier: "en_AU"))
+                .precision(.fractionLength(0))
+        )
     }
 }

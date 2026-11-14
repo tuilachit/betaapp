@@ -679,6 +679,8 @@ struct BasketPriceSummary: Equatable {
     let totalItemCount: Int
     let pricedCheckedItemCount: Int
     let checkedItemCount: Int
+    /// The oldest capture date among priced items, so the total is never presented as fresher than its stalest price.
+    let oldestPriceCapturedAt: Date?
 
     init(items: [ShoppingListItem]) {
         totalItemCount = items.count
@@ -697,6 +699,9 @@ struct BasketPriceSummary: Equatable {
         inBasketTotalAud = priced.reduce(0) { total, entry in
             entry.0.checked ? total + entry.1 : total
         }
+        oldestPriceCapturedAt = priced
+            .compactMap { $0.0.product?.capturedAt.flatMap(PriceFreshness.parse) }
+            .min()
     }
 
     var unpricedCheckedItemCount: Int {
@@ -715,6 +720,53 @@ struct BasketPriceSummary: Equatable {
         let updatedCents = ((plannedTotalAud - previous + price) * 100).rounded()
         let budgetCents = (budget * 100).rounded()
         return updatedCents > budgetCents ? .overBudget((updatedCents - budgetCents) / 100) : nil
+    }
+}
+
+/// How current a set of retailer prices is, in words a shopper can act on.
+struct PriceFreshness: Equatable {
+    /// Retailer prices older than this are labelled as possibly changed.
+    static let staleAfterDays = 10
+
+    let capturedAt: Date
+    let isStale: Bool
+
+    init(capturedAt: Date, now: Date = Date(), calendar: Calendar = .current) {
+        self.capturedAt = capturedAt
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: capturedAt),
+            to: calendar.startOfDay(for: now)
+        ).day ?? 0
+        isStale = days > Self.staleAfterDays
+    }
+
+    private var day: String {
+        capturedAt.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_AU")))
+    }
+
+    /// Short line under the list total: "Prices from 9 Oct", or when stale,
+    /// "Prices from 9 Oct, may have changed".
+    var label: String {
+        isStale ? "Prices from \(day), may have changed" : "Prices from \(day)"
+    }
+
+    /// The same fact for VoiceOver, with the retailer named.
+    func spokenLabel(retailer: String) -> String {
+        isStale
+            ? "\(retailer) prices last checked \(day). They may have changed."
+            : "\(retailer) prices checked \(day)"
+    }
+
+    static func parse(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+        let dayOnly = ISO8601DateFormatter()
+        dayOnly.formatOptions = [.withFullDate]
+        return dayOnly.date(from: value)
     }
 }
 

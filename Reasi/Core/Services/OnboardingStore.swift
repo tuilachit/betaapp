@@ -6,6 +6,7 @@ enum OnboardingStep: Int, CaseIterable {
     case benefit
     case purpose
     case household
+    case budget
     case foodStyle
     case spendingTone
     case store
@@ -15,13 +16,18 @@ enum OnboardingStep: Int, CaseIterable {
 
     var isSurvey: Bool {
         switch self {
-        case .purpose, .household, .foodStyle, .spendingTone, .store: true
+        case .purpose, .household, .budget, .foodStyle, .spendingTone, .store: true
         default: false
         }
     }
 
     var progressIndex: Int {
         max(0, rawValue - OnboardingStep.purpose.rawValue)
+    }
+
+    /// Number of steps that show in the progress bar, from the first survey question to the end.
+    static var progressStepCount: Int {
+        allCases.count - OnboardingStep.purpose.rawValue
     }
 }
 
@@ -170,6 +176,9 @@ final class OnboardingStore {
         case .household:
             preferences.household = nil
             advance()
+        case .budget:
+            preferences.weeklyGroceryBudgetAud = nil
+            advance()
         case .foodStyle:
             preferences.foodStyles = []
             advance()
@@ -203,6 +212,24 @@ final class OnboardingStore {
         } else {
             ReasiHaptics.warning()
         }
+    }
+
+    /// Shows a starting amount the first time the budget question appears, so Continue always saves a visible value.
+    func prepareBudgetStep() {
+        guard preferences.weeklyGroceryBudgetAud == nil else { return }
+        preferences.weeklyGroceryBudgetAud = WeeklyBudgetGuide.startingAmount(for: preferences.household)
+        persistDraft()
+    }
+
+    func setWeeklyBudget(_ amount: Double) {
+        let clamped = WeeklyBudgetGuide.clamp(amount)
+        guard clamped != preferences.weeklyGroceryBudgetAud else {
+            ReasiHaptics.warning()
+            return
+        }
+        preferences.weeklyGroceryBudgetAud = clamped
+        ReasiHaptics.selection()
+        persistDraft()
     }
 
     func selectStore(_ store: StoreSummary) {
@@ -265,6 +292,7 @@ final class OnboardingStore {
         completionProperties.merge([
             "household": .string(preferences.household?.rawValue ?? "skipped"),
             "household_size": .int(preferences.householdSize),
+            "has_budget": .bool(preferences.weeklyGroceryBudgetAud != nil),
             "food_styles": .stringArray(preferences.sortedFoodStyleValues),
             "store_id": .string(preferences.resolvedStore.id.rawValue),
             "store_defaulted": .bool(preferences.selectedStoreId == nil),
