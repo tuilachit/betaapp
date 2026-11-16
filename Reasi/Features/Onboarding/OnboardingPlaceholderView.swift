@@ -1059,7 +1059,7 @@ struct OnboardingPlaceholderView: View {
                     .overlay {
                         if let rank {
                             Text("\(rank)")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Color.reasi.background)
                         }
                     }
@@ -1671,14 +1671,12 @@ private struct OnboardingReceiptPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack {
-                Text("REASI")
-                    .font(ReasiTypography.font(size: 12, weight: .bold, relativeTo: .caption))
-                    .tracking(2)
+                Text("Reasi")
+                    .font(ReasiTypography.font(size: 13, weight: .semibold, relativeTo: .footnote))
                 Spacer()
-                Text("THIS WEEK")
-                    .font(ReasiTypography.font(size: 11, weight: .semibold, relativeTo: .caption))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.reasi.muted)
+                Text("This week")
+                    .font(ReasiTypography.font(size: 13, relativeTo: .footnote))
+                    .foregroundStyle(Color.reasi.textMuted)
             }
 
             receiptRule

@@ -397,7 +397,6 @@ private extension View {
             .background(Color.reasi.background)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
             .tint(Color.reasi.text)
     }
 }

@@ -14,7 +14,7 @@ Choose **Light** or **Dark** in **Profile → Shopping & app → Appearance**. C
 - Dark premium shell.
 - Floating glass bottom navigation.
 - Ported design tokens from Expo `src/theme/tokens.ts`.
-- Inter typography resources copied from the Expo app dependency cache.
+- Type is Apple's New York (display) and San Francisco (interface); see `docs/design-playbook.md`. The Inter files from the Expo app are still bundled but unused.
 - Haptics, skeleton primitives, and press micro-interactions.
 - Supabase, PostHog, and RevenueCat Swift Package references.
 - Thin service shells for Phase 1 wiring.

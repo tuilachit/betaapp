@@ -70,7 +70,6 @@ struct ProfileView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(Color.reasi.background, for: .navigationBar)
         .tint(Color.reasi.text)
         .alert("Delete your Reasi account?", isPresented: $showDeleteConfirmation) {
             Button("Delete account", role: .destructive) {

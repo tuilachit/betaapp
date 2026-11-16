@@ -128,7 +128,7 @@ struct ListPhotoReviewSheet: View {
                     Button("Done") { focusedField = nil }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaBar(edge: .bottom) {
                 VStack(spacing: ReasiSpacing.s3) {
                     if let errorMessage {
                         Text(errorMessage)
@@ -164,7 +164,6 @@ struct ListPhotoReviewSheet: View {
                     .accessibilityIdentifier("list-photo-add-items")
                 }
                 .padding(ReasiSpacing.s4)
-                .background(Color.reasi.background)
             }
         }
         .interactiveDismissDisabled(isAdding)

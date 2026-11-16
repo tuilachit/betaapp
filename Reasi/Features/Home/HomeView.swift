@@ -617,15 +617,14 @@ struct PlanBuilderView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.reasi.background)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, not an opaque strip: the form scrolls beneath the glass button.
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 submitButton
                     .padding(.horizontal, ReasiSpacing.s5)
                     .padding(.vertical, ReasiSpacing.s3)
-                    .background(Color.reasi.background)
             }
             .navigationTitle("Build your plan")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close plan builder", systemImage: "xmark") { dismiss() }

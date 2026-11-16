@@ -76,7 +76,6 @@ struct ProductSearchView: View {
             .background(Color.reasi.background)
             .navigationTitle(context.targetItemID == nil ? "Add groceries" : "Change product")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -874,7 +873,7 @@ private struct ProductCandidateDetailView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaBar(edge: .bottom) {
                 Button {
                     guard !isAdding else { return }
                     isAdding = true
@@ -895,7 +894,6 @@ private struct ProductCandidateDetailView: View {
                 .disabled(isAdding || shelfPriceIsInvalid || selectionIssue(parsedShelfPrice) != nil)
                 .padding(.horizontal, ReasiSpacing.s5)
                 .padding(.vertical, ReasiSpacing.s3)
-                .background(.ultraThinMaterial)
             }
         }
     }

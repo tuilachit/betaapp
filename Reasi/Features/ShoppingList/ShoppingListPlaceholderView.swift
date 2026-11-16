@@ -149,7 +149,7 @@ struct ShoppingListPlaceholderView: View {
             }
         }
         .background(Color.reasi.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .safeAreaBar(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 shoppingDock
                 // The + lives at the end of the tab bar, so its menu opens from just above it.
@@ -495,9 +495,11 @@ struct ShoppingListPlaceholderView: View {
                         Spacer(minLength: 0)
                         if let freshness { priceAge(freshness) }
                     }
+                    // When it doesn't fit on one line (large text, or the stale-price warning),
+                    // stack the two and let them wrap. The warning must never be cut off.
                     VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
-                        if let status { summaryStatus(status, isWarning: isOverBudget) }
-                        if let freshness { priceAge(freshness) }
+                        if let status { summaryStatus(status, isWarning: isOverBudget, wraps: true) }
+                        if let freshness { priceAge(freshness, wraps: true) }
                     }
                 }
             }
@@ -538,18 +540,20 @@ struct ShoppingListPlaceholderView: View {
         }
     }
 
-    private func summaryStatus(_ text: String, isWarning: Bool) -> some View {
+    private func summaryStatus(_ text: String, isWarning: Bool, wraps: Bool = false) -> some View {
         Text(text)
             .font(ReasiTypography.caption)
             .foregroundStyle(isWarning ? Color.reasi.warning : Color.reasi.muted)
-            .lineLimit(1)
+            .lineLimit(wraps ? nil : 1)
+            .fixedSize(horizontal: false, vertical: wraps)
     }
 
-    private func priceAge(_ freshness: PriceFreshness) -> some View {
+    private func priceAge(_ freshness: PriceFreshness, wraps: Bool = false) -> some View {
         Text(freshness.label)
             .font(ReasiTypography.caption)
             .foregroundStyle(freshness.isStale ? Color.reasi.warning : Color.reasi.muted)
-            .lineLimit(1)
+            .lineLimit(wraps ? nil : 1)
+            .fixedSize(horizontal: false, vertical: wraps)
             .accessibilityLabel(freshness.spokenLabel(retailer: displayedStore.retailerDisplayName))
             .accessibilityIdentifier("price-freshness")
     }
@@ -567,7 +571,7 @@ struct ShoppingListPlaceholderView: View {
         return VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
             HStack(alignment: .firstTextBaseline, spacing: ReasiSpacing.s3) {
                 Text("Your usuals")
-                    .font(ReasiTypography.headline)
+                    .font(ReasiTypography.display(.title3, weight: .semibold))
                     .foregroundStyle(Color.reasi.text)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityHint("Items you bought in at least 2 of your last \(shopCount) shops")
@@ -586,8 +590,10 @@ struct ShoppingListPlaceholderView: View {
             }
 
             if dynamicTypeSize.isAccessibilitySize {
+                // Large text has no room for a sideways rail, and a full list would bury the
+                // shopping list below it, so show the three most regular; Add all still adds every one.
                 VStack(spacing: 0) {
-                    ForEach(Array(usuals.enumerated()), id: \.element.id) { index, usual in
+                    ForEach(Array(usuals.prefix(3).enumerated()), id: \.element.id) { index, usual in
                         if index > 0 {
                             Rectangle()
                                 .fill(Color.reasi.border)
@@ -768,18 +774,19 @@ struct ShoppingListPlaceholderView: View {
                 supabase: supabase
             )
         }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.30 : 0.07), radius: 14, y: 6)
     }
 
     @ViewBuilder
     private var shoppingDock: some View {
         if coreLoop.hasPlan && !coreLoop.isShoppingCompleted {
-            HStack(spacing: ShoppingDockMetrics.controlGap) {
-                if shouldShowFinishControl {
-                    finishShoppingControl
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+            GlassEffectContainer(spacing: ShoppingDockMetrics.controlGap) {
+                HStack(spacing: ShoppingDockMetrics.controlGap) {
+                    if shouldShowFinishControl {
+                        finishShoppingControl
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    assistantButton
                 }
-                assistantButton
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, ReasiSpacing.s5)
@@ -963,13 +970,9 @@ struct ShoppingListPlaceholderView: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color.reasi.text)
                 .frame(width: ShoppingDockMetrics.finishHeight, height: ShoppingDockMetrics.finishHeight)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay {
-                    Circle().stroke(Color.reasi.border, lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.30 : 0.07), radius: 14, y: 6)
+                .reasiGlass(in: Circle())
         }
-        .buttonStyle(ReasiPressStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel("Ask Reasi")
     }
 
@@ -3017,13 +3020,6 @@ private struct SwipeToFinishControl: View {
             let maximumOffset = max(0, proxy.size.width - thumbSize - (inset * 2))
 
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .fill(Color.reasi.surface)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                            .stroke(Color.reasi.cardEdge, lineWidth: 1)
-                    }
-
                 Text(isBusy ? "Saving…" : "Swipe to finish")
                     .font(ReasiTypography.callout)
                     .foregroundStyle(Color.reasi.textMuted)
@@ -3035,7 +3031,7 @@ private struct SwipeToFinishControl: View {
                     .opacity(max(0.28, 1 - Double(dragOffset / max(maximumOffset, 1))))
 
                 ZStack {
-                    RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
+                    Circle()
                         .fill(Color.reasi.text)
 
                     if isBusy {
@@ -3086,6 +3082,8 @@ private struct SwipeToFinishControl: View {
             }
         }
         .frame(height: height)
+        // The whole control is one piece of glass; the label and thumb sit inside it.
+        .glassEffect(.regular, in: .capsule)
     }
 
     private func reset() {
@@ -3126,7 +3124,7 @@ private struct ShoppingSectionView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 Text(section.label)
-                    .font(ReasiTypography.headline)
+                    .font(ReasiTypography.display(.title3, weight: .semibold))
                     .foregroundStyle(Color.reasi.text)
                 Spacer()
                 Text("\(checkedCount) / \(section.items.count)")

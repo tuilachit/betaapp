@@ -334,7 +334,7 @@ struct ReasiProPaywallView: View {
     private func featuredPlanCard(_ option: ReasiProPlanOption) -> some View {
         let isSelected = selectedPlanId == option.id
         return VStack(spacing: 0) {
-            Text(option.trialText?.uppercased() ?? "BEST VALUE")
+            Text(option.trialText ?? "Best value")
                 .font(ReasiTypography.navLabel)
                 .foregroundStyle(Color.reasi.background)
                 .frame(maxWidth: .infinity)
