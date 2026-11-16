@@ -211,15 +211,18 @@ struct WeekPlanPlaceholderView: View {
     }
 
     private var mealList: some View {
-        VStack(spacing: ReasiSpacing.s3) {
+        VStack(spacing: 0) {
             ForEach(Array(coreLoop.plan.meals.enumerated()), id: \.element.id) { index, meal in
+                if index > 0 {
+                    Divider().overlay(Color.reasi.border)
+                }
                 Button {
                     ReasiHaptics.light()
                     selectedMeal = meal
                 } label: {
                     MealRow(meal: meal)
                 }
-                .buttonStyle(ReasiPressStyle())
+                .buttonStyle(ReasiPressStyle(pressedScale: 0.985))
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .animation(ReasiMotion.tactileSpring.delay(Double(index) * 0.025), value: coreLoop.plan.id)
             }
@@ -251,7 +254,7 @@ private struct MealRow: View {
         HStack(spacing: ReasiSpacing.s3) {
             if meal.imageUrl != nil {
                 MealArtwork(meal: meal)
-                    .frame(width: 96, height: 108)
+                    .frame(width: 76, height: 76)
                     .clipShape(RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
             } else {
                 // No photo yet: the day itself, like a calendar, instead of an empty picture frame.
@@ -267,16 +270,16 @@ private struct MealRow: View {
                     .accessibilityLabel(isToday ? "\(meal.day), today" : meal.day)
             }
 
-            VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+            VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
                 if meal.imageUrl != nil {
-                    Text(meal.day.uppercased())
+                    Text(isToday ? "Today" : meal.day)
                         .font(ReasiTypography.caption)
-                        .foregroundStyle(Color.reasi.muted)
+                        .foregroundStyle(isToday ? Color.reasi.text : Color.reasi.muted)
                         .lineLimit(1)
                 }
 
                 Text(meal.dish)
-                    .font(ReasiTypography.headline)
+                    .font(ReasiTypography.display(.title3, weight: .semibold))
                     .foregroundStyle(Color.reasi.text)
                     .lineLimit(2)
 
@@ -293,13 +296,8 @@ private struct MealRow: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.reasi.dim)
         }
-        .padding(ReasiSpacing.s3)
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(Color.reasi.cardEdge, lineWidth: 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
+        .padding(.vertical, ReasiSpacing.s3)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(meal.day), \(meal.dish), \(meal.cuisine), \(meal.cookTimeMin) minutes, estimated \(costLabel)"
@@ -348,7 +346,6 @@ private struct MealDetailSheet: View {
                     .accessibilityLabel("Close recipe")
                 }
             }
-            .toolbarBackground(Color.reasi.background, for: .navigationBar)
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)

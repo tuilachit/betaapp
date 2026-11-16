@@ -770,7 +770,6 @@ struct SpendView: View {
 }
 
 struct SpendingTripDetailView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(SpendingStore.self) private var spending
     @Environment(SupabaseService.self) private var supabase
     @Environment(AnalyticsService.self) private var analytics
@@ -785,7 +784,6 @@ struct SpendingTripDetailView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s7) {
-                recapHeader
                 if spending.isLoadingTrip, spending.selectedTrip?.trip.id != tripId {
                     loadingState
                 } else if let detail = spending.selectedTrip, detail.trip.id == tripId {
@@ -795,12 +793,27 @@ struct SpendingTripDetailView: View {
                 }
             }
             .padding(.horizontal, ReasiSpacing.s5)
-            .padding(.top, ReasiSpacing.s5)
+            .padding(.top, ReasiSpacing.s3)
             .padding(.bottom, ReasiSpacing.s10)
         }
         .background(Color.reasi.background)
         .accessibilityIdentifier("spending-trip-detail")
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Shop recap")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showTotalEditor = true
+                    } label: {
+                        Label("Correct checkout total", systemImage: "pencil")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More recap options")
+            }
+        }
         .sheet(isPresented: $showTotalEditor) {
             if let trip = spending.selectedTrip?.trip, trip.id == tripId {
                 CheckoutTotalEditor(trip: trip) { total in
@@ -819,43 +832,6 @@ struct SpendingTripDetailView: View {
                 analytics.capture(.shoppingTripViewed, properties: ["trip_id": .string(tripId)])
             }
             await spending.loadTrip(id: tripId, supabase: supabase)
-        }
-    }
-
-    private var recapHeader: some View {
-        HStack(spacing: ReasiSpacing.s3) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.reasi.text)
-                    .frame(width: 44, height: 44)
-                    .background(Color.reasi.surface, in: Circle())
-            }
-            .buttonStyle(ReasiPressStyle())
-            .accessibilityLabel("Back to spending")
-
-            Text("Shop recap")
-                .font(ReasiTypography.title2)
-                .foregroundStyle(Color.reasi.text)
-
-            Spacer()
-
-            Menu {
-                Button {
-                    showTotalEditor = true
-                } label: {
-                    Label("Correct checkout total", systemImage: "pencil")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Color.reasi.textMuted)
-                    .frame(width: 44, height: 44)
-                    .background(Color.reasi.surface, in: Circle())
-            }
-            .accessibilityLabel("More recap options")
         }
     }
 
@@ -1134,26 +1110,13 @@ struct SpendingTripDetailView: View {
 }
 
 struct SpendingInsightDetailView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(AnalyticsService.self) private var analytics
     let card: SpendingInsightCard
 
     @State private var didTrackExpansion = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.reasi.text)
-                    .frame(width: 44, height: 44)
-                    .background(Color.reasi.surface, in: Circle())
-            }
-            .buttonStyle(ReasiPressStyle())
-            .accessibilityLabel("Back")
-
+        VStack(alignment: .leading, spacing: ReasiSpacing.s4) {
             Text(card.kind.label)
                 .font(ReasiTypography.caption)
                 .foregroundStyle(Color.reasi.muted)
@@ -1169,7 +1132,7 @@ struct SpendingInsightDetailView: View {
         .padding(ReasiSpacing.s5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.reasi.background)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !didTrackExpansion else { return }
             didTrackExpansion = true

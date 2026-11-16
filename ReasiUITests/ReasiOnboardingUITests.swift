@@ -487,11 +487,15 @@ final class ReasiOnboardingUITests: XCTestCase {
 
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<8 {
+        // Short, slow drags rather than flings: with large text a row can be taller than a
+        // fling travels, and the element would jump past the visible band each time.
+        for _ in 0..<16 {
             let frame = element.frame
             if element.isHittable && frame.minY >= app.frame.minY + 100 && frame.maxY <= app.frame.maxY - 150 { break }
-            if element.exists && frame.minY < app.frame.minY + 100 { app.swipeDown() }
-            else { app.swipeUp() }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let goesDown = element.exists && frame.minY < app.frame.minY + 100
+            let end = start.withOffset(CGVector(dx: 0, dy: goesDown ? 220 : -220))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         XCTAssertTrue(element.isHittable)
     }
@@ -893,10 +897,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         app.launch()
         let change = app.buttons["Change product for Pork mince"]
         XCTAssertTrue(change.waitForExistence(timeout: 8))
-        for _ in 0..<5 where !change.isHittable || change.frame.maxY > app.frame.maxY - 190 {
-            app.swipeUp()
-        }
-        XCTAssertTrue(change.isHittable)
+        reveal(change, in: app)
         XCTAssertGreaterThanOrEqual(change.frame.height, 44)
         XCTAssertLessThanOrEqual(change.frame.maxX, app.frame.maxX - 10)
         let screenshot = XCTAttachment(screenshot: app.screenshot())

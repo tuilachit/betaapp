@@ -241,9 +241,10 @@ extension SpendingDashboard {
         averageWeeklySpendAud: nil,
         activeBasket: ActiveBasketProjection(
             shoppingListId: "ui-test-active-list",
-            projectedTotalAud: 31.50,
-            pricedItems: 4,
-            totalItems: 5
+            // Matches the sample shopping list: 17 of its 20 items have a price.
+            projectedTotalAud: 85.72,
+            pricedItems: 17,
+            totalItems: 20
         ),
         recentTrips: [
             SpendingRecentTrip(
