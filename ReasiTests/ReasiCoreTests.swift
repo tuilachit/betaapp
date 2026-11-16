@@ -3,6 +3,413 @@ import SwiftUI
 import UIKit
 @testable import Reasi
 
+#if DEBUG
+@MainActor
+final class SmartBasketTests: XCTestCase {
+    func testDuplicateProductConflictUsesControlledActionableMessage() {
+        let body = Data(#"{"error":"This list contains multiple lines for the same product. Resolve those lines before previewing; no items were changed."}"#.utf8)
+        let mapped = SmartBasketError.fromHTTPResponse(statusCode: 409, body: body)
+        XCTAssertEqual(mapped, .duplicateProducts)
+        XCTAssertEqual(mapped?.localizedDescription, "Resolve the duplicate product lines in your shopping list before checking prices again. No items were changed.")
+    }
+
+    func testUnknownConflictAndAuthMappingsRemainControlled() {
+        let unknown = Data(#"{"error":"Unknown conflict with private internal details"}"#.utf8)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 409, body: unknown), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 409, body: Data("invalid JSON".utf8)), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 401, body: unknown), .signedOut)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 403, body: unknown), .signedOut)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 402, body: unknown), .subscriptionRequired)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 404, body: unknown), .contextChanged)
+        XCTAssertEqual(SmartBasketError.fromHTTPResponse(statusCode: 503, body: unknown), .unavailable)
+        XCTAssertNil(SmartBasketError.fromHTTPResponse(statusCode: 500, body: unknown))
+    }
+
+    func testWholePurchaseMoneyAndMissingTotals() {
+        XCTAssertEqual(SmartBasketMoney.text(3596), "A$35.96")
+        XCTAssertEqual(SmartBasketMoney.text(0), "A$0.00")
+        XCTAssertEqual(SmartBasketMoney.text(nil), "Unconfirmed")
+        XCTAssertEqual(SmartBasketMoney.text(-1), "Unconfirmed")
+        XCTAssertNil(SmartBasketMoney.sum([9_007_199_254_740_991, 1]))
+        let preview = FixtureSmartBasket.preview()
+        let selected = preview.costs(selectedLineIDs: ["rice"])
+        XCTAssertEqual(selected.currentTotalCents, 1480)
+        XCTAssertEqual(selected.proposedTotalCents, 1180)
+        XCTAssertEqual(selected.estimatedReductionCents, 300)
+        let partial = FixtureSmartBasket.preview(partial: true).costs(selectedLineIDs: ["rice"])
+        XCTAssertNil(partial.currentTotalCents)
+        XCTAssertNil(partial.proposedTotalCents)
+        XCTAssertEqual(partial.comparableProposedCents, 1180)
+    }
+
+    func testDecodesOptionalCostTypeAndNullTotals() throws {
+        let preview = FixtureSmartBasket.preview(partial: true)
+        XCTAssertNil(preview.baselineTotalCents)
+        XCTAssertNil(preview.lines[1].selected?.costType)
+        XCTAssertTrue(try XCTUnwrap(preview.lines[0].selected).isWeightedEstimate)
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(preview)) as? [String: Any])
+        payload.removeValue(forKey: "baselineTotalCents")
+        let decoded = try JSONDecoder().decode(SmartBasketPreview.self, from: JSONSerialization.data(withJSONObject: payload))
+        XCTAssertNil(decoded.baselineTotalCents)
+        XCTAssertEqual(decoded.lines[1].selected?.purchasePackCount, 2)
+        XCTAssertEqual(decoded.lines[1].selected?.lineTotalCents, 900)
+    }
+
+    func testContextAndCheckedSelectionFailClosed() {
+        let preview = FixtureSmartBasket.preview()
+        var context = FixtureSmartBasket.context
+        XCTAssertTrue(preview.isValid(for: context))
+        context.checkedLineIDs = ["rice"]
+        XCTAssertEqual(preview.selectableLineIDs(in: context), ["bananas"])
+        context.storeId = .topRyde
+        XCTAssertFalse(preview.isValid(for: context))
+        context = FixtureSmartBasket.context
+        context.shoppingListId = "other"
+        XCTAssertFalse(preview.isValid(for: context))
+        context = FixtureSmartBasket.context
+        context.quantities["rice"] = "2 kg"
+        XCTAssertFalse(preview.isValid(for: context))
+        XCTAssertTrue(FixtureSmartBasket.preview(status: "no_change").selectableLineIDs(in: FixtureSmartBasket.context).isEmpty)
+        XCTAssertEqual(SmartBasketFlexibility(), .init(allowBrandChange: false, allowPackChange: false))
+    }
+
+    func testOwnedQuantityLabelsAndDuplicateIDs() throws {
+        let labels = try SmartBasketContext.ownedQuantities([(id: "owned", quantity: "5 listings")])
+        XCTAssertEqual(labels["owned"], "5 listings")
+        XCTAssertThrowsError(try SmartBasketContext.ownedQuantities([(id: "owned", quantity: "1"), (id: "owned", quantity: "2")]))
+    }
+
+    func testExpiryAndInvalidTimestamps() {
+        let now = Date()
+        let preview = FixtureSmartBasket.preview(now: now)
+        XCTAssertFalse(preview.isExpired(at: now))
+        XCTAssertTrue(preview.isExpired(at: now.addingTimeInterval(901)))
+        XCTAssertNil(SmartBasketDate.parse("not a date"))
+        XCTAssertNotNil(SmartBasketDate.parse("2026-10-09T01:02:03.456Z"))
+    }
+
+    func testPreviewDropsIdentityRevisionChangesDuringAwait() async {
+        let review = SmartBasketReviewStore()
+        var context = FixtureSmartBasket.context
+        var calls: [String] = []
+        let operations = SmartBasketOperations(
+            context: { context }, flush: { calls.append("flush") },
+            preview: { _ in
+                calls.append("preview")
+                context.identity.revision += 1
+                return FixtureSmartBasket.preview()
+            }, apply: { _ in XCTFail("No apply expected"); throw SmartBasketError.unavailable }, reload: { _ in XCTFail("No reload expected") }
+        )
+        await review.load(using: operations, flexibility: .init())
+        XCTAssertEqual(calls, ["flush", "preview"])
+        XCTAssertNil(review.preview)
+        XCTAssertNotNil(review.message)
+    }
+
+    func testApplyIsSingleFlightAndRefreshRetryDoesNotRepeatMutation() async {
+        let review = SmartBasketReviewStore()
+        let context = FixtureSmartBasket.context
+        var continuation: CheckedContinuation<SmartBasketApplyResponse, Never>?
+        var applyCount = 0
+        var reloadCount = 0
+        var shouldFailReload = true
+        let response = SmartBasketApplyResponse(shoppingListId: context.shoppingListId, mealPlanId: context.mealPlanId,
+                                               storeId: context.storeId, appliedLineIds: ["rice"])
+        let operations = SmartBasketOperations(
+            context: { context }, flush: {}, preview: { _ in FixtureSmartBasket.preview() },
+            apply: { _ in
+                applyCount += 1
+                return await withCheckedContinuation { continuation = $0 }
+            },
+            reload: { receipt in
+                XCTAssertEqual(receipt.response.mealPlanId, context.mealPlanId)
+                reloadCount += 1
+                if shouldFailReload { throw SmartBasketError.refreshRequired }
+            }
+        )
+        await review.load(using: operations, flexibility: .init())
+        review.toggleSelection("rice")
+        let first = Task { await review.apply(using: operations) }
+        while continuation == nil { await Task.yield() }
+        await review.apply(using: operations)
+        XCTAssertEqual(applyCount, 1)
+        continuation?.resume(returning: response)
+        await first.value
+        XCTAssertNotNil(review.receipt)
+        XCTAssertFalse(review.didApply)
+        shouldFailReload = false
+        await review.apply(using: operations)
+        XCTAssertTrue(review.didApply)
+        XCTAssertEqual(applyCount, 1)
+        XCTAssertEqual(reloadCount, 2)
+    }
+
+    func testConfirmedResponseAndReceiptSurviveGoingOffline() async {
+        let review = SmartBasketReviewStore()
+        let context = FixtureSmartBasket.context
+        var online = true
+        var applyCount = 0
+        let response = SmartBasketApplyResponse(shoppingListId: context.shoppingListId, mealPlanId: context.mealPlanId,
+                                               storeId: context.storeId, appliedLineIds: ["rice"])
+        let operations = SmartBasketOperations(
+            context: { guard online else { throw SmartBasketError.offline }; return context },
+            confirmationContext: { context }, flush: {}, preview: { _ in FixtureSmartBasket.preview() },
+            apply: { _ in applyCount += 1; online = false; return response },
+            reload: { _ in guard online else { throw SmartBasketError.offline } }
+        )
+        await review.load(using: operations, flexibility: .init())
+        review.toggleSelection("rice")
+        await review.apply(using: operations)
+        XCTAssertNotNil(review.receipt)
+        XCTAssertNil(review.attempt)
+        XCTAssertFalse(review.didApply)
+        await review.load(using: operations, flexibility: .init())
+        XCTAssertEqual(review.receipt?.response, response)
+        online = true
+        await review.apply(using: operations)
+        XCTAssertTrue(review.didApply)
+        XCTAssertEqual(applyCount, 1)
+    }
+
+    func testLostResponseRetainsExactReplayAfterExpiry() async {
+        let review = SmartBasketReviewStore()
+        let context = FixtureSmartBasket.context
+        let now = Date()
+        var requests: [SmartBasketApplyInput] = []
+        var flushCount = 0
+        let operations = SmartBasketOperations(
+            context: { context }, flush: { flushCount += 1 }, preview: { _ in FixtureSmartBasket.preview(now: now) },
+            apply: { input in
+                requests.append(input)
+                if requests.count == 1 { throw URLError(.networkConnectionLost) }
+                return SmartBasketApplyResponse(shoppingListId: context.shoppingListId, mealPlanId: context.mealPlanId,
+                                                storeId: context.storeId, appliedLineIds: input.selectedLineIds)
+            }, reload: { _ in }
+        )
+        await review.load(using: operations, flexibility: .init(), now: now)
+        review.toggleSelection("rice")
+        await review.apply(using: operations, now: now)
+        XCTAssertEqual(review.attempt?.input, requests.first)
+        XCTAssertNil(review.receipt)
+        XCTAssertFalse(review.requiresPreviewRefresh)
+        await review.load(using: operations, flexibility: .init(allowBrandChange: true), now: now)
+        review.toggleSelection("bananas")
+        XCTAssertEqual(review.selectedLineIDs, ["rice"])
+        await review.apply(using: operations, now: now.addingTimeInterval(901))
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests.first, requests.last)
+        XCTAssertEqual(flushCount, 3)
+        XCTAssertTrue(review.didApply)
+        XCTAssertNil(review.attempt)
+    }
+
+    func testExactPlanReadRejectsConcurrentAcknowledgedEdits() throws {
+        let before = FixtureSmartBasket.context
+        XCTAssertNoThrow(try before.validateReload(afterRead: before))
+        var after = before
+        after.listRevision = Data("acknowledged-assistant-edit".utf8)
+        XCTAssertThrowsError(try before.validateReload(afterRead: after))
+        after = before
+        after.identity.revision += 1
+        XCTAssertThrowsError(try before.validateReload(afterRead: after))
+    }
+
+    func testPendingAttemptsAndReceiptsAreRestoredByExactContext() async throws {
+        let original = FixtureSmartBasket.context
+        var alternative = original
+        alternative.shoppingListId = "different-list"
+        alternative.mealPlanId = "different-plan"
+        alternative.storeId = .topRyde
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(FixtureSmartBasket.preview())) as? [String: Any])
+        payload["previewId"] = "different-preview"
+        payload["shoppingListId"] = alternative.shoppingListId
+        payload["mealPlanId"] = alternative.mealPlanId
+        payload["storeId"] = alternative.storeId.rawValue
+        let alternativePreview = try JSONDecoder().decode(SmartBasketPreview.self, from: JSONSerialization.data(withJSONObject: payload))
+        for confirmed in [false, true] {
+            let review = SmartBasketReviewStore()
+            var active = original
+            var applyCount = 0
+            var reloadFails = true
+            let response = SmartBasketApplyResponse(shoppingListId: original.shoppingListId, mealPlanId: original.mealPlanId,
+                                                   storeId: original.storeId, appliedLineIds: ["rice"])
+            let operations = SmartBasketOperations(
+                context: { active }, flush: {},
+                preview: { _ in active.hasSameOwnerAndList(as: original) ? FixtureSmartBasket.preview() : alternativePreview },
+                apply: { _ in
+                    applyCount += 1
+                    if !confirmed && applyCount == 1 { throw URLError(.networkConnectionLost) }
+                    return response
+                }, reload: { _ in if reloadFails { throw SmartBasketError.refreshRequired } }
+            )
+            await review.load(using: operations, flexibility: .init())
+            review.toggleSelection("rice")
+            await review.apply(using: operations)
+            let originalPayload = review.attempt?.input
+            active = alternative
+            await review.load(using: operations, flexibility: .init())
+            XCTAssertEqual(review.preview?.previewId, alternativePreview.previewId)
+            XCTAssertNil(review.attempt)
+            XCTAssertNil(review.receipt)
+            review.toggleSelection("bananas")
+            XCTAssertTrue(review.canApply(in: alternative))
+            active = original
+            await review.load(using: operations, flexibility: .init())
+            XCTAssertEqual(review.selectedLineIDs, ["rice"])
+            XCTAssertTrue(review.canReconcile(in: original))
+            if confirmed { XCTAssertEqual(review.receipt?.response, response) }
+            else { XCTAssertEqual(review.attempt?.input, originalPayload) }
+            reloadFails = false
+            await review.apply(using: operations)
+            XCTAssertTrue(review.didApply)
+            XCTAssertEqual(applyCount, confirmed ? 1 : 2)
+        }
+    }
+
+    func testRecoveryKeyIncludesIdentityRevisionListPlanAndStore() {
+        let original = FixtureSmartBasket.context
+        let key = SmartBasketRecoveryKey(original)
+        var changed = original
+        changed.identity.revision += 1
+        XCTAssertNotEqual(key, SmartBasketRecoveryKey(changed))
+        changed = original
+        changed.identity.userId = "another-user"
+        XCTAssertNotEqual(key, SmartBasketRecoveryKey(changed))
+        changed = original
+        changed.shoppingListId = "another-list"
+        XCTAssertNotEqual(key, SmartBasketRecoveryKey(changed))
+        changed = original
+        changed.mealPlanId = "another-plan"
+        XCTAssertNotEqual(key, SmartBasketRecoveryKey(changed))
+        changed = original
+        changed.storeId = .topRyde
+        XCTAssertNotEqual(key, SmartBasketRecoveryKey(changed))
+        changed = original
+        changed.listRevision = Data("edited-list".utf8)
+        XCTAssertEqual(key, SmartBasketRecoveryKey(changed))
+    }
+
+    func testSignOutInvalidationClearsParkedRecovery() async {
+        let review = SmartBasketReviewStore()
+        let original = FixtureSmartBasket.context
+        var active = original
+        let operations = SmartBasketOperations(
+            context: { active }, flush: {}, preview: { _ in FixtureSmartBasket.preview() },
+            apply: { _ in throw URLError(.networkConnectionLost) }, reload: { _ in }
+        )
+        await review.load(using: operations, flexibility: .init())
+        review.toggleSelection("rice")
+        await review.apply(using: operations)
+        XCTAssertNotNil(review.attempt)
+        active.shoppingListId = "another-list"
+        await review.load(using: operations, flexibility: .init())
+        XCTAssertNil(review.attempt)
+        review.invalidate()
+        active = original
+        await review.load(using: operations, flexibility: .init())
+        XCTAssertNotNil(review.preview)
+        XCTAssertNil(review.attempt)
+        XCTAssertNil(review.receipt)
+        XCTAssertTrue(review.selectedLineIDs.isEmpty)
+    }
+
+    func testExactPlanMergePreservesPendingImportsDeletesChecksAndRestore() throws {
+        let userID = "smart-basket-test-\(UUID().uuidString)"
+        let fixture = FixtureWeekPlan.current
+        let store = try XCTUnwrap(FixtureStores.store(id: fixture.storeId))
+        let initialItems = Array(fixture.shoppingList.sections.flatMap(\.items).prefix(2))
+        let checkedID = try XCTUnwrap(initialItems.first?.id)
+        let deletedID = try XCTUnwrap(initialItems.last?.id)
+        let clientID = UUID().uuidString
+        let importedID = "local-import-\(clientID)"
+        let candidate = try XCTUnwrap(FixtureWeekPlan.catalogueCandidates.first)
+        let imported = ShoppingListItem(id: importedID, name: candidate.name, quantity: "1 pack", checked: false,
+                                        aisleLabel: nil, sectionType: .unknown, product: nil, importedCandidate: candidate, clientId: clientID)
+        let remoteList = ShoppingList(id: "list-\(userID)", storeId: store.id, storeName: store.name,
+                                      sections: [.init(label: "Aisle 1", sortKey: 1, type: .numbered, items: initialItems)])
+        let remote = WeekPlan(id: "plan-\(userID)", source: .supabase, storeId: store.id, storeName: store.name,
+                              weekLabel: fixture.weekLabel, planningNotes: "", meals: fixture.meals, shoppingList: remoteList)
+        var local = remote
+        local.shoppingList.sections[0].items.removeAll { $0.id == deletedID }
+        local.shoppingList.sections[0].items.append(imported)
+        let directory = try XCTUnwrap(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("ReasiShoppingCache", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            for kind in ["plan", "checks", "deletions"] {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent("\(kind)-\(userID).json"))
+            }
+        }
+        let planSeed = SmartBasketCacheSeed(plan: local, pendingImports: [
+            .init(idempotencyKey: clientID, localItemID: importedID, shoppingListId: remoteList.id,
+                  candidate: candidate, quantity: "1 pack", sortOrder: 10)
+        ], pendingDeletionItemIDs: [deletedID])
+        let checkSeed = SmartBasketCheckSeed(shoppingListId: remoteList.id, states: [checkedID: true], pendingItemIDs: [checkedID])
+        try JSONEncoder().encode(planSeed).write(to: directory.appendingPathComponent("plan-\(userID).json"))
+        try JSONEncoder().encode(checkSeed).write(to: directory.appendingPathComponent("checks-\(userID).json"))
+        let core = CoreLoopStore()
+        core.activateUser(userID, selectedStore: store)
+        XCTAssertTrue(core.hasPlan)
+        let revisionWithPendingCheck = try core.smartBasketListRevision()
+        let acknowledgedCheck = SmartBasketCheckSeed(shoppingListId: remoteList.id, states: [checkedID: true], pendingItemIDs: [])
+        try JSONEncoder().encode(acknowledgedCheck).write(to: directory.appendingPathComponent("checks-\(userID).json"))
+        let acknowledgedCore = CoreLoopStore()
+        acknowledgedCore.activateUser(userID, selectedStore: store)
+        XCTAssertEqual(acknowledgedCore.plan.shoppingList, core.plan.shoppingList)
+        XCTAssertNotEqual(try acknowledgedCore.smartBasketListRevision(), revisionWithPendingCheck)
+        let expected = SmartBasketContext(identity: .init(userId: userID, revision: 1), shoppingListId: remoteList.id,
+                                          mealPlanId: remote.id, storeId: store.id, listRevision: Data(), quantities: [:], checkedLineIDs: [])
+        try core.integrateSmartBasketPlan(remote, expected: expected)
+        XCTAssertEqual(Set(core.allShoppingItems.map(\.id)), [checkedID, importedID])
+        XCTAssertEqual(core.checkedItemIDs, [checkedID])
+        XCTAssertTrue(try XCTUnwrap(core.allShoppingItems.first { $0.id == checkedID }).checked)
+        let restored = CoreLoopStore()
+        restored.activateUser(userID, selectedStore: store)
+        XCTAssertEqual(restored.plan.shoppingList, core.plan.shoppingList)
+        XCTAssertEqual(restored.checkedItemIDs, core.checkedItemIDs)
+        var wrong = expected
+        wrong.mealPlanId = "another-plan"
+        XCTAssertThrowsError(try core.integrateSmartBasketPlan(remote, expected: wrong))
+        var completed = remote
+        completed.shoppingList.status = .completed
+        XCTAssertThrowsError(try core.integrateSmartBasketPlan(completed, expected: expected))
+        core.isSwitchingStore = true
+        XCTAssertThrowsError(try core.integrateSmartBasketPlan(remote, expected: expected))
+        core.isSwitchingStore = false
+        var malformed = remote
+        malformed.shoppingList.sections[0].items.append(initialItems[0])
+        let beforeMalformed = core.plan
+        XCTAssertThrowsError(try core.integrateSmartBasketPlan(malformed, expected: expected))
+        XCTAssertEqual(core.plan, beforeMalformed)
+        core.plan.shoppingList.sections[0].items.append(try XCTUnwrap(core.allShoppingItems.first))
+        let malformedCurrent = core.plan
+        XCTAssertThrowsError(try core.integrateSmartBasketPlan(remote, expected: expected))
+        XCTAssertEqual(core.plan, malformedCurrent)
+    }
+}
+
+private struct SmartBasketCacheSeed: Encodable {
+    let plan: WeekPlan
+    let pendingImports: [SmartBasketImportSeed]
+    let pendingDeletionItemIDs: [String]
+}
+
+private struct SmartBasketImportSeed: Encodable {
+    let idempotencyKey: String
+    let localItemID: String
+    let shoppingListId: String
+    let candidate: ProductCandidate
+    let quantity: String
+    let sortOrder: Int
+}
+
+private struct SmartBasketCheckSeed: Encodable {
+    let shoppingListId: String
+    let states: [String: Bool]
+    let pendingItemIDs: [String]
+}
+#endif
+
 @MainActor
 final class ReasiAppearanceTests: XCTestCase {
     func testAppearanceDefaultsToLightAndRejectsUnknownValues() {

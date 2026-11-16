@@ -24,6 +24,8 @@ final class SupabaseService {
     private(set) var passwordRecoveryIsPending = false
     private(set) var isRestoringSession = true
     private(set) var sessionRestoreMessage: String?
+    private(set) var identityRevision: UInt64 = 0
+    private(set) var isSigningOut = false
     private var currentAccessToken: String?
     @ObservationIgnored private var authStateTask: Task<Void, Never>?
 
@@ -88,6 +90,11 @@ final class SupabaseService {
 
     var isSignedIn: Bool {
         hasActiveSession
+    }
+
+    var smartBasketIdentity: SmartBasketIdentity? {
+        guard isSignedIn, !isRestoringSession, !isSigningOut, let currentUserId else { return nil }
+        return SmartBasketIdentity(userId: currentUserId, revision: identityRevision)
     }
 
     var hasPendingEmailVerification: Bool {
@@ -157,6 +164,7 @@ final class SupabaseService {
     }
 
     private func clearSessionState() {
+        identityRevision &+= 1
         authLabel = "Not signed in"
         hasActiveSession = false
         currentUserId = nil
@@ -171,6 +179,7 @@ final class SupabaseService {
     }
 
     private func markEmailVerificationPending(email: String, userId: String?) {
+        identityRevision &+= 1
         authLabel = email
         hasActiveSession = false
         currentUserId = userId
@@ -621,6 +630,10 @@ final class SupabaseService {
     }
 
     func signOut() async throws {
+        guard !isSigningOut else { return }
+        isSigningOut = true
+        identityRevision &+= 1
+        defer { isSigningOut = false }
         #if canImport(Supabase)
         guard let client else {
             clearSessionState()
@@ -1341,6 +1354,63 @@ final class SupabaseService {
         #endif
     }
 
+    func previewSavingBasket(_ input: SmartBasketPreviewInput) async throws -> SmartBasketPreview {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let identity = smartBasketIdentity else {
+            throw SmartBasketError.signedOut
+        }
+        let result: SmartBasketPreview
+        do {
+            result = try await client.functions.invoke("saving-basket-preview", options: FunctionInvokeOptions(body: input))
+        } catch {
+            throw smartBasketRequestError(error)
+        }
+        guard smartBasketIdentity == identity,
+              result.shoppingListId == input.shoppingListId, result.storeId == input.expectedStoreId else {
+            throw SmartBasketError.contextChanged
+        }
+        return result
+        #else
+        throw SmartBasketError.unavailable
+        #endif
+    }
+
+    func applySavingBasket(_ input: SmartBasketApplyInput) async throws -> SmartBasketApplyResponse {
+        #if canImport(Supabase)
+        guard let client = try authenticatedClientOrNil(), let identity = smartBasketIdentity else {
+            throw SmartBasketError.signedOut
+        }
+        let result: SmartBasketApplyResponse
+        do {
+            result = try await client.functions.invoke("saving-basket-apply", options: FunctionInvokeOptions(body: input))
+        } catch {
+            if let functionError = error as? FunctionsError, case .httpError(let code, _) = functionError,
+               [400, 401, 402, 403, 404, 409].contains(code) {
+                let reason = smartBasketRequestError(error) as? SmartBasketError ?? .invalidResponse
+                throw SmartBasketApplyRejection(reason: reason)
+            }
+            throw smartBasketRequestError(error)
+        }
+        guard smartBasketIdentity == identity, result.storeId == input.expectedStoreId else {
+            throw SmartBasketError.contextChanged
+        }
+        return result
+        #else
+        throw SmartBasketError.unavailable
+        #endif
+    }
+
+    private func smartBasketRequestError(_ error: Error) -> Error {
+        if Self.isNetworkError(error) { return SmartBasketError.offline }
+        #if canImport(Supabase)
+        if let functionError = error as? FunctionsError, case .httpError(let code, let body) = functionError,
+           let mapped = SmartBasketError.fromHTTPResponse(statusCode: code, body: body) {
+            return mapped
+        }
+        #endif
+        return error
+    }
+
     func confirmStoreGuide(submissionId: String, sections: [StoreGuideSection]) async throws -> StoreGuideConfirmationResponse {
         #if canImport(Supabase)
         guard let client = try authenticatedClientOrNil() else { throw AuthFlowError.notSignedIn }
@@ -1813,6 +1883,9 @@ private extension SupabaseService {
         }
         #endif
 
+        if !hasActiveSession || currentUserId != session.user.id.uuidString {
+            identityRevision &+= 1
+        }
         hasActiveSession = true
         currentAccessToken = session.accessToken
         currentUserId = session.user.id.uuidString

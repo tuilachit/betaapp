@@ -706,13 +706,9 @@ struct ProductThumbnail: View {
                     .frame(width: size, height: size)
                     .background(Color.white.opacity(0.94))
             case .empty:
-                if url == nil {
-                    placeholder
-                } else {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color.reasi.muted)
-                }
+                // While a photo loads, show the still symbol rather than a spinner in every
+                // row: it's quieter, and a list of spinners keeps the screen animating.
+                placeholder
             case .failure:
                 placeholder
             @unknown default:
