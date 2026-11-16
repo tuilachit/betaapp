@@ -58,7 +58,7 @@ struct SmartBasketSheet: View {
                     .padding(ReasiSpacing.s5)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .safeAreaBar(edge: .bottom, spacing: 0) {
                     applyFooter(now: timeline.date)
                 }
             }
@@ -350,6 +350,5 @@ struct SmartBasketSheet: View {
             .accessibilityIdentifier("smart-basket-apply")
         }
         .padding(ReasiSpacing.s4)
-        .background(Color.reasi.background)
     }
 }

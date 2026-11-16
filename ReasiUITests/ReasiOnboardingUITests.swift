@@ -365,7 +365,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         back.tap()
         XCTAssertTrue(app.staticTexts["Shopping list"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Shopping Light")
-        app.buttons["Spend"].tap()
+        openTab("Spend", in: app)
         XCTAssertTrue(app.staticTexts["Current list"].waitForExistence(timeout: 3))
         assertAppearance(.light, in: app, name: "Spend Light")
 
@@ -483,6 +483,20 @@ final class ReasiOnboardingUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         XCTAssertEqual(toggle.value as? String, editedValue)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+    }
+
+    /// Taps a tab, first restoring the tab bar if scrolling has shrunk it to the current tab alone.
+    @MainActor
+    private func openTab(_ title: String, in app: XCUIApplication) {
+        let tab = app.tabBars.buttons[title]
+        if !tab.waitForExistence(timeout: 1) {
+            // The shrunken bar shows only the current tab, marked "Collapsed"; tapping it opens the bar.
+            let collapsed = app.tabBars.buttons.matching(NSPredicate(format: "value CONTAINS[c] 'Collapsed'")).firstMatch
+            XCTAssertTrue(collapsed.waitForExistence(timeout: 2), "A shrunken tab bar should still show the current tab")
+            collapsed.tap()
+        }
+        XCTAssertTrue(tab.waitForExistence(timeout: 3), "The \(title) tab should be reachable")
+        tab.tap()
     }
 
     @MainActor

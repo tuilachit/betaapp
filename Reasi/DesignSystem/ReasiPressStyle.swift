@@ -23,6 +23,8 @@ struct ReasiPrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, ReasiSpacing.s5)
             .frame(maxWidth: .infinity)
             .frame(minHeight: 56, maxHeight: allowsMultiline ? nil : 56)
+            // The whole capsule is the tap target and the VoiceOver focus area, not just the words.
+            .contentShape([.interaction, .accessibility], .capsule)
             .glassEffect(.regular.tint(Color.reasi.text).interactive(), in: .capsule)
             .opacity(configuration.isPressed ? 0.92 : 1)
     }

@@ -1,6 +1,6 @@
 # Reasi 1.0 launch readiness, 11 Nov 2026
 
-Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12). Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
+Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12), merged as #47. The 12 Nov design playbook round is on `codex/design-playbook`, from `origin/main` at 9eec0d1 (after Smart Basket, #46). Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
 
 ## What this branch changes in the app
 
@@ -46,8 +46,9 @@ Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight buil
   - List rows without a product photo show an aisle symbol from the item's name, then its aisle: leaf for spinach, fish for salmon, fridge for milk, snowflake for frozen, and a basket when nothing matches. Keywords must start a word, so "steak" isn't tea and "foil" isn't oil. Unit tests cover this.
 - **Design playbook applied (12 Nov).** `docs/design-playbook.md` sets the rules, drawn from Apple's Human Interface Guidelines and Liquid Glass adoption guide.
   - Type: Inter is gone from the interface. Titles, section headings, dish names and big money figures are New York (Apple's serif); everything else is San Francisco, all in built-in text styles. One switch, `ReasiTypography.displayDesign`, turns the serif off. The Inter font files are still in the bundle until the look is signed off.
-  - Liquid Glass, on controls only: the primary button is ink-tinted glass; the List's "Swipe to finish" and assistant button are one glass group in capsule and circle shapes; the bottom action bars on the List, plan builder, product search and photo review no longer have opaque strips, so content scrolls beneath them (onboarding keeps its plain bar); custom bar backgrounds are removed; Shop recap and tip detail use the system bar with its glass back button.
+  - Liquid Glass, on controls only: the primary button is ink-tinted glass; the List's "Swipe to finish" and assistant button are one glass group in capsule and circle shapes; the bottom action bars on the List, plan builder, product search, photo review and Smart Basket no longer have opaque strips, so content scrolls beneath them (onboarding keeps its plain bar); custom bar backgrounds are removed; Shop recap and tip detail use the system bar with its glass back button.
   - Less chrome: Plans is one list with hairlines and photos rather than seven boxed cards; days read "Mon" and "Today" instead of capitals; the paywall badge and the welcome receipt are sentence case.
+  - The primary button's tap target and VoiceOver focus area are the whole capsule, not just its words. The Smart Basket sheet follows the same bottom-bar rule as the other screens.
 - **Fewer words (12 Nov).** Screens keep numbers and names and drop the explanations.
   - List: the summary is the total, "2 of 20" and one short line ("3 unpriced", "Prices from 9 Oct"). The label above the total and the "Tap the circle…" hint are gone; VoiceOver still names the total. Usuals tiles show name, size and price only.
   - Home: "$33.60 left of $120", "Current list", "7 dinners · 20 items", and the store row is just the store name.
@@ -109,7 +110,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 5. Open pull requests
 
-- **iOS #46 (Smart Basket)** ships without an on/off switch, and its backend (reasi-backend #29–#33) isn't deployed. Keep it out of 1.0, or deploy that backend first.
+- **iOS #46 (Smart Basket)** was merged on 16 Nov, so every build from `main` now has Smart Basket in the List's ⋯ menu. It has no on/off switch, and its backend isn't live: the app calls `saving-basket-preview` and `saving-basket-apply`, neither is deployed to production, and reasi-backend #32 and #33 are still open. Until they are deployed, a signed-in shopper who taps Smart Basket gets an error. Deploy that backend before submitting, or hide the menu item for 1.0.
 - **iOS #45 (reliability fixes)** needs its paired backend deployed. It also conflicts with #46.
 - **iOS #42** is a stale draft that #44 has largely replaced.
 
@@ -122,7 +123,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 7. Final build
 
-**Archived on 12 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` and passes the release preflight. Upload this one, not `Reasi-1.0.0-13.xcarchive`, which predates the 12 Nov design changes. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. The App Store screenshots in `docs/app-store-screenshots/` were recaptured from this design on the same day.
+**Archived on 16 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` (under 2026-11-16) and passes the release preflight. It is built from `codex/design-playbook`, so it includes Smart Basket. Upload this one, not the 12 Nov archives of the same number or `Reasi-1.0.0-13.xcarchive`. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. The App Store screenshots in `docs/app-store-screenshots/` were recaptured from this design on the same day. Tests on this code: 104 unit and 23 UI tests pass on the iPhone 17e simulator.
 
 CI note: PR #47's `iOS Release build` run stayed queued with no job created, because GitHub never assigned a `macos-26` hosted runner. The same workflow ran on 11 Oct. If it is still queued, re-run it from the Actions tab.
 
