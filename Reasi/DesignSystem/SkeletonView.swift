@@ -85,7 +85,7 @@ struct GenerationProgressCard: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.border, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
         }
         .animation(ReasiMotion.fast, value: stage)
         .animation(ReasiMotion.fast, value: isCancelling)

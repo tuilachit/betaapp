@@ -10,6 +10,10 @@ struct ReasiConfig: Equatable {
     let googleClientID: String
     let googleURLScheme: String
     let appleAuthEnabled: Bool
+    /// Off unless the build sets `REASI_ENABLE_SMART_BASKET`. Smart Basket needs the
+    /// `saving-basket-preview` and `saving-basket-apply` functions live on the backend,
+    /// so a build only turns it on once they are deployed.
+    let smartBasketEnabled: Bool
     let authRedirectURL: URL?
     let privacyPolicyURL: URL?
     let termsOfServiceURL: URL?
@@ -41,6 +45,7 @@ struct ReasiConfig: Equatable {
         googleClientID: value("REASI_GOOGLE_CLIENT_ID") ?? "",
         googleURLScheme: value("REASI_GOOGLE_URL_SCHEME") ?? "",
         appleAuthEnabled: boolValue("REASI_ENABLE_APPLE_AUTH"),
+        smartBasketEnabled: boolValue("REASI_ENABLE_SMART_BASKET"),
         authRedirectURL: valueURL("REASI_AUTH_REDIRECT_URL") ?? URL(string: "ai.reasi.ios://auth/callback"),
         privacyPolicyURL: valueURL("REASI_PRIVACY_POLICY_URL") ?? URL(string: "https://www.reasiai.com/privacy"),
         termsOfServiceURL: valueURL("REASI_TERMS_OF_SERVICE_URL") ?? URL(string: "https://www.reasiai.com/terms"),

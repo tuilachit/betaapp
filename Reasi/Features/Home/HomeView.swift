@@ -10,16 +10,20 @@ struct HomeView: View {
     @Environment(NetworkMonitor.self) private var network
     @Environment(OnboardingStore.self) private var onboarding
     @Environment(SpendingStore.self) private var spending
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var showStorePicker = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                weekMoneyCard
-                if !coreLoop.hasPlan && !coreLoop.isRestoringPlan {
-                    creationActions
+                VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+                    if !coreLoop.isRestoringPlan {
+                        primaryAction
+                    }
+                    shortcuts
                 }
+                weekMoneyCard
                 if coreLoop.generationState.isGenerating {
                     GenerationProgressCard(
                         stage: coreLoop.generationStage,
@@ -43,7 +47,10 @@ struct HomeView: View {
                 if coreLoop.isRestoringPlan {
                     SkeletonBlock(height: 178, radius: ReasiRadius.xl)
                 } else if coreLoop.hasPlan {
-                    featuredMealCard
+                    VStack(alignment: .leading, spacing: 0) {
+                        featuredMealLabel
+                        featuredMealCard
+                    }
                 } else {
                     emptyPlanCard
                 }
@@ -55,7 +62,6 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
                 }
-                planAndStoreGroup
             }
             .padding(.top, ReasiSpacing.s2)
             .padding(.bottom, ReasiSpacing.s8)
@@ -104,8 +110,8 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
                 HStack {
                     Text("This week")
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
+                        .font(ReasiTypography.callout)
+                        .foregroundStyle(Color.reasi.muted)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .bold))
@@ -119,8 +125,8 @@ struct HomeView: View {
                         .foregroundStyle(Color.reasi.text)
                         .contentTransition(.numericText(value: spent))
                     Text("spent")
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.textMuted)
+                        .font(ReasiTypography.body)
+                        .foregroundStyle(Color.reasi.muted)
                 }
 
                 if let target {
@@ -175,16 +181,75 @@ struct HomeView: View {
         .accessibilityIdentifier("home-week-money")
     }
 
-    private var creationActions: some View {
+    /// With a list on the go, the one thing to do from Home is add to it. Otherwise it's a new plan.
+    private var addsToList: Bool {
+        coreLoop.hasPlan && !coreLoop.isShoppingCompleted
+    }
+
+    private var primaryAction: some View {
         Button {
-            analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
-            appState.openPlanBuilder(entryMethod: .describe)
+            if addsToList {
+                ReasiHaptics.light()
+                appState.requestShoppingListAdd()
+            } else {
+                analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
+                appState.openPlanBuilder(entryMethod: .describe)
+            }
         } label: {
-            Label("Create a plan", systemImage: "plus")
+            Label(addsToList ? "Add to list" : "Create a plan", systemImage: "plus")
         }
-        .buttonStyle(ReasiPrimaryButtonStyle())
+        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
         .disabled(coreLoop.generationState.isGenerating)
         .opacity(coreLoop.generationState.isGenerating ? 0.72 : 1)
+        .accessibilityIdentifier("home-primary-action")
+    }
+
+    /// Shortcuts under the main action: plan dinners, and the store the list is ordered for.
+    private var shortcuts: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+            // Side by side, scrolling if they run long; stacked at the largest text sizes so
+            // neither chip starts off-screen.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s2) { shortcutChips }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: ReasiSpacing.s2) { shortcutChips }
+                }
+                .scrollClipDisabled()
+            }
+
+            if let storeRowDetail {
+                Text(storeRowDetail)
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(Color.reasi.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var shortcutChips: some View {
+        if addsToList {
+            Button {
+                analytics.capture(.planBuilderOpened, properties: ["entry_method": .string(EntryMethod.describe.rawValue)])
+                appState.openPlanBuilder(entryMethod: .describe)
+            } label: {
+                ReasiChip(title: "Plan dinners", symbol: "fork.knife")
+            }
+            .buttonStyle(ReasiPressStyle())
+            .disabled(coreLoop.generationState.isGenerating)
+            .accessibilityIdentifier("home-plan-dinners")
+        }
+
+        Button {
+            ReasiHaptics.light()
+            showStorePicker = true
+        } label: {
+            ReasiChip(title: appState.selectedStore.name, symbol: "storefront", trailingSymbol: "chevron.down")
+        }
+        .buttonStyle(ReasiPressStyle())
+        .accessibilityHint("Choose a different store")
+        .accessibilityIdentifier("home-store")
     }
 
     private var emptyPlanCard: some View {
@@ -270,47 +335,6 @@ struct HomeView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
     }
 
-    /// The plan and the store as one inset group, like a Settings section.
-    private var planAndStoreGroup: some View {
-        VStack(spacing: 0) {
-            if coreLoop.hasPlan {
-                Button {
-                    ReasiHaptics.light()
-                    appState.showPlan()
-                } label: {
-                    homeRow(
-                        symbol: "fork.knife",
-                        title: coreLoop.plan.kind == .week ? "Your plan" : "Your occasion",
-                        detail: planRowDetail,
-                        accessory: "chevron.right"
-                    )
-                }
-                .buttonStyle(ReasiPressStyle())
-                .accessibilityIdentifier("home-current-plan")
-
-                Divider()
-                    .overlay(Color.reasi.border)
-                    .padding(.leading, 56)
-            }
-
-            Button {
-                ReasiHaptics.light()
-                showStorePicker = true
-            } label: {
-                homeRow(
-                    symbol: "storefront",
-                    title: appState.selectedStore.name,
-                    detail: storeRowDetail,
-                    detailIsWarning: coreLoop.hasPlan && coreLoop.plan.storeId != appState.selectedStore.id,
-                    accessory: "chevron.up.chevron.down"
-                )
-            }
-            .buttonStyle(ReasiPressStyle())
-            .accessibilityHint("Choose a different store")
-        }
-        .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
-    }
-
     private var planRowDetail: String {
         let meals = coreLoop.plan.meals.count
         let noun = coreLoop.plan.kind == .week
@@ -326,41 +350,6 @@ struct HomeView: View {
             return "List is in \(coreLoop.plan.storeName) order"
         }
         return nil
-    }
-
-    private func homeRow(
-        symbol: String,
-        title: String,
-        detail: String?,
-        detailIsWarning: Bool = false,
-        accessory: String
-    ) -> some View {
-        HStack(spacing: ReasiSpacing.s3) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.reasi.textMuted)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(ReasiTypography.headline)
-                    .foregroundStyle(Color.reasi.text)
-                    .lineLimit(1)
-                if let detail {
-                    Text(detail)
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(detailIsWarning ? Color.reasi.warning : Color.reasi.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: ReasiSpacing.s2)
-            Image(systemName: accessory)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.reasi.dim)
-        }
-        .padding(.horizontal, ReasiSpacing.s4)
-        .padding(.vertical, ReasiSpacing.s3)
-        .frame(minHeight: 52)
-        .contentShape(Rectangle())
     }
 
     private func selectStore(_ store: StoreSummary) {
@@ -393,6 +382,26 @@ struct HomeView: View {
         return coreLoop.plan.meals.first.map { ($0, false) }
     }
 
+    /// "Tonight" (or the meal's day) above the featured meal, with the way into the whole plan.
+    private var featuredMealLabel: some View {
+        ReasiSectionLabel(title: featuredMeal?.isTonight == true ? "Tonight" : (featuredMeal?.meal.day ?? "Your plan")) {
+            Button {
+                ReasiHaptics.light()
+                appState.showPlan()
+            } label: {
+                Text("See plan")
+                    .font(ReasiTypography.callout)
+                    .foregroundStyle(Color.reasi.muted)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ReasiPressStyle())
+            .accessibilityLabel(coreLoop.plan.kind == .week ? "Your plan" : "Your occasion")
+            .accessibilityValue(planRowDetail)
+            .accessibilityIdentifier("home-current-plan")
+        }
+    }
+
     @ViewBuilder
     private var featuredMealCard: some View {
         if let featured = featuredMeal, featured.meal.imageUrl == nil {
@@ -413,10 +422,6 @@ struct HomeView: View {
                     }
                     .overlay(alignment: .bottomLeading) {
                         VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                            Text(featuredMeal?.isTonight == true ? "Tonight" : meal.day)
-                                .font(ReasiTypography.headline)
-                                .foregroundStyle(.white.opacity(0.85))
-
                             Text(meal.dish)
                                 .font(ReasiTypography.title2)
                                 .foregroundStyle(.white)
@@ -453,15 +458,6 @@ private extension HomeView {
             appState.showPlan()
         } label: {
             VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                HStack {
-                    Text(isTonight ? "Tonight" : meal.day)
-                        .font(ReasiTypography.headline)
-                        .foregroundStyle(Color.reasi.text)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.reasi.dim)
-                }
                 Text(meal.dish)
                     .font(ReasiTypography.title2)
                     .foregroundStyle(Color.reasi.text)
@@ -565,6 +561,7 @@ struct PlanBuilderView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(NetworkMonitor.self) private var network
     @Environment(OnboardingStore.self) private var onboarding
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let entryMethod: EntryMethod
 
@@ -580,10 +577,7 @@ struct PlanBuilderView: View {
     @State private var isPhotoPickerPresented = false
     @State private var photoMode: BuilderPhotoMode = .meal
     @State private var showsDiscardConfirmation = false
-    @State private var showsPlanDetails = false
     @State private var showsAlternativeSuggestions = false
-    @State private var showsInputPicker = false
-    @State private var pendingInput: PlanInputAction?
     @State private var listPhotoDraft: ListPhotoDraft?
     @FocusState private var focusedField: BuilderField?
 
@@ -603,10 +597,10 @@ struct PlanBuilderView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: ReasiSpacing.s6) {
-                    intro
                     planKindPicker
                     briefComposer
                     planDetails
+                    addOptions
                     if !brief.ideas.isEmpty { ideasSection }
                     if let interpretation { interpretationSection(interpretation) }
                 }
@@ -693,11 +687,6 @@ struct PlanBuilderView: View {
         } message: {
             Text("Your ideas will be removed from this device.")
         }
-        .sheet(isPresented: $showsInputPicker, onDismiss: openSelectedInput) {
-            PlanInputPicker { action in
-                pendingInput = action
-            }
-        }
         .sheet(item: $listPhotoDraft) { draft in
             ListPhotoReviewSheet(draft: draft) { item in
                 addIdea(title: item.cleanedName, type: .listItem, detail: item.cleanedQuantity.isEmpty ? nil : item.cleanedQuantity)
@@ -752,13 +741,6 @@ struct PlanBuilderView: View {
         }
     }
 
-    private var intro: some View {
-        Text("What are you cooking?")
-            .font(ReasiTypography.title)
-            .foregroundStyle(Color.reasi.text)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
     private var planKindPicker: some View {
         Picker("Plan type", selection: $brief.kind) {
             Text("My week").tag(PlanKind.week)
@@ -791,32 +773,7 @@ struct PlanBuilderView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(focusedField == .brief ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
-            }
-
-            HStack {
-                Button {
-                    focusedField = nil
-                    pendingInput = nil
-                    showsInputPicker = true
-                } label: {
-                    Label("Add", systemImage: "plus.circle")
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-                        .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("plan-builder-add")
-                .accessibilityHint("Add a meal photo, product, or photographed list to your plan")
-                .disabled(isResolving || isInterpreting)
-
-                Spacer()
-
-                if isResolving {
-                    ProgressView()
-                        .tint(Color.reasi.textMuted)
-                        .accessibilityLabel("Reading photo")
-                }
+                    .stroke(focusedField == .brief ? Color.reasi.borderStrong : Color.reasi.cardEdge, lineWidth: 1)
             }
 
             if let errorMessage {
@@ -827,70 +784,160 @@ struct PlanBuilderView: View {
         }
     }
 
-    private var planDetails: some View {
-        DisclosureGroup(isExpanded: $showsPlanDetails) {
-            VStack(spacing: ReasiSpacing.s4) {
-                Stepper("Cooking for \(brief.serves)", value: $brief.serves, in: 1...12)
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-
-                if brief.kind == .occasion {
-                    Stepper("\(brief.desiredCount) courses", value: $brief.desiredCount, in: 2...5)
-                        .font(ReasiTypography.bodyMedium)
-                        .foregroundStyle(Color.reasi.text)
-
-                    DatePicker(
-                        "When",
-                        selection: Binding(
-                            get: { brief.occasionAt ?? Date() },
-                            set: { brief.occasionAt = $0 }
-                        ),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .font(ReasiTypography.bodyMedium)
-                    .foregroundStyle(Color.reasi.text)
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack {
-                        Text("Budget").fixedSize()
-                        Spacer()
-                        budgetField.frame(width: 124)
-                    }
-                    VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
-                        Text("Budget")
-                        budgetField
-                    }
-                }
-                .font(ReasiTypography.bodyMedium)
-                .foregroundStyle(Color.reasi.text)
-
-                if let target = brief.budgetTargetAud {
-                    Text(budgetMessage(target: target))
-                        .font(ReasiTypography.caption)
-                        .foregroundStyle(budgetKnownSubtotal > target ? Color.reasi.warning : Color.reasi.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+    /// Other ways to put something in the plan, all in view: no menu to open first.
+    private var addOptions: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s3) {
+            HStack {
+                ReasiSectionLabel("Add to your plan")
+                if isResolving {
+                    ProgressView()
+                        .tint(Color.reasi.textMuted)
+                        .accessibilityLabel("Reading photo")
                 }
             }
-            .padding(.top, ReasiSpacing.s4)
-        } label: {
-            Text(planDetailsSummary)
-                .font(ReasiTypography.callout)
-                .foregroundStyle(Color.reasi.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: 44, alignment: .leading)
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: ReasiSpacing.s2),
+                               count: dynamicTypeSize.isAccessibilitySize ? 1 : 2),
+                spacing: ReasiSpacing.s2
+            ) {
+                ForEach(PlanInputAction.allCases) { action in
+                    Button {
+                        open(action)
+                    } label: {
+                        ReasiChip(title: action.title, symbol: action.symbol, fillsWidth: true)
+                    }
+                    .buttonStyle(ReasiPressStyle())
+                    .accessibilityLabel(action.title)
+                    .accessibilityHint(action.hint)
+                }
+            }
+            .disabled(isResolving || isInterpreting)
         }
-        .tint(Color.reasi.textMuted)
-        .padding(.bottom, ReasiSpacing.s3)
-        .overlay(alignment: .bottom) { Color.reasi.border.frame(height: 0.5) }
-        .accessibilityIdentifier("plan-builder-details")
+    }
+
+    /// Who it's for and what it may cost, as chips: each one changes in place.
+    private var planDetails: some View {
+        VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: ReasiSpacing.s2) {
+                    servesChip
+                    if brief.kind == .occasion { coursesChip }
+                    budgetChip
+                }
+            } else if brief.kind == .occasion {
+                HStack(spacing: ReasiSpacing.s2) {
+                    servesChip
+                    coursesChip
+                }
+                budgetChip
+            } else {
+                HStack(spacing: ReasiSpacing.s2) {
+                    servesChip
+                    budgetChip
+                }
+            }
+
+            if brief.kind == .occasion {
+                DatePicker(
+                    "When",
+                    selection: Binding(
+                        get: { brief.occasionAt ?? Date() },
+                        set: { brief.occasionAt = $0 }
+                    ),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .font(ReasiTypography.bodyMedium)
+                .foregroundStyle(Color.reasi.text)
+                .padding(.top, ReasiSpacing.s2)
+            }
+
+            if let target = brief.budgetTargetAud {
+                Text(budgetMessage(target: target))
+                    .font(ReasiTypography.caption)
+                    .foregroundStyle(budgetKnownSubtotal > target ? Color.reasi.warning : Color.reasi.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, ReasiSpacing.s1)
+            }
+        }
+    }
+
+    private var servesChip: some View {
+        Menu {
+            Picker("Cooking for", selection: $brief.serves) {
+                ForEach(1...12, id: \.self) { count in
+                    Text(count == 1 ? "1 person" : "\(count) people").tag(count)
+                }
+            }
+        } label: {
+            ReasiChip(
+                title: brief.serves == 1 ? "1 person" : "\(brief.serves) people",
+                symbol: "person.2",
+                trailingSymbol: "chevron.down"
+            )
+        }
+        .accessibilityLabel("Cooking for")
+        .accessibilityValue(brief.serves == 1 ? "1 person" : "\(brief.serves) people")
+    }
+
+    private var coursesChip: some View {
+        Menu {
+            Picker("Courses", selection: $brief.desiredCount) {
+                ForEach(2...5, id: \.self) { count in
+                    Text("\(count) courses").tag(count)
+                }
+            }
+        } label: {
+            ReasiChip(title: "\(brief.desiredCount) courses", symbol: "fork.knife", trailingSymbol: "chevron.down")
+        }
+        .accessibilityLabel("Courses")
+        .accessibilityValue("\(brief.desiredCount)")
+    }
+
+    /// The budget is typed, so its chip holds a field rather than opening a menu.
+    private var budgetChip: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At the largest text sizes the amount gets a full-width line of its own,
+                // so a long figure isn't squeezed beside the label.
+                VStack(alignment: .leading, spacing: ReasiSpacing.s1) {
+                    budgetLabel
+                    budgetField
+                        .multilineTextAlignment(.leading)
+                        .font(.system(.subheadline))
+                        .foregroundStyle(Color.reasi.text)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, ReasiSpacing.s3)
+            } else {
+                HStack(spacing: ReasiSpacing.s2) {
+                    budgetLabel
+                    budgetField
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(.subheadline))
+                        .foregroundStyle(Color.reasi.text)
+                        .frame(minWidth: 72)
+                }
+            }
+        }
+        .padding(.horizontal, ReasiSpacing.s4)
+        .frame(minHeight: 40)
+        .background(
+            Color.reasi.surface,
+            in: RoundedRectangle(cornerRadius: dynamicTypeSize.isAccessibilitySize ? ReasiRadius.lg : ReasiRadius.pill, style: .continuous)
+        )
+    }
+
+    private var budgetLabel: some View {
+        Text("Budget")
+            .font(.system(.subheadline, weight: .medium))
+            .foregroundStyle(Color.reasi.text)
+            .fixedSize()
     }
 
     private var budgetField: some View {
         TextField("Optional", value: $brief.budgetTargetAud, format: .currency(code: "AUD"))
             .keyboardType(.decimalPad)
             .focused($focusedField, equals: .budget)
-            .multilineTextAlignment(.trailing)
             .accessibilityLabel("Budget in Australian dollars")
     }
 
@@ -899,13 +946,6 @@ struct PlanBuilderView: View {
             return "Salmon pasta and flan for two. Help me choose a starter."
         }
         return "Quick dinners for two, under 30 minutes. No mushrooms."
-    }
-
-    private var planDetailsSummary: String {
-        let count = brief.kind == .week ? "7 dinners" : "\(brief.desiredCount) courses"
-        let people = brief.serves == 1 ? "1 person" : "\(brief.serves) people"
-        let budget = brief.budgetTargetAud.map { $0.formatted(.currency(code: "AUD")) }
-        return [people, count, budget].compactMap { $0 }.joined(separator: " · ")
     }
 
     private var ideasSection: some View {
@@ -1028,10 +1068,9 @@ struct PlanBuilderView: View {
                 Text("Create plan")
             }
         }
-        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
+        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true, isAvailable: canSubmit || isInterpreting))
         .accessibilityIdentifier("plan-builder-submit")
         .disabled(!canSubmit)
-        .opacity(canSubmit ? 1 : 0.58)
     }
 
     private var hasUnansweredClarification: Bool {
@@ -1140,10 +1179,9 @@ struct PlanBuilderView: View {
         isPhotoPickerPresented = true
     }
 
-    private func openSelectedInput() {
-        // Present the destination only after the native options sheet has dismissed.
-        guard let action = pendingInput else { return }
-        pendingInput = nil
+    private func open(_ action: PlanInputAction) {
+        focusedField = nil
+        ReasiHaptics.selection()
         switch action {
         case .mealPhoto: pickPhoto(.meal)
         case .findProduct:

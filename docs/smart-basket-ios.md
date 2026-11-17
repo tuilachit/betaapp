@@ -4,7 +4,13 @@ Task 3 only. No matching, costing, catalog publication, backend, or deployment c
 
 ## Entry And Review
 
-Shopping List's basket overflow contains Price details and Smart Basket. The large
+Smart Basket is off unless the build sets `REASI_ENABLE_SMART_BASKET = YES` in
+`Reasi/Config/ReasiConfig.xcconfig`. Turn it on only once `saving-basket-preview`
+and `saving-basket-apply` are deployed. With it off, the Shopping List shows a
+plain Price details button and has no way into Smart Basket. The UI-test fixture
+(`-ReasiSmartBasketFixture`, debug builds only) shows it regardless of the switch.
+
+With it on, Shopping List's basket overflow contains Price details and Smart Basket. The large
 native sheet uses one scroll view and a bottom Apply action. Both flexibility
 toggles default off; no swaps are selected automatically. Only the preferred
 choice on each eligible line can be selected because Apply accepts line IDs,

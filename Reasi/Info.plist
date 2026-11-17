@@ -61,6 +61,8 @@
 	<string>$(REASI_AUTH_REDIRECT_URL)</string>
 	<key>REASI_ENABLE_APPLE_AUTH</key>
 	<string>$(REASI_ENABLE_APPLE_AUTH)</string>
+	<key>REASI_ENABLE_SMART_BASKET</key>
+	<string>$(REASI_ENABLE_SMART_BASKET)</string>
 	<key>REASI_ENABLE_DEBUG_GUEST_AUTH</key>
 	<string>$(REASI_ENABLE_DEBUG_GUEST_AUTH)</string>
 	<key>REASI_ENABLE_DEBUG_FIXTURES</key>

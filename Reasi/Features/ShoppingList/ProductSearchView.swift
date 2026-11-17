@@ -176,7 +176,7 @@ struct ProductSearchView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(searchIsFocused ? Color.reasi.borderStrong : Color.reasi.border, lineWidth: 1)
+                    .stroke(searchIsFocused ? Color.reasi.borderStrong : Color.reasi.cardEdge, lineWidth: 1)
             }
         }
         .padding(.horizontal, ReasiSpacing.s5)
