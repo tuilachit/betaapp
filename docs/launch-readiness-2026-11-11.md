@@ -1,6 +1,6 @@
 # Reasi 1.0 launch readiness, 11 Nov 2026
 
-Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12), merged as #47. The 12 Nov design playbook round was merged as #48 (`main` at d5c0acf, after Smart Basket, #46). The 17 Nov changes (Smart Basket hidden for 1.0, and the restyle after ElevenLabs) are on `codex/hide-smart-basket`, from `origin/main` at d5c0acf, in a pull request that is not merged yet. Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
+Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12), merged as #47. The 12 Nov design playbook round was merged as #48 (`main` at d5c0acf, after Smart Basket, #46). The 17 Nov changes (Smart Basket hidden for 1.0, and the restyle after ElevenLabs) were merged as #49 on 18 Nov (`main` at 1445192). Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
 
 ## What this branch changes in the app
 
@@ -131,7 +131,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 7. Final build
 
-**Archived on 17 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` (under 2026-11-17) and passes the release preflight. It is built from `codex/hide-smart-basket` with the 17 Nov restyle, and Smart Basket is hidden: the switch is empty in the archived app's Info.plist. Upload this one, not `Reasi-1.0.0-14-before-restyle.xcarchive` (same day, old look), `Reasi-1.0.0-14-with-smart-basket.xcarchive` (16 Nov), the 12 Nov archives of the same number, or `Reasi-1.0.0-13.xcarchive`. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. All five App Store screenshots in `docs/app-store-screenshots/` were recaptured from this build's code on 17 Nov. Tests on this code: 104 unit and 24 UI tests pass on the iPhone 17e simulator, including one that checks the List with the Smart Basket switch off and on. Nothing was run on a physical iPhone.
+**Archived on 17 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` (under 2026-11-17) and passes the release preflight. It is built from `codex/hide-smart-basket` with the 17 Nov restyle (merged as #49; `main` at 1445192 has the same app code), and Smart Basket is hidden: the switch is empty in the archived app's Info.plist. Upload this one, not `Reasi-1.0.0-14-before-restyle.xcarchive` (same day, old look), `Reasi-1.0.0-14-with-smart-basket.xcarchive` (16 Nov), the 12 Nov archives of the same number, or `Reasi-1.0.0-13.xcarchive`. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. All five App Store screenshots in `docs/app-store-screenshots/` were recaptured from this build's code on 17 Nov. Tests on this code: 104 unit and 24 UI tests pass on the iPhone 17e simulator, including one that checks the List with the Smart Basket switch off and on. Nothing was run on a physical iPhone.
 
 CI note: PR #47's `iOS Release build` run stayed queued with no job created, because GitHub never assigned a `macos-26` hosted runner. The same workflow ran on 11 Oct. If it is still queued, re-run it from the Actions tab.
 
