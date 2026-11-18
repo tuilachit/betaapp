@@ -1,6 +1,6 @@
 # Reasi 1.0 launch readiness, 11 Nov 2026
 
-Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12), merged as #47. The 12 Nov design playbook round is on `codex/design-playbook`, from `origin/main` at 9eec0d1 (after Smart Basket, #46). Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
+Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight build 12), merged as #47. The 12 Nov design playbook round was merged as #48 (`main` at d5c0acf, after Smart Basket, #46). The 17 Nov changes (Smart Basket hidden for 1.0, and the restyle after ElevenLabs) are on `codex/hide-smart-basket`, from `origin/main` at d5c0acf, in a pull request that is not merged yet. Build number is now 14. Build 13 was archived but never uploaded, and it doesn't have the 12 Nov design changes.
 
 ## What this branch changes in the app
 
@@ -44,11 +44,19 @@ Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight buil
   - Home leads with tonight's dinner ("Tonight · Chicken souvlaki plates") when the week plan has today's day, otherwise the first meal. Without a photo it's a light card, not an empty dark one.
   - The meal detail header without a photo is a plain dark panel, like Home.
   - List rows without a product photo show an aisle symbol from the item's name, then its aisle: leaf for spinach, fish for salmon, fridge for milk, snowflake for frozen, and a basket when nothing matches. Keywords must start a word, so "steak" isn't tea and "foil" isn't oil. Unit tests cover this.
-- **Design playbook applied (12 Nov).** `docs/design-playbook.md` sets the rules, drawn from Apple's Human Interface Guidelines and Liquid Glass adoption guide.
+- **Design playbook applied (12 Nov).** `docs/design-playbook.md` sets the rules, drawn from Apple's Human Interface Guidelines and Liquid Glass adoption guide. The type and main-button choices in this item were replaced on 17 Nov; see the next item.
   - Type: Inter is gone from the interface. Titles, section headings, dish names and big money figures are New York (Apple's serif); everything else is San Francisco, all in built-in text styles. One switch, `ReasiTypography.displayDesign`, turns the serif off. The Inter font files are still in the bundle until the look is signed off.
   - Liquid Glass, on controls only: the primary button is ink-tinted glass; the List's "Swipe to finish" and assistant button are one glass group in capsule and circle shapes; the bottom action bars on the List, plan builder, product search, photo review and Smart Basket no longer have opaque strips, so content scrolls beneath them (onboarding keeps its plain bar); custom bar backgrounds are removed; Shop recap and tip detail use the system bar with its glass back button.
   - Less chrome: Plans is one list with hairlines and photos rather than seven boxed cards; days read "Mon" and "Today" instead of capitals; the paywall badge and the welcome receipt are sentence case.
   - The primary button's tap target and VoiceOver focus area are the whole capsule, not just its words. The Smart Basket sheet follows the same bottom-bar rule as the other screens.
+- **Restyled on 17 Nov, with the ElevenLabs iPhone app as the reference.** This replaces the type and main-button lines of the 12 Nov round above; `docs/design-playbook.md` is revised to match.
+  - Type: one family, San Francisco. Titles, section headings, dish names and big money figures are medium weight; New York is no longer used. `ReasiTypography.displayDesign` is still the one switch.
+  - Main button: a solid capsule in ink colour (black on white, white on dark), not tinted glass. When the action can't be taken yet it is a pale grey capsule with muted text. The tab bar, top-bar buttons, the List dock, sheets and menus keep their glass.
+  - Cards: the page is white (near-black in dark mode) and cards are a soft grey fill with no border or shadow. An outline appears only on the selected option in onboarding and on the paywall.
+  - Home opens with the main action ("Add to list" while a list is active, otherwise "Create a plan") and two shortcut chips ("Plan dinners" and the store). The spend card follows, then a small "Tonight" label with "See plan" above the dinner photo. The separate plan and store rows are gone.
+  - Build your plan: the "What are you cooking?" heading is gone, since the bar already says "Build your plan". Who it's for, courses and budget are chips that change in place instead of a row that expands. The four ways to add (meal photo, find product, product photo, list photo) are chips on the screen; the Add link and its sheet are removed.
+  - Large text: at accessibility sizes chip labels wrap instead of truncating, chips stack vertically on Home and in the builder, and the builder's Budget amount gets a line of its own. The accessibility audit caught the last two while this was being built.
+  - Not done: the + button still acts directly rather than opening a "New" screen. Reasi has two things to create, so that screen would be a near-empty list and one more tap.
 - **Fewer words (12 Nov).** Screens keep numbers and names and drop the explanations.
   - List: the summary is the total, "2 of 20" and one short line ("3 unpriced", "Prices from 9 Oct"). The label above the total and the "Tap the circle…" hint are gone; VoiceOver still names the total. Usuals tiles show name, size and price only.
   - Home: "$33.60 left of $120", "Current list", "7 dinners · 20 items", and the store row is just the store name.
@@ -62,7 +70,7 @@ Branch: `codex/app-store-launch`, from `origin/main` at 0b37702 (TestFlight buil
   - The sample shopping list now uses 17 real Coles products (name, size, price, photo) and the seven sample meals have Pexels photos with photographer credit, so the simulator and App Store screenshots show pictures. Three items stay unmatched to show an unpriced row.
   - About 19,300 catalogue photo links are stored without the `/productimages/` folder and fail if requested as is. The backend's product search already adds it; the app now does too (`ProductImageURL.normalized`, unit tested).
 - **Copy fixes (12 Nov).** Spend no longer shows a wifi icon and "Try again" when nobody is signed in. Home says "Nothing spent yet · $170 target" instead of "$170.00 left of your $170 target".
-- **UI test fix.** `testPlanBuilderPickerPreservesDraftAndOpensProductSearch` now puts the keyboard away before tapping Add. With the keyboard up on a 6.3" screen, the floating Create plan button covers Add and takes the tap. On the Smart Basket branch it failed one step earlier, because Add couldn't be reached with the keyboard up. I didn't check it on `main`.
+- **UI test fix.** `testPlanBuilderAddChipsPreserveDraftAndOpenProductSearch` (named `testPlanBuilderPickerPreservesDraftAndOpensProductSearch` until the 17 Nov restyle replaced the Add sheet with chips) puts the keyboard away before using Add. With the keyboard up on a 6.3" screen, the floating Create plan button covers Add and takes the tap. On the Smart Basket branch it failed one step earlier, because Add couldn't be reached with the keyboard up. I didn't check it on `main`.
 - **Release tooling.** `scripts/testflight-release-preflight.sh` now uses `grep -E` instead of `rg`, so it runs on a stock Mac. It passes all 11 checks on the Release build.
 - **Docs.** The TestFlight checklist says build 13 and no longer mentions a free-preview plan, which doesn't exist on `main`.
 
@@ -110,7 +118,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 5. Open pull requests
 
-- **iOS #46 (Smart Basket)** was merged on 16 Nov, so every build from `main` now has Smart Basket in the List's ⋯ menu. It has no on/off switch, and its backend isn't live: the app calls `saving-basket-preview` and `saving-basket-apply`, neither is deployed to production, and reasi-backend #32 and #33 are still open. Until they are deployed, a signed-in shopper who taps Smart Basket gets an error. Deploy that backend before submitting, or hide the menu item for 1.0.
+- **iOS #46 (Smart Basket)** was merged on 16 Nov, but 1.0 ships with it hidden. Its backend isn't live: the app calls `saving-basket-preview` and `saving-basket-apply`, neither is deployed to production, and reasi-backend #32 and #33 are still open. Smart Basket is now behind a build switch, `REASI_ENABLE_SMART_BASKET`, which is off unless `Reasi/Config/ReasiConfig.xcconfig` sets it to `YES`. With it off, the List shows a plain price details button (ⓘ) where the ⋯ menu was, and there is no way into Smart Basket. To ship it later: deploy both functions, set the switch to `YES`, and archive a new build.
 - **iOS #45 (reliability fixes)** needs its paired backend deployed. It also conflicts with #46.
 - **iOS #42** is a stale draft that #44 has largely replaced.
 
@@ -123,7 +131,7 @@ Every Wednesday price refresh since 14 Oct has failed. Since 28 Oct, Coles has a
 
 ### 7. Final build
 
-**Archived on 16 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` (under 2026-11-16) and passes the release preflight. It is built from `codex/design-playbook`, so it includes Smart Basket. Upload this one, not the 12 Nov archives of the same number or `Reasi-1.0.0-13.xcarchive`. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. The App Store screenshots in `docs/app-store-screenshots/` were recaptured from this design on the same day. Tests on this code: 104 unit and 23 UI tests pass on the iPhone 17e simulator.
+**Archived on 17 Nov 2026.** Build `1.0.0 (14)` is in Xcode Organizer as `Reasi-1.0.0-14.xcarchive` (under 2026-11-17) and passes the release preflight. It is built from `codex/hide-smart-basket` with the 17 Nov restyle, and Smart Basket is hidden: the switch is empty in the archived app's Info.plist. Upload this one, not `Reasi-1.0.0-14-before-restyle.xcarchive` (same day, old look), `Reasi-1.0.0-14-with-smart-basket.xcarchive` (16 Nov), the 12 Nov archives of the same number, or `Reasi-1.0.0-13.xcarchive`. In Organizer, choose Validate App, then Distribute App > App Store Connect, once the App Store Connect record and agreements are in place. All five App Store screenshots in `docs/app-store-screenshots/` were recaptured from this build's code on 17 Nov. Tests on this code: 104 unit and 24 UI tests pass on the iPhone 17e simulator, including one that checks the List with the Smart Basket switch off and on. Nothing was run on a physical iPhone.
 
 CI note: PR #47's `iOS Release build` run stayed queued with no job created, because GitHub never assigned a `macos-26` hosted runner. The same workflow ran on 11 Oct. If it is still queued, re-run it from the Actions tab.
 

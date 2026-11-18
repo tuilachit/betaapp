@@ -364,7 +364,7 @@ struct OnboardingPlaceholderView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+                    .stroke(Color.reasi.cardEdge, lineWidth: 1)
             }
             .animation(reduceMotion ? nil : ReasiMotion.tactileSpring, value: amount)
 
@@ -442,7 +442,7 @@ struct OnboardingPlaceholderView: View {
                             in: Capsule()
                         )
                         .overlay {
-                            Capsule().stroke(isSelected ? Color.clear : Color.reasi.border, lineWidth: 1)
+                            Capsule().stroke(Color.clear, lineWidth: 1)
                         }
                     }
                     .buttonStyle(ReasiPressStyle())
@@ -728,7 +728,7 @@ struct OnboardingPlaceholderView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 54)
                     .background(Color.reasi.surface, in: Capsule())
-                    .overlay { Capsule().stroke(Color.reasi.border, lineWidth: 1) }
+                    .overlay { Capsule().stroke(Color.reasi.cardEdge, lineWidth: 1) }
             }
             .buttonStyle(ReasiPressStyle())
             .disabled(guideIsBusy)
@@ -1007,7 +1007,7 @@ struct OnboardingPlaceholderView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: 1)
+                    .stroke(isSelected ? Color.reasi.text : Color.reasi.cardEdge, lineWidth: 1.5)
             }
         }
         .buttonStyle(ReasiPressStyle())
@@ -1069,7 +1069,7 @@ struct OnboardingPlaceholderView: View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                    .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: 1)
+                    .stroke(isSelected ? Color.reasi.text : Color.reasi.cardEdge, lineWidth: 1.5)
             }
         }
         .buttonStyle(ReasiPressStyle())
@@ -1117,9 +1117,8 @@ struct OnboardingPlaceholderView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true))
+        .buttonStyle(ReasiPrimaryButtonStyle(allowsMultiline: true, isAvailable: enabled || onboarding.isSaving))
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.38)
     }
 
     private func authButton(title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -1132,7 +1131,7 @@ struct OnboardingPlaceholderView: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 54)
                 .background(Color.reasi.surface, in: Capsule())
-                .overlay { Capsule().stroke(Color.reasi.border, lineWidth: 1) }
+                .overlay { Capsule().stroke(Color.reasi.cardEdge, lineWidth: 1) }
         }
         .buttonStyle(ReasiPressStyle())
     }
@@ -1644,7 +1643,7 @@ private extension View {
             .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: ReasiRadius.md, style: .continuous)
-                    .stroke(Color.reasi.border, lineWidth: 1)
+                    .stroke(Color.reasi.cardEdge, lineWidth: 1)
             }
     }
 }

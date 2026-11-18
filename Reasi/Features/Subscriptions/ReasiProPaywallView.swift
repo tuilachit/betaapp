@@ -414,7 +414,7 @@ struct ReasiProPaywallView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? Color.reasi.text : Color.reasi.cardEdge, lineWidth: 1.5)
         }
         .accessibilityLabel("\(option.kind.title) plan")
         .accessibilityValue(planAccessibilityValue(option))
@@ -460,7 +460,7 @@ struct ReasiProPaywallView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.lg, style: .continuous)
-                .stroke(isSelected ? Color.reasi.text : Color.reasi.border, lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? Color.reasi.text : Color.reasi.cardEdge, lineWidth: 1.5)
         }
         .accessibilityLabel("\(option.kind.title) plan")
         .accessibilityValue(planAccessibilityValue(option))
@@ -507,9 +507,10 @@ struct ReasiProPaywallView: View {
                 Text(primaryActionTitle)
             }
         }
-        .buttonStyle(ReasiPrimaryButtonStyle())
+        .buttonStyle(ReasiPrimaryButtonStyle(
+            isAvailable: !isPrimaryActionDisabled || revenueCat.isPurchasing || isRefreshingAccess
+        ))
         .disabled(isPrimaryActionDisabled)
-        .opacity(isPrimaryActionDisabled ? 0.45 : 1)
     }
 
     private var primaryActionTitle: String {

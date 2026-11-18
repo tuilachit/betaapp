@@ -440,11 +440,13 @@ final class ReasiAppearanceTests: XCTestCase {
         XCTAssertEqual(ReasiAppearance.dark.colorScheme, .dark)
     }
 
-    func testPaletteAdaptsAndPreservesOriginalDarkColors() {
+    /// Pins the dark palette. The page and card greys were reset on 17 Nov 2026 (near-black
+    /// page, cards one step lighter, no borders); the text and status colours are the originals.
+    func testPaletteAdaptsAndKeepsItsDarkColors() {
         let colors = Color.reasi
         let original: [(Color, UInt)] = [
-            (colors.background, 0x09090A), (colors.backgroundElevated, 0x0D0D0F),
-            (colors.surface, 0x171719), (colors.surfaceHigh, 0x202023),
+            (colors.background, 0x0E0E10), (colors.backgroundElevated, 0x141416),
+            (colors.surface, 0x1B1B1E), (colors.surfaceHigh, 0x29292D),
             (colors.border, 0x29292D), (colors.borderStrong, 0x3D3D43),
             (colors.text, 0xF4F4F5), (colors.textMuted, 0xB8B8BF),
             (colors.muted, 0x85858E), (colors.dim, 0x5E5E66),
@@ -1499,6 +1501,7 @@ private extension ReasiConfig {
         googleClientID: "",
         googleURLScheme: "",
         appleAuthEnabled: false,
+        smartBasketEnabled: false,
         authRedirectURL: nil,
         privacyPolicyURL: nil,
         termsOfServiceURL: nil,

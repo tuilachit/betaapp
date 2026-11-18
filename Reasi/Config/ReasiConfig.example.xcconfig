@@ -12,6 +12,8 @@ REASI_GOOGLE_URL_SCHEME =
 REASI_AUTH_REDIRECT_URL = ai.reasi.ios:/$()/auth/callback
 REASI_APP_URL_SCHEME = ai.reasi.ios
 REASI_ENABLE_APPLE_AUTH = YES
+// Leave off until saving-basket-preview and saving-basket-apply are deployed.
+REASI_ENABLE_SMART_BASKET = NO
 REASI_PRIVACY_POLICY_URL = https:/$()/www.reasiai.com/privacy
 REASI_TERMS_OF_SERVICE_URL = https:/$()/www.reasiai.com/terms
 REASI_ENABLE_DEBUG_GUEST_AUTH = YES

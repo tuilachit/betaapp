@@ -19,21 +19,21 @@ enum ReasiFontWeight {
 
 /// Reasi's type, per `docs/design-playbook.md`.
 ///
-/// Two families, both Apple's: New York (serif) for display — screen titles, section
-/// headings, dish names and big money figures — and San Francisco for everything else.
-/// Every font here is one of the system's built-in text styles, so it follows Dynamic Type
-/// and Bold Text and matches the text inside system controls.
+/// One family: San Francisco, in the system's built-in text styles, so every font follows
+/// Dynamic Type and Bold Text and matches the text inside system controls. Display text —
+/// screen titles, section headings, dish names and big money figures — is set apart by size
+/// and a medium weight, not by a second typeface.
 enum ReasiTypography {
-    /// Flip to `.default` to set display text in San Francisco instead of New York.
-    static let displayDesign: Font.Design = .serif
+    /// `.default` is San Francisco. `.serif` would set display text in New York instead.
+    static let displayDesign: Font.Design = .default
 
     /// Native navigation bars keep their Liquid Glass and scroll behaviour; only the title face changes.
     @MainActor
     static func applyNavigationBarFonts() {
         let bar = UINavigationBar.appearance()
-        // Large titles are display text. Small inline titles stay in the system face,
-        // like the labels of the controls beside them.
-        bar.largeTitleTextAttributes = [.font: displayUIFont(.largeTitle, weight: .semibold)]
+        // Large titles are display text, in the same medium weight as the rest of it.
+        // Small inline titles keep the system's own style.
+        bar.largeTitleTextAttributes = [.font: displayUIFont(.largeTitle, weight: .medium)]
     }
 
     private static func displayUIFont(_ style: UIFont.TextStyle, weight: UIFont.Weight) -> UIFont {
@@ -45,13 +45,13 @@ enum ReasiTypography {
         return UIFontMetrics(forTextStyle: style).scaledFont(for: UIFont(descriptor: descriptor, size: baseSize))
     }
 
-    /// Display text: New York, in a built-in text style.
+    /// Display text: a built-in text style in the display design, medium weight.
     static func display(_ style: Font.TextStyle, weight: Font.Weight = .medium) -> Font {
         .system(style, design: displayDesign, weight: weight)
     }
 
     /// A font near `size`, snapped to the closest built-in text style. Sizes of 20 and up are
-    /// display text and use New York; smaller sizes are interface text in San Francisco.
+    /// display text in a medium weight; smaller sizes are interface text in the weight asked for.
     /// `relativeTo` is accepted for source compatibility; the chosen style already scales.
     static func font(size: CGFloat, weight: ReasiFontWeight = .regular, relativeTo _: Font.TextStyle = .body) -> Font {
         switch size {
@@ -64,9 +64,9 @@ enum ReasiTypography {
         case 26..<33:
             display(.title)
         case 21..<26:
-            display(.title2, weight: .semibold)
+            display(.title2)
         case 20..<21:
-            display(.title3, weight: .semibold)
+            display(.title3)
         case 17..<20:
             .system(.body, weight: weight.system)
         case 16..<17:
@@ -85,7 +85,7 @@ enum ReasiTypography {
     // Display
     static let largeTitle = display(.largeTitle)
     static let title = display(.title)
-    static let title2 = display(.title2, weight: .semibold)
+    static let title2 = display(.title2)
 
     // Interface
     static let headline = Font.system(.headline, weight: .semibold)

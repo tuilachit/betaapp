@@ -378,6 +378,14 @@ struct ShoppingListPlaceholderView: View {
         return FixtureStores.store(id: coreLoop.plan.shoppingList.storeId) ?? appState.selectedStore
     }
 
+    /// Smart Basket appears only in builds that turn it on, which needs its backend live.
+    private var showsSmartBasket: Bool {
+        #if DEBUG
+        if FixtureSmartBasket.isEnabled { return true }
+        #endif
+        return supabase.config.smartBasketEnabled
+    }
+
     private var canPreviewSmartBasket: Bool {
         #if DEBUG
         if FixtureSmartBasket.isEnabled { return network.isConnected && !coreLoop.isShoppingCompleted && !coreLoop.isSwitchingStore }
@@ -448,21 +456,38 @@ struct ShoppingListPlaceholderView: View {
                     .foregroundStyle(Color.reasi.textMuted)
                     .contentTransition(.numericText())
                     .accessibilityLabel("\(summary.checkedItemCount) of \(summary.totalItemCount) picked")
-                Menu {
-                    Button("Price details", systemImage: "info.circle") { activeSheet = .basketDetails }
-                    Button("Smart Basket", systemImage: "arrow.triangle.2.circlepath") {
-                        activeSheet = .smartBasket(coreLoop.plan.storeId)
+                if showsSmartBasket {
+                    Menu {
+                        Button("Price details", systemImage: "info.circle") { activeSheet = .basketDetails }
+                        Button("Smart Basket", systemImage: "arrow.triangle.2.circlepath") {
+                            activeSheet = .smartBasket(coreLoop.plan.storeId)
+                        }
+                        .disabled(!canPreviewSmartBasket)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(Color.reasi.muted)
+                            .frame(width: 44, height: 44)
                     }
-                    .disabled(!canPreviewSmartBasket)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(Color.reasi.muted)
-                        .frame(width: 44, height: 44)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Basket options")
+                    .accessibilityIdentifier("shopping-basket-options")
+                } else {
+                    // With Smart Basket off there is one thing to open, so it gets its own button
+                    // rather than a menu holding a single item.
+                    Button {
+                        ReasiHaptics.light()
+                        activeSheet = .basketDetails
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(Color.reasi.muted)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Basket price details")
+                    .accessibilityIdentifier("shopping-price-details")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Basket options")
-                .accessibilityIdentifier("shopping-basket-options")
             }
 
             GeometryReader { proxy in
@@ -689,7 +714,7 @@ struct ShoppingListPlaceholderView: View {
         } label: {
             ZStack {
                 Circle()
-                    .stroke(Color.reasi.border, lineWidth: 1)
+                    .fill(Color.reasi.surfaceHigh)
                     .frame(width: 32, height: 32)
                 if isAdding {
                     ProgressView().controlSize(.mini)
@@ -1736,9 +1761,7 @@ private struct ProductTextImportSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, ReasiSpacing.s4)
                         .foregroundStyle(Color.reasi.text)
-                        .overlay {
-                            Capsule().stroke(Color.reasi.border, lineWidth: 1)
-                        }
+                        .background(Color.reasi.surface, in: Capsule())
                     }
                     .disabled(isLoading || isAddingManual || trimmedText.isEmpty || isLink)
                     .buttonStyle(ReasiPressStyle())
@@ -2954,7 +2977,7 @@ private struct ShopSavedCard: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .strokeBorder(Color.reasi.border.opacity(0.65), lineWidth: 0.5)
+                .strokeBorder(Color.reasi.cardEdge, lineWidth: 0.5)
         }
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.10 : 0.025), radius: 16, y: 6)
         .accessibilityElement(children: .contain)

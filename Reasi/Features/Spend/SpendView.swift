@@ -915,7 +915,7 @@ struct SpendingTripDetailView: View {
         .background(Color.reasi.surface, in: RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ReasiRadius.xl, style: .continuous)
-                .stroke(Color.reasi.borderStrong, lineWidth: 1)
+                .stroke(Color.reasi.cardEdge, lineWidth: 1)
         }
     }
 

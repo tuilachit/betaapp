@@ -82,6 +82,35 @@ final class ReasiOnboardingUITests: XCTestCase {
         }
     }
 
+    /// Smart Basket shows only in a build that turns it on. With it off, the list has a plain
+    /// price details button and no way into Smart Basket.
+    @MainActor
+    func testSmartBasketFollowsTheBuildSwitch() throws {
+        continueAfterFailure = false
+        for enabled in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated"]
+            app.launchEnvironment["REASI_ENABLE_SMART_BASKET"] = enabled ? "YES" : "NO"
+            app.launch()
+            let menu = app.buttons["shopping-basket-options"]
+            let priceDetails = app.buttons["shopping-price-details"]
+            if enabled {
+                XCTAssertTrue(menu.waitForExistence(timeout: 8), "The basket menu should show when Smart Basket is on")
+                XCTAssertFalse(priceDetails.exists)
+                menu.tap()
+                XCTAssertTrue(app.buttons["Smart Basket"].waitForExistence(timeout: 3))
+                XCTAssertTrue(app.buttons["Price details"].exists)
+            } else {
+                XCTAssertTrue(priceDetails.waitForExistence(timeout: 8), "Price details should have its own button when Smart Basket is off")
+                XCTAssertFalse(menu.exists, "The basket menu should be gone when Smart Basket is off")
+                XCTAssertFalse(app.buttons["Smart Basket"].exists)
+                priceDetails.tap()
+                XCTAssertTrue(app.staticTexts["Basket details"].waitForExistence(timeout: 3))
+            }
+            app.terminate()
+        }
+    }
+
     @MainActor
     func testSmartBasketPartialNoChangeEmptyAndErrorFixtures() throws {
         continueAfterFailure = false
@@ -137,7 +166,7 @@ final class ReasiOnboardingUITests: XCTestCase {
         }
     }
     @MainActor
-    func testPlanBuilderPickerPreservesDraftAndOpensProductSearch() throws {
+    func testPlanBuilderAddChipsPreserveDraftAndOpenProductSearch() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-ReasiShowShoppingFixture", "-ReasiSkipBrandIntro", "-ReasiUITestUnauthenticated",
@@ -155,12 +184,9 @@ final class ReasiOnboardingUITests: XCTestCase {
         let done = app.buttons["Done"]
         if done.waitForExistence(timeout: 2) { done.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
-        let add = app.buttons["plan-builder-add"]
-        XCTAssertTrue(add.waitForExistence(timeout: 3))
-        reveal(add, in: app)
-        add.tap()
+        // The four ways to add are chips on the builder itself: there is no menu to open first.
         XCTAssertTrue(app.staticTexts["Add to your plan"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        reveal(app.buttons["List photo"], in: app, dragFrom: pageMargin)
         for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
             XCTAssertTrue(app.buttons[option].isHittable)
         }
@@ -174,22 +200,17 @@ final class ReasiOnboardingUITests: XCTestCase {
         app.buttons["Close product search"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
         XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
-        add.tap()
-        app.buttons["Close add options"].tap()
-        XCTAssertTrue(app.staticTexts["Add to your plan"].waitForNonExistence(timeout: 3))
-        XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
         let composerScreenshot = XCTAttachment(screenshot: app.screenshot())
         composerScreenshot.name = "Plan composer light"
         composerScreenshot.lifetime = .keepAlways
         self.add(composerScreenshot)
         for option in ["Meal photo", "Product photo", "List photo"] {
-            add.tap()
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 3))
             app.buttons[option].tap()
             let cancel = app.buttons["Cancel"]
             XCTAssertTrue(cancel.waitForExistence(timeout: 8), "\(option) must open the photo library")
             cancel.tap()
-            XCTAssertTrue(add.waitForExistence(timeout: 3))
+            XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 3))
             XCTAssertEqual(editor.value as? String, "Salmon pasta and flan for two.")
         }
         app.buttons["Close plan builder"].tap()
@@ -199,7 +220,7 @@ final class ReasiOnboardingUITests: XCTestCase {
     }
 
     @MainActor
-    func testPlanBuilderPickerSupportsLargeTextAndBothAppearances() throws {
+    func testPlanBuilderAddChipsSupportLargeTextAndBothAppearances() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         for appearance in ["light", "dark"] {
@@ -211,23 +232,21 @@ final class ReasiOnboardingUITests: XCTestCase {
             app.buttons["Home"].tap()
             app.buttons["Create a plan"].firstMatch.tap()
             XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 3))
-            let add = app.buttons["plan-builder-add"]
-            reveal(add, in: app)
-            add.tap()
+            let done = app.buttons["Done"]
+            if done.waitForExistence(timeout: 2) { done.tap() }
             XCTAssertTrue(app.buttons["Meal photo"].waitForExistence(timeout: 3))
             for option in ["Meal photo", "Find product", "Product photo", "List photo"] {
                 let button = app.buttons[option]
-                for _ in 0..<5 where !button.isHittable { app.swipeUp() }
-                XCTAssertTrue(button.isHittable)
+                reveal(button, in: app, dragFrom: pageMargin)
                 XCTAssertGreaterThanOrEqual(button.frame.minX, app.frame.minX)
                 XCTAssertLessThanOrEqual(button.frame.maxX, app.frame.maxX)
             }
-            try app.performAccessibilityAudit(for: .textClipped)
+            // Kept before the audit, so a failed audit still leaves a picture of the screen it saw.
             let attachment = XCTAttachment(screenshot: app.screenshot())
             attachment.name = "Plan add options large text \(appearance)"
             attachment.lifetime = .keepAlways
             self.add(attachment)
-            app.buttons["Close add options"].tap()
+            try app.performAccessibilityAudit(for: .textClipped)
             app.terminate()
         }
     }
@@ -500,13 +519,18 @@ final class ReasiOnboardingUITests: XCTestCase {
     }
 
     @MainActor
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    /// A point in the right-hand page margin, clear of the builder's chips, menus and fields.
+    private let pageMargin = CGVector(dx: 0.97, dy: 0.5)
+
+    /// `dragFrom` is where each drag starts. Pass a point in the page margin when the middle of
+    /// the screen holds a menu or a field, which would take the press instead of scrolling.
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, dragFrom: CGVector = CGVector(dx: 0.5, dy: 0.5)) {
         // Short, slow drags rather than flings: with large text a row can be taller than a
         // fling travels, and the element would jump past the visible band each time.
         for _ in 0..<16 {
             let frame = element.frame
             if element.isHittable && frame.minY >= app.frame.minY + 100 && frame.maxY <= app.frame.maxY - 150 { break }
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let start = app.coordinate(withNormalizedOffset: dragFrom)
             let goesDown = element.exists && frame.minY < app.frame.minY + 100
             let end = start.withOffset(CGVector(dx: 0, dy: goesDown ? 220 : -220))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)

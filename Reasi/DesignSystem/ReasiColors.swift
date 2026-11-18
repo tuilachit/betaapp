@@ -2,16 +2,17 @@ import SwiftUI
 import UIKit
 
 struct ReasiColorPalette {
-    let background = Color(light: 0xF6F6F8, dark: 0x09090A)
-    let backgroundElevated = Color(light: 0xFBFBFC, dark: 0x0D0D0F)
-    let surface = Color(light: 0xFFFFFF, dark: 0x171719)
-    let surfaceHigh = Color(light: 0xEDEDF1, dark: 0x202023)
+    // The page is plain white (near-black in dark mode). Cards are a soft grey fill on it,
+    // with no border or shadow; `surfaceHigh` is one step stronger, for chips and tracks.
+    let background = Color(light: 0xFFFFFF, dark: 0x0E0E10)
+    let backgroundElevated = Color(light: 0xFFFFFF, dark: 0x141416)
+    let surface = Color(light: 0xF4F4F6, dark: 0x1B1B1E)
+    let surfaceHigh = Color(light: 0xE7E7EB, dark: 0x29292D)
     let glass = Color(light: 0xFFFFFF, dark: 0x1C1C1E, opacity: 0.82)
     let border = Color(light: 0xD7D7DE, dark: 0x29292D)
     let borderStrong = Color(light: 0xB4B4BE, dark: 0x3D3D43)
-    /// The edge of a card on the page. Barely there in light mode, where white on grey already
-    /// separates, as in iOS grouped lists. Dark mode keeps a visible edge.
-    let cardEdge = Color(light: 0xEDEDF1, dark: 0x262629)
+    /// Cards have no edge: the grey fill on the page is the separation.
+    let cardEdge = Color(light: 0xF4F4F6, dark: 0x1B1B1E, opacity: 0)
     let text = Color(light: 0x19191D, dark: 0xF4F4F5)
     let textMuted = Color(light: 0x51515B, dark: 0xB8B8BF)
     let muted = Color(light: 0x62626D, dark: 0x85858E)
